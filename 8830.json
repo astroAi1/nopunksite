@@ -1,0 +1,26 @@
+{
+  "name": "No-Punk #8830",
+  "attributes": [
+    {
+      "trait_type": "Hair",
+      "value": "Messy Hair"
+    },
+    {
+      "trait_type": "Mouth",
+      "value": "Frown"
+    },
+    {
+      "trait_type": "Eyes",
+      "value": "Classic Shades"
+    },
+    {
+      "trait_type": "Beard",
+      "value": "Goat"
+    },
+    {
+      "trait_type": "Type",
+      "value": "Male"
+    }
+  ],
+  "tokenId": "8830"
+}

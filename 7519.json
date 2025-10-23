@@ -1,0 +1,22 @@
+{
+  "name": "No-Punk #7519",
+  "attributes": [
+    {
+      "trait_type": "Beard",
+      "value": "Shadow Beard"
+    },
+    {
+      "trait_type": "Hair",
+      "value": "Top Hat"
+    },
+    {
+      "trait_type": "Mask",
+      "value": "Medical Mask"
+    },
+    {
+      "trait_type": "Type",
+      "value": "Male"
+    }
+  ],
+  "tokenId": "7519"
+}

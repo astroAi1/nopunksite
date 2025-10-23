@@ -1,0 +1,22 @@
+{
+  "name": "No-Punk #7833",
+  "attributes": [
+    {
+      "trait_type": "Beard",
+      "value": "Front Beard"
+    },
+    {
+      "trait_type": "Hair",
+      "value": "Frumpy Hair"
+    },
+    {
+      "trait_type": "Eyes",
+      "value": "Eye Mask"
+    },
+    {
+      "trait_type": "Type",
+      "value": "Male"
+    }
+  ],
+  "tokenId": "7833"
+}

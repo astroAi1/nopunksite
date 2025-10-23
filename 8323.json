@@ -1,0 +1,26 @@
+{
+  "name": "No-Punk #8323",
+  "attributes": [
+    {
+      "trait_type": "Nose",
+      "value": "Clown Nose"
+    },
+    {
+      "trait_type": "Hair",
+      "value": "Frumpy Hair"
+    },
+    {
+      "trait_type": "Mouth",
+      "value": "Purple Lipstick"
+    },
+    {
+      "trait_type": "Eyes",
+      "value": "Nerd Glasses"
+    },
+    {
+      "trait_type": "Type",
+      "value": "Female"
+    }
+  ],
+  "tokenId": "8323"
+}

@@ -1,0 +1,26 @@
+{
+  "name": "No-Punk #5509",
+  "attributes": [
+    {
+      "trait_type": "Smoke",
+      "value": "Cigarette"
+    },
+    {
+      "trait_type": "Mouth",
+      "value": "Buck Teeth"
+    },
+    {
+      "trait_type": "Ears",
+      "value": "Earring"
+    },
+    {
+      "trait_type": "Hair",
+      "value": "Shaved Head"
+    },
+    {
+      "trait_type": "Type",
+      "value": "Male"
+    }
+  ],
+  "tokenId": "5509"
+}

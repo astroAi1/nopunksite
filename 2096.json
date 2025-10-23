@@ -1,0 +1,30 @@
+{
+  "name": "No-Punk #2096",
+  "attributes": [
+    {
+      "trait_type": "Beard",
+      "value": "Front Beard Dark"
+    },
+    {
+      "trait_type": "Ears",
+      "value": "Earring"
+    },
+    {
+      "trait_type": "Smoke",
+      "value": "Pipe"
+    },
+    {
+      "trait_type": "Hair",
+      "value": "Do-rag"
+    },
+    {
+      "trait_type": "Face",
+      "value": "Mole"
+    },
+    {
+      "trait_type": "Type",
+      "value": "Male"
+    }
+  ],
+  "tokenId": "2096"
+}

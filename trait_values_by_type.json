@@ -1,0 +1,119 @@
+{
+  "Beard": [
+    "Big Beard",
+    "Chinstrap",
+    "Front Beard",
+    "Front Beard Dark",
+    "Goat",
+    "Handlebars",
+    "Luxurious Beard",
+    "Mustache",
+    "Muttonchops",
+    "Normal Beard",
+    "Normal Beard Black",
+    "Shadow Beard"
+  ],
+  "Ears": [
+    "Earring"
+  ],
+  "Eyes": [
+    "3D Glasses",
+    "Big Shades",
+    "Blue Eye Shadow",
+    "Classic Shades",
+    "Clown Eyes Blue",
+    "Clown Eyes Green",
+    "Eye Mask",
+    "Eye Patch",
+    "Green Eye Shadow",
+    "Horned Rim Glasses",
+    "Nerd Glasses",
+    "Purple Eye Shadow",
+    "Regular Shades",
+    "Small Shades",
+    "VR",
+    "Welding Goggles"
+  ],
+  "Face": [
+    "Mole",
+    "Rosy Cheeks",
+    "Spots"
+  ],
+  "Hair": [
+    "Bandana",
+    "Beanie",
+    "Blonde Bob",
+    "Blonde Short",
+    "Cap",
+    "Cap Forward",
+    "Clown Hair Green",
+    "Cowboy Hat",
+    "Crazy Hair",
+    "Dark Hair",
+    "Do-rag",
+    "Fedora",
+    "Frumpy Hair",
+    "Half Shaved",
+    "Headband",
+    "Hoodie",
+    "Knitted Cap",
+    "Messy Hair",
+    "Mohawk",
+    "Mohawk Dark",
+    "Mohawk Thin",
+    "Orange Side",
+    "Peak Spike",
+    "Pigtails",
+    "Pilot Helmet",
+    "Pink With Hat",
+    "Police Cap",
+    "Purple Hair",
+    "Red Mohawk",
+    "Shaved Head",
+    "Straight Hair",
+    "Straight Hair Blonde",
+    "Straight Hair Dark",
+    "Stringy Hair",
+    "Tassle Hat",
+    "Tiara",
+    "Top Hat",
+    "Vampire Hair",
+    "Wild Blonde",
+    "Wild Hair",
+    "Wild White Hair"
+  ],
+  "Mask": [
+    "Medical Mask"
+  ],
+  "Mouth": [
+    "Black Lipstick",
+    "Buck Teeth",
+    "Frown",
+    "Hot Lipstick",
+    "Purple Lipstick",
+    "Smile"
+  ],
+  "Neck": [
+    "Choker",
+    "Gold Chain",
+    "Silver Chain"
+  ],
+  "Noir": [
+    "Noir de Noir"
+  ],
+  "Nose": [
+    "Clown Nose"
+  ],
+  "Smoke": [
+    "Cigarette",
+    "Pipe",
+    "Vape"
+  ],
+  "Type": [
+    "Alien",
+    "Ape",
+    "Female",
+    "Male",
+    "Zombie"
+  ]
+}

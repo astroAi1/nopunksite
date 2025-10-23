@@ -1,0 +1,22 @@
+{
+  "name": "No-Punk #348",
+  "attributes": [
+    {
+      "trait_type": "Hair",
+      "value": "Messy Hair"
+    },
+    {
+      "trait_type": "Face",
+      "value": "Rosy Cheeks"
+    },
+    {
+      "trait_type": "Eyes",
+      "value": "Nerd Glasses"
+    },
+    {
+      "trait_type": "Type",
+      "value": "Female"
+    }
+  ],
+  "tokenId": "348"
+}

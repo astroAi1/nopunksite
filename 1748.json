@@ -1,0 +1,22 @@
+{
+  "name": "No-Punk #1748",
+  "attributes": [
+    {
+      "trait_type": "Beard",
+      "value": "Front Beard"
+    },
+    {
+      "trait_type": "Mouth",
+      "value": "Frown"
+    },
+    {
+      "trait_type": "Hair",
+      "value": "Knitted Cap"
+    },
+    {
+      "trait_type": "Type",
+      "value": "Zombie"
+    }
+  ],
+  "tokenId": "1748"
+}

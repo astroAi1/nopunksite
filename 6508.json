@@ -1,0 +1,26 @@
+{
+  "name": "No-Punk #6508",
+  "attributes": [
+    {
+      "trait_type": "Smoke",
+      "value": "Cigarette"
+    },
+    {
+      "trait_type": "Beard",
+      "value": "Muttonchops"
+    },
+    {
+      "trait_type": "Hair",
+      "value": "Do-rag"
+    },
+    {
+      "trait_type": "Eyes",
+      "value": "Small Shades"
+    },
+    {
+      "trait_type": "Type",
+      "value": "Male"
+    }
+  ],
+  "tokenId": "6508"
+}

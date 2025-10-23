@@ -1,0 +1,26 @@
+{
+  "name": "No-Punk #8086",
+  "attributes": [
+    {
+      "trait_type": "Smoke",
+      "value": "Cigarette"
+    },
+    {
+      "trait_type": "Hair",
+      "value": "Bandana"
+    },
+    {
+      "trait_type": "Mouth",
+      "value": "Frown"
+    },
+    {
+      "trait_type": "Eyes",
+      "value": "Horned Rim Glasses"
+    },
+    {
+      "trait_type": "Type",
+      "value": "Male"
+    }
+  ],
+  "tokenId": "8086"
+}

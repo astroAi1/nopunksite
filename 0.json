@@ -1,0 +1,22 @@
+{
+  "name": "No-Punk #0",
+  "attributes": [
+    {
+      "trait_type": "Eyes",
+      "value": "Green Eye Shadow"
+    },
+    {
+      "trait_type": "Ears",
+      "value": "Earring"
+    },
+    {
+      "trait_type": "Hair",
+      "value": "Blonde Bob"
+    },
+    {
+      "trait_type": "Type",
+      "value": "Female"
+    }
+  ],
+  "tokenId": "0"
+}

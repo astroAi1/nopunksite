@@ -1,0 +1,30 @@
+{
+  "name": "No-Punk #9912",
+  "attributes": [
+    {
+      "trait_type": "Smoke",
+      "value": "Pipe"
+    },
+    {
+      "trait_type": "Mouth",
+      "value": "Black Lipstick"
+    },
+    {
+      "trait_type": "Face",
+      "value": "Rosy Cheeks"
+    },
+    {
+      "trait_type": "Hair",
+      "value": "Mohawk Dark"
+    },
+    {
+      "trait_type": "Eyes",
+      "value": "Nerd Glasses"
+    },
+    {
+      "trait_type": "Type",
+      "value": "Female"
+    }
+  ],
+  "tokenId": "9912"
+}

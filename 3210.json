@@ -1,0 +1,22 @@
+{
+  "name": "No-Punk #3210",
+  "attributes": [
+    {
+      "trait_type": "Hair",
+      "value": "Crazy Hair"
+    },
+    {
+      "trait_type": "Mouth",
+      "value": "Purple Lipstick"
+    },
+    {
+      "trait_type": "Eyes",
+      "value": "Nerd Glasses"
+    },
+    {
+      "trait_type": "Type",
+      "value": "Female"
+    }
+  ],
+  "tokenId": "3210"
+}

@@ -1,0 +1,22 @@
+{
+  "name": "No-Punk #3463",
+  "attributes": [
+    {
+      "trait_type": "Mouth",
+      "value": "Frown"
+    },
+    {
+      "trait_type": "Hair",
+      "value": "Fedora"
+    },
+    {
+      "trait_type": "Smoke",
+      "value": "Vape"
+    },
+    {
+      "trait_type": "Type",
+      "value": "Male"
+    }
+  ],
+  "tokenId": "3463"
+}

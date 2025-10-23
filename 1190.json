@@ -1,0 +1,26 @@
+{
+  "name": "No-Punk #1190",
+  "attributes": [
+    {
+      "trait_type": "Smoke",
+      "value": "Cigarette"
+    },
+    {
+      "trait_type": "Hair",
+      "value": "Bandana"
+    },
+    {
+      "trait_type": "Beard",
+      "value": "Handlebars"
+    },
+    {
+      "trait_type": "Ears",
+      "value": "Earring"
+    },
+    {
+      "trait_type": "Type",
+      "value": "Zombie"
+    }
+  ],
+  "tokenId": "1190"
+}

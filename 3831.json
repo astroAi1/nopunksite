@@ -1,0 +1,22 @@
+{
+  "name": "No-Punk #3831",
+  "attributes": [
+    {
+      "trait_type": "Hair",
+      "value": "Vampire Hair"
+    },
+    {
+      "trait_type": "Eyes",
+      "value": "Big Shades"
+    },
+    {
+      "trait_type": "Mask",
+      "value": "Medical Mask"
+    },
+    {
+      "trait_type": "Type",
+      "value": "Zombie"
+    }
+  ],
+  "tokenId": "3831"
+}

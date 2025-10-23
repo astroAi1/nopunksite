@@ -1,0 +1,14 @@
+/index.html
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/token_map.json
+  Cache-Control: no-cache
+
+/public/token_map.json
+  Cache-Control: no-cache
+
+/trait_values_by_type.json
+  Cache-Control: no-cache
+
+/public/trait_values_by_type.json
+  Cache-Control: no-cache

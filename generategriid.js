@@ -1,73 +1,41 @@
-/**
- * Scan 0.json → 9999.json and build a map of { trait_type: [unique values...] }.
- * Outputs:
- *   - trait_values_by_type.json  // { "Eyes": ["Clown Eyes Green", ...], "Type": ["Female", "Male", ...], ... }
- *   - trait_values_by_type.js    // ES module exports for your frontend
- *   - trait_types.json           // ["Eyes","Hair","Mouth","Type",...]
- */
+// scripts/build_token_map.js
+require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
+const axios = require('axios');
 
-const DIR = '/Users/danriding/Desktop/nopunks-site';
-const START_ID = 0;
-const END_ID = 9999;
+const CONTRACT = '0x4ed83635e2309a7c067d0f98efca47b920bf79b1';
+const CHAIN = 'base';
+const KEY = process.env.OPENSEA_API_KEY || '';
+const OUT = path.join(__dirname, '..', 'token_map.json');
 
-const OUT_JSON = path.join(DIR, 'trait_values_by_type.json');
-const OUT_JS = path.join(DIR, 'trait_values_by_type.js');
-const OUT_TYPES = path.join(DIR, 'trait_types.json');
+(async ()=>{
+  const headers = KEY ? { 'x-api-key': KEY } : {};
+  const map = fs.existsSync(OUT) ? JSON.parse(fs.readFileSync(OUT,'utf8')) : {};
+  let ok = 0;
 
-(function main () {
-  const byType = new Map(); // trait_type -> Set(values)
-
-  for (let i = START_ID; i <= END_ID; i++) {
-    const file = path.join(DIR, `${i}.json`);
-    try {
-      const raw = fs.readFileSync(file, 'utf8');
-      const data = JSON.parse(raw);
-      const attrs = Array.isArray(data.attributes) ? data.attributes : [];
-      for (const a of attrs) {
-        if (!a || typeof a !== 'object') continue;
-        const t = a.trait_type != null ? String(a.trait_type).trim() : null;
-        const v = a.value != null ? String(a.value).trim() : null;
-        if (!t || !v) continue;
-
-        if (!byType.has(t)) byType.set(t, new Set());
-        byType.get(t).add(v);
+  for (let tokenId = 1; tokenId <= 10000; tokenId++){
+    if (tokenId % 50 === 0) process.stdout.write(`\rScanned ${tokenId}/10000`);
+    try{
+      const { data } = await axios.get(
+        `https://api.opensea.io/api/v2/chain/${CHAIN}/contract/${CONTRACT}/nfts/${tokenId}`,
+        { headers, timeout: 15000 }
+      );
+      const name = (data && data.nft && data.nft.name) || '';
+      const m = name.match(/No-?Punk\s*#\s*(\d+)/i);
+      if (m){
+        const edition = parseInt(m[1], 10);
+        if (!Number.isNaN(edition)) {
+          map[edition] = tokenId;
+          ok++;
+        }
       }
-    } catch (e) {
-      // Skip missing/invalid files and continue
+    }catch(e){
+      // ignore and continue (rate-limit safe if you run it leisurely)
     }
+    await new Promise(r=>setTimeout(r, 120)); // be gentle to API
   }
 
-  // Convert Map<string, Set> → sorted object with sorted arrays
-  const entriesSorted = Array.from(byType.entries())
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([trait, set]) => [trait, Array.from(set).sort((a, b) => a.localeCompare(b))]);
-
-  const byTypeObject = Object.fromEntries(entriesSorted);
-  const traitTypes = entriesSorted.map(([trait]) => trait);
-
-  // Write JSON outputs
-  fs.writeFileSync(OUT_JSON, JSON.stringify(byTypeObject, null, 2));
-  fs.writeFileSync(OUT_TYPES, JSON.stringify(traitTypes, null, 2));
-
-  // Write JS module for easy import on the site
-  fs.writeFileSync(
-    OUT_JS,
-    `// Auto-generated: ${new Date().toISOString()}
-export const TRAIT_VALUES_BY_TYPE = ${JSON.stringify(byTypeObject, null, 2)};
-export const TRAIT_TYPES = ${JSON.stringify(traitTypes, null, 2)};
-`
-  );
-
-  const totalValues = entriesSorted.reduce((acc, [, values]) => acc + values.length, 0);
-  console.log(
-    `Wrote:
-- ${OUT_JSON}
-- ${OUT_JS}
-- ${OUT_TYPES}
-
-Trait types: ${traitTypes.length}
-Unique values (sum across types): ${totalValues}`
-  );
+  fs.writeFileSync(OUT, JSON.stringify(map, null, 2));
+  console.log(`\nDone. Mapped ${ok} editions → token_ids. Saved to token_map.json`);
 })();

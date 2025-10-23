@@ -1,108 +1,89 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta http-equiv="Cache-Control" content="no-store, max-age=0, must-revalidate" />
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <meta http-equiv="Cache-Control" content="no-store, max-age=0, must-revalidate"/>
   <title>No-Punks</title>
-
   <style>
-    /* Local font: RasterForge for all text */
     @font-face{
       font-family:'RasterForge';
-      src:url('/RasterForgeRegular-JpBgm.ttf') format('truetype');
+      src:url('/RasterForgeRegular-JpBgm.ttf') format('truetype'), url('./RasterForgeRegular-JpBgm.ttf') format('truetype'), url('./public/RasterForgeRegular-JpBgm.ttf') format('truetype');
       font-weight:400; font-style:normal; font-display:swap;
     }
-
     :root{
       --ink:#e7f5ff; --muted:#9fd8ff; --accent:#73d0ff;
       --card:#0c0c0c; --border:#2a2a2a;
       --shadow:0 0 0 1px var(--border), 0 12px 30px rgba(0,0,0,.6);
-      --maxw: 1240px;
+      --maxw:1240px;
     }
-
-    *{ box-sizing:border-box; }
-    html,body{ height:100%; }
+    *{box-sizing:border-box}
+    html,body{height:100%}
     body{
-      margin:0;
-      background:#000 url('/Gbh4rY5aUAAtNS7.jpeg') center/cover fixed no-repeat;
-      color:var(--ink);
-      font-family:'RasterForge', ui-monospace, Menlo, monospace;
-      letter-spacing:.4px;
+      margin:0;background:#000 url('/Gbh4rY5aUAAtNS7.jpeg') center/cover fixed no-repeat;
+      color:var(--ink);font-family:'RasterForge',ui-monospace,Menlo,monospace;letter-spacing:.4px;
     }
-
-    .overlay{ min-height:100%; background:linear-gradient(180deg, rgba(0,0,0,.85), rgba(0,0,0,.92)); }
-    .container{ max-width:var(--maxw); margin:0 auto; padding:28px; }
-
-    /* ===== Centered masthead ===== */
-    .masthead{ display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; margin-bottom:16px; }
+    .overlay{min-height:100%;background:linear-gradient(180deg,rgba(0,0,0,.85),rgba(0,0,0,.92))}
+    .container{max-width:var(--maxw);margin:0 auto;padding:28px}
+    .masthead{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;margin-bottom:16px}
     .logo{
       margin:0;
-      font-size:clamp(48px, 7vw, 92px);
-      line-height:1.05; letter-spacing:.02em;
-      color:#ffffff; /* header text in white */
-      text-shadow:0 0 3px #040404, 0 0 10px #040404; /* subtle dark glow */
+      font-size:clamp(48px,7vw,92px);
+      line-height:1.05;
+      letter-spacing:.02em;
+      color:#fff;
+      text-shadow:0 0 3px #040404,0 0 10px #040404;
     }
-
-    /* ===== Social icons (centered under header) ===== */
-    .social{ display:flex; gap:12px; justify-content:center; margin-top:8px; }
-    .social a{ display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; border:1px solid var(--border); background:rgba(12,12,12,.78); border-radius:8px; box-shadow:var(--shadow); text-decoration:none; }
-    .social a:hover{ border-color:var(--accent); box-shadow:0 0 12px rgba(115,208,255,.25) inset; }
-    .social img{ width:22px; height:22px; border-radius:4px; display:block; }
-
-    /* ===== One horizontal tab row under the title ===== */
-    .tabs{ display:flex; justify-content:center; gap:10px; margin:18px 0 22px; flex-wrap:wrap; }
-    .tab{
-      padding:10px 14px; border:1px solid var(--border);
-      background:rgba(12,12,12,.78); border-radius:8px; cursor:pointer; color:var(--ink); font-size:15px;
+    .social{display:flex;gap:12px;justify-content:center;margin-top:8px}
+    .social a{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border:1px solid var(--border);background:rgba(12,12,12,.78);border-radius:8px;box-shadow:var(--shadow);text-decoration:none}
+    .social a:hover{border-color:var(--accent);box-shadow:0 0 12px rgba(115,208,255,.25) inset}
+    .social img{width:22px;height:22px;border-radius:4px;display:block}
+    .tabs{display:flex;justify-content:center;gap:10px;margin:18px 0 22px;flex-wrap:wrap}
+    .tab{padding:10px 14px;border:1px solid var(--border);background:rgba(12,12,12,.78);border-radius:8px;cursor:pointer;color:var(--ink);font-size:15px}
+    .tab:hover{border-color:var(--accent);color:var(--accent)}
+    .tab.active{border-color:var(--accent);color:var(--accent);box-shadow:0 0 12px rgba(115,208,255,.25) inset}
+    .section{display:none}.section.active{display:block}
+    .btn{background:#000;color:var(--ink);border:1px solid var(--border);border-radius:8px;padding:10px 14px;cursor:pointer}
+    .btn:hover{border-color:var(--accent);color:var(--accent)}
+    .range{opacity:.85}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(136px,1fr));gap:12px;max-width:var(--maxw);margin:0 auto}
+    .tile{background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;box-shadow:var(--shadow);position:relative;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;cursor:pointer}
+    .tile img{width:100%;height:100%;object-fit:contain;image-rendering:pixelated;background:#000}
+    .tile .num{position:absolute;left:8px;top:8px;font-size:12px;color:var(--muted)}
+    .tooltip{position:fixed;display:none;z-index:9999;background:rgba(0,0,0,.92);border:1px solid var(--border);padding:12px;border-radius:8px;width:280px;pointer-events:none;white-space:pre-wrap;box-shadow:var(--shadow)}
+    .tooltip h4{margin:0 0 8px;color:var(--accent)}
+    .search-wrap{display:flex;flex-direction:column;align-items:center;gap:12px}
+    .search-controls{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;margin:10px 0}
+    .search-input{padding:10px 12px;border:1px solid var(--border);background:#000;color:var(--ink);border-radius:8px;font-size:15px;min-width:220px}
+    #searchCanvas{width:min(92vw,1024px);height:auto;aspect-ratio:1/1;border:1px solid var(--border);background:#000;image-rendering:pixelated;display:block;margin:0 auto}
+    #searchMeta{color:var(--muted);text-align:center}
+    .nometa-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;max-width:var(--maxw);margin:0 auto}
+    .nometa-card{background:rgba(12,12,12,.78);border:1px solid var(--border);border-radius:12px;padding:12px;text-align:center;box-shadow:var(--shadow)}
+    .nometa-card a{display:block;text-decoration:none;color:var(--ink)}
+    .nometa-card img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:10px;border:1px solid var(--border);image-rendering:pixelated;background:#000}
+    .nometa-card .name{margin-top:10px;color:var(--accent)}
+    .team-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;max-width:var(--maxw);margin:0 auto}
+    .member{background:rgba(12,12,12,.78);border:1px solid var(--border);border-radius:12px;padding:12px;text-align:center;box-shadow:var(--shadow)}
+    .member img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:10px;border:1px solid var(--border);image-rendering:pixelated;background:#000}
+    .member .name{margin-top:10px;color:var(--accent)}
+    .about{background:rgba(12,12,12,.78);border:1px solid var(--border);border-radius:12px;padding:18px;line-height:1.9;box-shadow:var(--shadow);max-width:var(--maxw);margin:0 auto}
+    footer{margin-top:28px;color:var(--muted);text-align:center}
+    /* --- Mobile overflow fixes (iOS) --- */
+    html,body{max-width:100%; overflow-x:hidden;}
+    img,canvas{max-width:100%; height:auto; display:block;}
+    /* tune spacings on small screens */
+    @media (max-width:600px){
+      .container{padding:20px}
+      .tabs{gap:8px}
+      .grid{grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
+      .search-controls{gap:8px}
     }
-    .tab:hover{ border-color:var(--accent); color:var(--accent); }
-    .tab.active{ border-color:var(--accent); color:var(--accent); box-shadow:0 0 12px rgba(115,208,255,.25) inset; }
-    .section{ display:none; }
-    .section.active{ display:block; }
-
-    /* ===== Collection ===== */
-    .controls{ display:flex; gap:12px; align-items:center; justify-content:center; margin:10px 0 18px; flex-wrap:wrap; }
-    .btn{ background:#000; color:var(--ink); border:1px solid var(--border); border-radius:8px; padding:10px 14px; cursor:pointer; }
-    .btn:hover{ border-color:var(--accent); color:var(--accent); }
-    .range{ opacity:.85; }
-
-    .grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(136px, 1fr)); gap:12px; max-width:var(--maxw); margin:0 auto; }
-    .tile{
-      background:var(--card); border:1px solid var(--border); border-radius:10px; overflow:hidden; box-shadow:var(--shadow);
-      position:relative; aspect-ratio:1/1; display:flex; align-items:center; justify-content:center; cursor:pointer;
-    }
-    .tile img{ width:100%; height:100%; object-fit:contain; image-rendering:pixelated; background:#000; }
-    .tile .num{ position:absolute; left:8px; top:8px; font-size:12px; color:var(--muted); }
-
-    .tooltip{ position:fixed; display:none; z-index:9999; background:rgba(0,0,0,.92); border:1px solid var(--border); padding:12px; border-radius:8px; width:280px; pointer-events:none; white-space:pre-wrap; box-shadow:var(--shadow) }
-    .tooltip h4{ margin:0 0 8px; color:var(--accent) }
-
-    /* ===== Search ===== */
-    .search-wrap{ display:flex; flex-direction:column; align-items:center; gap:12px; }
-    .search-controls{ display:flex; gap:10px; align-items:center; justify-content:center; flex-wrap:wrap; margin:10px 0; }
-    .search-input{ padding:10px 12px; border:1px solid var(--border); background:#000; color:var(--ink); border-radius:8px; font-size:15px; min-width:220px; }
-    #searchCanvas{ width:1024px; height:1024px; border:1px solid var(--border); background:#000; image-rendering:pixelated; }
-    #searchMeta{ color:var(--muted); text-align:center; }
-    @media (max-width:1100px){ #searchCanvas{ width:90vw; height:90vw; } }
-
-    /* ===== Team ===== */
-    /* ===== No-Meta (other collections) ===== */
-    .nometa-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(240px,1fr)); gap:16px; max-width:var(--maxw); margin:0 auto; }
-    .nometa-card{ background:rgba(12,12,12,.78); border:1px solid var(--border); border-radius:12px; padding:12px; text-align:center; box-shadow:var(--shadow); }
-    .nometa-card a{ display:block; text-decoration:none; color:var(--ink); }
-    .nometa-card img{ width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:10px; border:1px solid var(--border); image-rendering:pixelated; background:#000; }
-    .nometa-card .name{ margin-top:10px; color:var(--accent); }
-    .team-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(200px,1fr)); gap:16px; max-width:var(--maxw); margin:0 auto; }
-    .member{ background:rgba(12,12,12,.78); border:1px solid var(--border); border-radius:12px; padding:12px; text-align:center; box-shadow:var(--shadow); }
-    .member img{ width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:10px; border:1px solid var(--border); image-rendering:pixelated; background:#000; }
-    .member .name{ margin-top:10px; color:var(--accent); }
-
-    /* ===== About ===== */
-    .about{ background:rgba(12,12,12,.78); border:1px solid var(--border); border-radius:12px; padding:18px; line-height:1.9; box-shadow:var(--shadow); max-width:var(--maxw); margin:0 auto; }
-    .about strong{ color:var(--accent); }
-
-    footer{ margin-top:28px; color:var(--muted); text-align:center; }
+    /* ---- Traits finder layout ---- */
+    #traitControls label { display:inline-flex; align-items:center; gap:6px; }
+    #traitControls select { min-width:180px }
+    #traitControls .btn { min-width:120px }
+    #traitStatus { text-align:center; margin:8px 0 14px }
+    #traitGrid .tile .num { position:absolute; left:8px; top:8px; font-size:12px; color:var(--muted) }
   </style>
 </head>
 <body>
@@ -111,18 +92,15 @@
       <header class="masthead">
         <h1 class="logo">No-Punks</h1>
         <nav class="social" aria-label="Social links">
-          <!-- X / Twitter (uses OSHY image) -->
-          <a href="https://x.com/NoPunkism" target="_blank" rel="noopener noreferrer" aria-label="X (Twitter)">
-            <img src="/OSHY3ewP_400x400.jpg" alt="X (Twitter)" loading="lazy" decoding="async" />
+          <a href="https://x.com/NoPunkism" target="_blank" rel="noopener" aria-label="X (Twitter)">
+            <img src="/OSHY3ewP_400x400.jpg" alt="X (Twitter)"/>
           </a>
-          <!-- OpenSea (uses UAEvW2or image) -->
-          <a href="https://opensea.io/collection/nopunkism" target="_blank" rel="noopener noreferrer" aria-label="OpenSea collection">
-            <img src="/UAEvW2or_400x400.png" alt="OpenSea" loading="lazy" decoding="async" />
+          <a href="https://opensea.io/collection/nopunkism" target="_blank" rel="noopener" aria-label="OpenSea collection">
+            <img src="/UAEvW2or_400x400.png" alt="OpenSea"/>
           </a>
         </nav>
       </header>
 
-      <!-- ONE tabs row -->
       <div class="tabs" id="tabs">
         <button class="tab active" data-target="collection">Collection</button>
         <button class="tab" data-target="search">Search</button>
@@ -133,49 +111,49 @@
       </div>
 
       <!-- Collection -->
-      <section id="collection" class="section active">
-        <div class="controls">
-          <button id="prev" class="btn">← Prev</button>
-          <span id="label" class="range"></span>
-          <label for="pageSize" class="range">Per page:</label>
-          <select id="pageSize" class="btn" style="padding:8px 10px">
-            <option value="25">25</option>
-            <option value="50" selected>50</option>
-            <option value="100">100</option>
-          </select>
-          <button id="next" class="btn">Next →</button>
+      <section id="collection" class="section">
+        <div style="display:flex;gap:12px;align-items:center;justify-content:center;margin-bottom:12px;">
+          <button id="prev" class="btn">Prev</button>
+          <span id="rangeLabel" class="range">Showing 0–0</span>
+          <button id="next" class="btn">Next</button>
         </div>
-        <div class="grid" id="grid"></div>
+        <div id="grid" class="grid"></div>
       </section>
 
       <!-- Search -->
       <section id="search" class="section">
         <div class="search-wrap">
           <div class="search-controls">
-            <input id="searchInput" class="search-input" placeholder="#0–9999 e.g. #46" inputmode="numeric" />
+            <input id="searchInput" class="search-input" placeholder="Token id (1–10000)" inputmode="numeric"/>
             <button id="searchBtn" class="btn">Search</button>
           </div>
           <canvas id="searchCanvas" width="1024" height="1024"></canvas>
           <div id="searchMeta" class="range"></div>
+          <a id="searchOS" class="btn" href="#" target="_blank" rel="noopener" style="display:none;">View Token</a>
+          <a id="downloadPNG" class="btn" href="#" style="display:none;">Download PNG</a>
         </div>
       </section>
 
       <!-- Traits -->
       <section id="traits" class="section">
         <div class="search-wrap">
-          <div class="search-controls">
-            <label class="range" for="traitTypeSel">Type:</label>
-            <select id="traitTypeSel" class="btn"></select>
-            <label class="range" for="traitValueSel">Value:</label>
-            <select id="traitValueSel" class="btn"></select>
-            <span class="range">or quick text:</span>
-            <input id="traitQuery" class="search-input" placeholder="e.g., 3D Glasses" />
-            <button id="traitFindBtn" class="btn">Find Matches</button>
-            <button id="traitStopBtn" class="btn">Stop</button>
+          <div class="search-controls" id="traitControls">
+            <label>Type:&nbsp;
+              <select id="traitType"></select>
+            </label>
+            <label>Value:&nbsp;
+              <select id="traitValue">
+                <option value="">— any —</option>
+              </select>
+            </label>
+            <span class="range">or quick text:&nbsp;</span>
+            <input id="traitQuick" class="search-input" placeholder="e.g., 3D Glasses"/>
+            <button id="traitGo" class="btn">Find Matches</button>
+            <button id="traitStop" class="btn">Stop</button>
           </div>
-          <div id="traitProgress" class="range"></div>
-          <div id="traitGrid" class="grid"></div>
+          <div id="traitStatus" class="range">Idle.</div>
         </div>
+        <div id="traitGrid" class="grid"></div>
       </section>
 
       <!-- No-Meta -->
@@ -183,21 +161,19 @@
         <div class="nometa-grid">
           <figure class="nometa-card">
             <a href="https://opensea.io/collection/no-pixelpepen" target="_blank" rel="noopener">
-              <img src="/cb04413e8456e1d457159cfdf2cfdbe3.gif" alt="NoPixelpepen" loading="lazy" decoding="async" />
+              <img src="/cb04413e8456e1d457159cfdf2cfdbe3.gif" alt="NoPixelpepen"/>
               <figcaption class="name">NoPixelpepen</figcaption>
             </a>
           </figure>
-
           <figure class="nometa-card">
             <a href="https://opensea.io/collection/no-tinydinopunks" target="_blank" rel="noopener">
-              <img src="/cc2dd813629a7e256fafb253dd42edb8.png.avif" alt="No-TinyDinoPunks" loading="lazy" decoding="async" />
+              <img src="/cc2dd813629a7e256fafb253dd42edb8.png.avif" alt="No-TinyDinoPunks"/>
               <figcaption class="name">No-TinyDinoPunks</figcaption>
             </a>
           </figure>
-
           <figure class="nometa-card">
             <a href="https://opensea.io/collection/no-pnuks" target="_blank" rel="noopener">
-              <img src="/839f1c66dedac508eb0620a0ce3f4a93.png.avif" alt="No-Pnuks" loading="lazy" decoding="async" />
+              <img src="/839f1c66dedac508eb0620a0ce3f4a93.png.avif" alt="No-Pnuks"/>
               <figcaption class="name">No-Pnuks</figcaption>
             </a>
           </figure>
@@ -208,20 +184,20 @@
       <section id="team" class="section">
         <div class="team-grid">
           <figure class="member">
-            <a href="https://x.com/Astro___AI" target="_blank" rel="noopener noreferrer" aria-label="Astro on X">
-              <img src="/team/Astro.png" alt="Astro" />
+            <a href="https://x.com/Astro___AI" target="_blank" rel="noopener">
+              <img src="/team/Astro.png" alt="Astro"/>
             </a>
             <figcaption class="name">Astro</figcaption>
           </figure>
           <figure class="member">
-            <a href="https://x.com/BB88888888888BB" target="_blank" rel="noopener noreferrer" aria-label="B888B on X">
-              <img src="/team/B888B.png" alt="B888B" />
+            <a href="https://x.com/BB88888888888BB" target="_blank" rel="noopener">
+              <img src="/team/B888B.png" alt="B888B"/>
             </a>
             <figcaption class="name">B888B</figcaption>
           </figure>
           <figure class="member">
-            <a href="https://x.com/holu_art" target="_blank" rel="noopener noreferrer" aria-label="Holu on X">
-              <img src="/team/Holu.png" alt="Holu" />
+            <a href="https://x.com/holu_art" target="_blank" rel="noopener">
+              <img src="/team/Holu.png" alt="Holu"/>
             </a>
             <figcaption class="name">Holu</figcaption>
           </figure>
@@ -241,357 +217,477 @@
 
   <div class="tooltip" id="tooltip"></div>
 
-  <script type="module">
-    import { TRAIT_VALUES_BY_TYPE, TRAIT_TYPES } from '/trait_values_by_type.js';
-    window.TRAIT_VALUES_BY_TYPE = TRAIT_VALUES_BY_TYPE;
-    window.TRAIT_TYPES = TRAIT_TYPES;
-  </script>
-
-  <!-- INLINE JS so there is no external path issue -->
   <script>
-    console.log('No-Punks inline JS booted');
+    /* ---------- TRAITS FINDER ---------- */
+    (function(){
+      const traitTypeSel  = document.getElementById('traitType');
+      const traitValueSel = document.getElementById('traitValue');
+      const traitQuick    = document.getElementById('traitQuick');
+      const traitGo       = document.getElementById('traitGo');
+      const traitStop     = document.getElementById('traitStop');
+      const traitGrid     = document.getElementById('traitGrid');
+      const traitStatus   = document.getElementById('traitStatus');
 
-    // ---------- Tabs (event delegation) ----------
-    function activate(targetId){
-      document.querySelectorAll('.tab')
-        .forEach(b => b.classList.toggle('active', b.dataset.target === targetId));
-      document.querySelectorAll('.section')
-        .forEach(s => s.classList.toggle('active', s.id === targetId));
-    }
+      if (!traitTypeSel) return; // safety if section not on page
 
-    document.addEventListener('click', (e) => {
-      const btn = e.target.closest('.tab');
-      if (!btn) return;
-      const targetId = btn.dataset.target; if (!targetId) return;
-      activate(targetId);
-      if (targetId === 'collection' && !document.getElementById('grid').childElementCount) {
-        loadRange(0);
+      // Try both locations so it works whether the JSON sits in the repo root or inside /public
+      const TRAIT_FILES = ['/trait_values_by_type.json', '/public/trait_values_by_type.json', './trait_values_by_type.json', './public/trait_values_by_type.json'];
+
+      async function loadTraitValues(){
+        for (const path of TRAIT_FILES){
+          try{
+            const r = await fetch(path, { cache:'no-store' });
+            if (r.ok) return await r.json();
+          }catch(e){}
+        }
+        return null;
       }
-    });
 
-    // ---------- Collection from /collection ----------
-    const TOTAL = 10000;  // 0..9999
-    let pageSize = 25;   // safer initial page size
-    let start = 0;
-
-    const grid  = document.getElementById('grid');
-    const label = document.getElementById('label');
-    const tip   = document.getElementById('tooltip');
-    const metaCache = new Map();
-
-    const pageSizeSel = document.getElementById('pageSize');
-    if (pageSizeSel) {
-      pageSizeSel.addEventListener('change', () => {
-        pageSize = parseInt(pageSizeSel.value, 10) || 50;
-        loadRange(start);
-      });
-    }
-
-    function clampStart(x){
-      if (x < 0) return 0;
-      const maxStart = Math.max(0, TOTAL - pageSize);
-      return Math.min(x, maxStart);
-    }
-
-    async function getMeta(id){
-      if (metaCache.has(id)) return metaCache.get(id);
-      const candidates = [
-        `/${id}.json`,
-        `/collection/${id}.json`,
-        `/collection/transparent/${id}.json`,
-        `/collection/figmanopunks/${id}.json`,
-        `/collection/larvallads/${id}.json`
-      ];
-      for (const url of candidates){
-        try{
-          const r = await fetch(url, { cache: 'force-cache' });
-          if (r.ok){
-            const j = await r.json();
-            metaCache.set(id, j);
-            return j;
-          }
-        }catch{ /* try next */ }
+      function fillTypeAndValues(map){
+        traitTypeSel.innerHTML = '';
+        const types = Object.keys(map || {});
+        for (const t of types){
+          const opt = document.createElement('option');
+          opt.value = t; opt.textContent = t;
+          traitTypeSel.appendChild(opt);
+        }
+        traitTypeSel.addEventListener('change', ()=>{
+          const v = traitTypeSel.value;
+          fillValues(map[v] || []);
+        });
+        // seed with first type
+        const first = types[0] || '';
+        fillValues(map[first] || []);
       }
-      const fallback = { name:`No-Punk #${id}`, attributes:[] };
-      metaCache.set(id, fallback);
-      return fallback;
-    }
-
-    function traitText(meta){
-      const attrs = meta.attributes || meta.traits || [];
-      if (!Array.isArray(attrs) || !attrs.length) return '';
-      return attrs.map(a => `${a.trait_type ?? a.type ?? 'Trait'}: ${a.value}`).join('\n');
-    }
-
-    function showTip(x, y, html){
-      tip.innerHTML = html;
-      tip.style.left = (x + 14) + 'px';
-      tip.style.top  = (y + 14) + 'px';
-      tip.style.display = 'block';
-    }
-    function hideTip(){ tip.style.display = 'none'; }
-
-    const io = ('IntersectionObserver' in window) ? new IntersectionObserver(entries => {
-      for (const entry of entries) {
-        if (entry.isIntersecting || entry.intersectionRatio > 0) {
-          const img = entry.target;
-          const ds = img.getAttribute('data-src');
-          if (ds && !img.getAttribute('src')) {
-            img.setAttribute('src', ds);
-          }
-          io.unobserve(img);
+      function fillValues(values){
+        traitValueSel.innerHTML = '<option value="">— any —</option>';
+        for (const v of values){
+          const opt = document.createElement('option');
+          opt.value = v; opt.textContent = v;
+          traitValueSel.appendChild(opt);
         }
       }
-    }, { rootMargin: '400px 0px', threshold: 0.01 }) : null;
 
-    function tile(id){
+      function attributePairs(meta){
+        if (!meta || !Array.isArray(meta.attributes)) return [];
+        return meta.attributes.map(a => ({
+          type: String(a.trait_type || a.type || '').trim(),
+          value: String(a.value ?? '').trim()
+        }));
+      }
+
+      function matches(meta){
+        const quick = String(traitQuick.value || '').trim().toLowerCase();
+        const wantType  = String(traitTypeSel.value || '').trim();
+        const wantValue = String(traitValueSel.value || '').trim();
+
+        const pairs = attributePairs(meta);
+
+        // quick text search (name, type, value)
+        if (quick){
+          const inName = (meta && meta.name && String(meta.name).toLowerCase().includes(quick));
+          const inAttrs = pairs.some(p => p.type.toLowerCase().includes(quick) || p.value.toLowerCase().includes(quick));
+          if (!(inName || inAttrs)) return false;
+        }
+
+        if (wantType && wantValue){
+          return pairs.some(p => p.type === wantType && p.value === wantValue);
+        }
+        if (wantType && !wantValue){
+          return pairs.some(p => p.type === wantType);
+        }
+        // if only quick provided, we already passed it
+        return !!quick;
+      }
+
+      function makeResultTile(localIndex, onChainId, meta){
+        const a = document.createElement('a');
+        a.className = 'tile';
+        a.target = '_blank'; a.rel='noopener';
+        a.href = OPENSEA_ITEM_BASE + String(onChainId);
+
+        const num = document.createElement('span');
+        num.className = 'num';
+        num.textContent = `#${onChainId}`;
+        a.appendChild(num);
+
+        const img = document.createElement('img');
+        img.alt = `No-Punk #${onChainId}`;
+        img.loading='lazy';
+        img.decoding='async';
+        loadImageForIndex(localIndex, img);
+        a.appendChild(img);
+
+        // Tooltip content
+        let html = `<h4>No-Punk #${onChainId}</h4>`;
+        if (meta && Array.isArray(meta.attributes)){
+          html += meta.attributes.map(t => `${t.trait_type}: ${t.value}`).join('<br>');
+        } else {
+          html += 'No traits found';
+        }
+        const move = (e)=>{
+          const p = e.touches ? e.touches[0] : e;
+          showTip(p.clientX, p.clientY, html);
+        };
+        a.addEventListener('mouseenter', move);
+        a.addEventListener('mousemove', move);
+        a.addEventListener('mouseleave', hideTip);
+        a.addEventListener('touchstart', move, {passive:true});
+        a.addEventListener('touchmove',  move, {passive:true});
+        a.addEventListener('touchend',   hideTip);
+
+        return a;
+      }
+
+      let stopFlag = false;
+
+      async function runSearch(){
+        stopFlag = false;
+        traitGrid.innerHTML = '';
+        traitStatus.textContent = 'Scanning…';
+
+        // Disallow empty search (no type/value/quick)
+        const quick = String(traitQuick.value || '').trim();
+        const wantType  = String(traitTypeSel.value || '').trim();
+        const wantValue = String(traitValueSel.value || '').trim();
+        if (!quick && !wantType){
+          traitStatus.textContent = 'Pick a Type or enter Quick text.';
+          return;
+        }
+
+        let found = 0;
+        const total = TOTAL;
+
+        for (let idx = 0; idx < total; idx++){
+          if (stopFlag) { traitStatus.textContent = `Stopped. Found ${found}`; return; }
+
+          // Fetch json
+          const meta = await fetchLocalJson(idx);
+          if (!meta) { 
+            if ((idx % 200) === 0) traitStatus.textContent = `Scanning ${idx+1}/${total}… found ${found}`;
+            continue;
+          }
+
+          if (!matches(meta)) {
+            if ((idx % 200) === 0) traitStatus.textContent = `Scanning ${idx+1}/${total}… found ${found}`;
+            continue;
+          }
+
+          const onId = extractOnChainId(meta, idx+1);
+          traitGrid.appendChild(makeResultTile(idx, onId, meta));
+          found++;
+
+          if ((found % 25) === 0 || (idx % 200) === 0){
+            traitStatus.textContent = `Scanning ${idx+1}/${total}… found ${found}`;
+          }
+        }
+        traitStatus.textContent = `Done. Found ${found}`;
+      }
+
+      traitGo?.addEventListener('click', runSearch);
+      traitStop?.addEventListener('click', ()=>{ stopFlag = true; });
+
+      // Populate selectors on load
+      loadTraitValues().then(map=>{
+        if (!map){ 
+          traitStatus.textContent = 'Missing trait_values_by_type.json';
+          return;
+        }
+        fillTypeAndValues(map);
+      });
+
+      // Helper: get on-chain id from meta or fallback to local index
+      function extractOnChainId(meta, fallback){
+        if (meta && typeof meta === 'object') {
+          if ('tokenId' in meta && Number.isFinite(Number(meta.tokenId))) return Number(meta.tokenId);
+          if ('id' in meta && Number.isFinite(Number(meta.id))) return Number(meta.id);
+        }
+        return chainIdForLocal(fallback-1);
+      }
+    })();
+    /* ---------- CONFIG ---------- */
+    const TOTAL = 10000;                       // local files 0..9999
+    const PAGE_SIZE = 50;                      // grid page size
+    const LOCAL_BASES = ['./public/', '/public/', './', '/']; // robust local asset bases
+    const CONTRACT = '0x4ed83635e2309a7c067d0f98efca47b920bf79b1';
+    const OPENSEA_ITEM_BASE = `https://opensea.io/item/base/${CONTRACT}/`;
+
+    /* ---------- TABS ---------- */
+    function activate(id){
+      document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.target===id));
+      document.querySelectorAll('.section').forEach(s => s.classList.toggle('active', s.id===id));
+    }
+    document.addEventListener('click', e=>{
+      const t=e.target.closest('.tab'); if(!t) return;
+      activate(t.dataset.target);
+      if (t.dataset.target==='collection' && !document.getElementById('grid').childElementCount){ renderPage(0); }
+    });
+
+    /* ---------- TOOLTIP ---------- */
+    const tip = document.getElementById('tooltip');
+    function showTip(x,y,html){ tip.innerHTML=html; tip.style.left=(x+14)+'px'; tip.style.top=(y+14)+'px'; tip.style.display='block'; }
+    function hideTip(){ tip.style.display='none'; }
+
+    /* ---------- PATH HELPERS ---------- */
+    function buildUrl(base, idx, ext){ return `${base}${idx}.${ext}`; }
+
+    function loadImageForIndex(idx, imgEl){
+      let attempt = 0;
+      const tryNext = ()=>{
+        if (attempt >= LOCAL_BASES.length){ return; }
+        imgEl.src = buildUrl(LOCAL_BASES[attempt++], idx, 'png');
+      };
+      imgEl.onerror = tryNext;
+      tryNext();
+    }
+
+    async function fetchLocalJson(idx){
+      for (const base of LOCAL_BASES){
+        try{
+          const r = await fetch(buildUrl(base, idx, 'json'), { cache:'no-store' });
+          if (r.ok) return await r.json();
+        }catch(e){}
+      }
+      return null;
+    }
+
+    /* ---------- TOKEN MAP (supports 0- or 1-based keys) ---------- */
+    let TOKEN_MAP = null;               // normalized: key = integer index (as in the file), value = chainId
+    let MAP_IS_ONE_BASED_KEYS = false;  // if true, keys are 1..N; if false, keys are 0..N-1
+    let INVERSE_MAP = null;             // chainId -> localIndex
+
+    function toInt(n){ const x = parseInt(n,10); return Number.isFinite(x) ? x : NaN; }
+
+    async function loadTokenMap(){
+      try{
+        const candidates = [
+          './public/token_map.json',
+          '/public/token_map.json',
+          './token_map.json',
+          '/token_map.json'
+        ];
+        let raw = null;
+        for (const p of candidates){
+          try{
+            const r = await fetch(p, { cache:'no-store' });
+            if (r.ok){ raw = await r.json(); break; }
+          }catch(e){}
+        }
+        if (!raw) throw 0;
+
+        TOKEN_MAP = {};
+        if (Array.isArray(raw)){
+          raw.forEach((v,i)=>{ const n = toInt(v); if (Number.isFinite(n)) TOKEN_MAP[i] = n; });
+        } else if (raw && typeof raw === 'object'){
+          for (const [k,v] of Object.entries(raw)){
+            const ki = toInt(k), vi = toInt(v);
+            if (Number.isFinite(ki) && Number.isFinite(vi)) TOKEN_MAP[ki] = vi;
+          }
+        }
+
+        const hasZero = Object.prototype.hasOwnProperty.call(TOKEN_MAP, 0);
+        const hasOne  = Object.prototype.hasOwnProperty.call(TOKEN_MAP, 1);
+        MAP_IS_ONE_BASED_KEYS = !hasZero && hasOne;
+
+        INVERSE_MAP = {};
+        for (const [kStr, v] of Object.entries(TOKEN_MAP)){
+          const k = toInt(kStr);
+          const localIndex = MAP_IS_ONE_BASED_KEYS ? (k - 1) : k;
+          if (localIndex >= 0) INVERSE_MAP[v] = localIndex;
+        }
+
+        console.log('token_map loaded:', Object.keys(TOKEN_MAP).length, 'entries;',
+                    MAP_IS_ONE_BASED_KEYS ? '1-based keys' : '0-based keys');
+      }catch(e){
+        console.warn('No valid token_map.json found (tried ./public, /public, ./ and /). Using identity mapping.');
+        TOKEN_MAP = null; MAP_IS_ONE_BASED_KEYS = false; INVERSE_MAP = null;
+      }
+    }
+
+    function chainIdForLocal(localIdx){
+      if (!TOKEN_MAP) return localIdx + 1;
+      const lookupKey = MAP_IS_ONE_BASED_KEYS ? (localIdx + 1) : localIdx;
+      const v = TOKEN_MAP[lookupKey];
+      return Number.isFinite(v) ? v : (localIdx + 1);
+    }
+
+    function localForChain(chainId){
+      if (!INVERSE_MAP) return chainId - 1;
+      if (Object.prototype.hasOwnProperty.call(INVERSE_MAP, chainId)) return INVERSE_MAP[chainId];
+      return chainId - 1;
+    }
+
+    /* ---------- COLLECTION GRID ---------- */
+    const grid  = document.getElementById('grid');
+    const label = document.getElementById('rangeLabel');
+    let pageStart = 0; // first local index on the page
+
+    function tileFromLocal(localIndex){
       const a = document.createElement('a');
       a.className = 'tile';
-      a.href = `/${id}.png`;
-      a.target = '_blank'; a.rel = 'noopener';
+      a.target = '_blank'; a.rel='noopener';
+
+      const chainId = chainIdForLocal(localIndex);
 
       const num = document.createElement('span');
       num.className = 'num';
-      num.textContent = `#${id}`;
+      num.textContent = `#${chainId}`;
       a.appendChild(num);
 
       const img = document.createElement('img');
-      img.alt = `No-Punk #${id}`;
-      img.loading = 'lazy';
-      img.decoding = 'async';
-
-      // Candidate image locations (root first, then known subfolders)
-      const candidates = [
-        `/${id}.png`,
-        `/collection/${id}.png`,
-        `/collection/transparent/${id}.png`,
-        `/collection/figmanopunks/${id}.png`,
-        `/collection/larvallads/${id}.png`
-      ];
-      let ci = 0; // current candidate index
-
-      // Set data-src to the first candidate for IO to pick up
-      img.setAttribute('data-src', candidates[ci]);
+      img.alt = `No-Punk`;
+      img.loading='lazy';
+      img.decoding='async';
+      loadImageForIndex(localIndex, img);
       a.appendChild(img);
 
-      // Try next candidate on error
-      img.addEventListener('error', () => {
-        ci += 1;
-        if (ci < candidates.length){
-          img.setAttribute('data-src', candidates[ci]);
-          // If already intersecting, re-trigger load immediately
-          if (!io){
-            img.src = img.getAttribute('data-src');
-          } else {
-            io.observe(img);
-          }
+      a.href = OPENSEA_ITEM_BASE + String(chainId);
+
+      // Tooltip (augmented with local JSON if present)
+      fetchLocalJson(localIndex).then(meta=>{
+        let html = `<h4>No-Punk #${chainId}</h4>`;
+        if (meta && Array.isArray(meta.attributes) && meta.attributes.length){
+          html += meta.attributes.map(t => `${t.trait_type}: ${t.value}`).join('<br>');
         } else {
-          // Give up on image but keep the tile (still hoverable for traits)
-          img.remove();
+          html += 'No traits found';
         }
+        const move = (e)=>{
+          const p = e.touches ? e.touches[0] : e;
+          showTip(p.clientX, p.clientY, html);
+        };
+        a.addEventListener('mouseenter', move);
+        a.addEventListener('mousemove', move);
+        a.addEventListener('mouseleave', hideTip);
+        a.addEventListener('touchstart', move, {passive:true});
+        a.addEventListener('touchmove',  move, {passive:true});
+        a.addEventListener('touchend',   hideTip);
       });
-
-      if (io) { io.observe(img); } else { img.setAttribute('src', img.getAttribute('data-src')); }
-
-      const move = async (e)=>{
-        const p = e.touches ? e.touches[0] : e;
-        const meta = await getMeta(id);
-        const name = meta.name || `No-Punk #${id}`;
-        const traits = traitText(meta);
-        const html = `<h4>${name}</h4>${traits ? traits.replace(/\n/g,'<br>') : 'No traits'}`;
-        showTip(p.clientX, p.clientY, html);
-      };
-      a.addEventListener('mouseenter', move);
-      a.addEventListener('mousemove', move);
-      a.addEventListener('mouseleave', hideTip);
-      a.addEventListener('touchstart', move, {passive:true});
-      a.addEventListener('touchmove', move, {passive:true});
-      a.addEventListener('touchend', hideTip);
 
       return a;
     }
 
-    function parseId(val){
-      if (!val) return NaN;
-      let t = String(val).trim();
-      if (t.startsWith('#')) t = t.slice(1);
-      const n = parseInt(t, 10);
-      return (isNaN(n) || n < 0 || n >= TOTAL) ? NaN : n;
-    }
-
-    function loadImageWithFallback(id){
-      const candidates = [
-        `/${id}.png`,
-        `/collection/${id}.png`,
-        `/collection/transparent/${id}.png`,
-        `/collection/figmanopunks/${id}.png`,
-        `/collection/larvallads/${id}.png`
-      ];
-      let i = 0;
-      return new Promise((resolve, reject)=>{
-        const tryNext = ()=>{
-          if (i >= candidates.length) return reject(new Error('image not found'));
-          const im = new Image();
-          im.onload = ()=> resolve(im);
-          im.onerror = ()=> { i++; tryNext(); };
-          im.src = candidates[i];
-        };
-        tryNext();
-      });
-    }
-
-    // ---------- Trait search helpers ----------
-    function norm(s){ return String(s || '').toLowerCase().trim(); }
-
-    function initTraitUI(){
-      const typeSel  = document.getElementById('traitTypeSel');
-      const valueSel = document.getElementById('traitValueSel');
-      if (!typeSel || !valueSel) return;
-
-      // Populate types
-      const types = (window.TRAIT_TYPES && Array.isArray(window.TRAIT_TYPES)) ? window.TRAIT_TYPES : [];
-      typeSel.innerHTML = types.map(t => `<option value="${t}">${t}</option>`).join('');
-
-      function refreshValues(){
-        const t = typeSel.value;
-        const byType = window.TRAIT_VALUES_BY_TYPE || {};
-        const values = Array.isArray(byType[t]) ? byType[t] : [];
-        valueSel.innerHTML = values.map(v => `<option value="${v}">${v}</option>`).join('');
+    function renderPage(start){
+      hideTip();
+      const s = Math.max(0, Math.min(TOTAL-1, start));
+      pageStart = s;
+      grid.innerHTML = '';
+      const end = Math.min(TOTAL, s + PAGE_SIZE);
+      for (let i=s; i<end; i++){
+        grid.appendChild(tileFromLocal(i));
       }
-
-      if (types.length){ typeSel.value = types[0]; }
-      refreshValues();
-
-      typeSel.addEventListener('change', refreshValues);
+      if (label) label.textContent = `Showing ${s+1}–${end} of ${TOTAL}`;
     }
 
-    function metaHasTrait(meta, qType, qValue, qText){
-      const attrs = meta && (meta.attributes || meta.traits) || [];
-      const tText = norm(qText);
-      const tType = norm(qType);
-      const tVal  = norm(qValue);
-      for (const a of attrs){
-        const at = norm(a.trait_type || a.type);
-        const av = norm(a.value);
-        if (tText){
-          if (av.includes(tText) || at.includes(tText)) return true;
-        } else {
-          if ((tType ? at === tType : true) && (tVal ? av === tVal : true)) return true;
-        }
-      }
-      return false;
+    document.getElementById('prev').addEventListener('click', ()=> renderPage(Math.max(0, pageStart - PAGE_SIZE)));
+    document.getElementById('next').addEventListener('click', ()=> renderPage(Math.min(TOTAL-1, pageStart + PAGE_SIZE)));
+
+    /* ---------- SEARCH (by on-chain id; shows local image best-effort) ---------- */
+    let __dlBlobUrl = null;
+    function parseChainId(v){
+      if (!v) return NaN;
+      let s = String(v).trim();
+      if (s.startsWith('#')) s = s.slice(1);
+      const n = parseInt(s,10);
+      return (isNaN(n) || n < 1 || n > 100000) ? NaN : n;
     }
 
-    let traitScanCancel = false;
+    async function renderSingle(chainId){
+      const localIndex = localForChain(chainId);
 
-    async function searchTraits(){
-      const typeSel  = document.getElementById('traitTypeSel');
-      const valueSel = document.getElementById('traitValueSel');
-      const qInput   = document.getElementById('traitQuery');
-      const gridEl   = document.getElementById('traitGrid');
-      const progEl   = document.getElementById('traitProgress');
-      if (!gridEl || !progEl) return;
-
-      const qType = typeSel ? typeSel.value : '';
-      const qVal  = valueSel ? valueSel.value : '';
-      const qText = qInput ? qInput.value : '';
-
-      gridEl.innerHTML = '';
-      progEl.textContent = 'Scanning 0 – 9,999…';
-      traitScanCancel = false;
-
-      const CHUNK = 100; // fetch 100 metas at a time
-      let found = 0;
-
-      for (let base = 0; base < TOTAL; base += CHUNK){
-        if (traitScanCancel) { progEl.textContent = `Stopped. Found ${found}`; return; }
-        const end = Math.min(base + CHUNK, TOTAL);
-        const ids = Array.from({length: end - base}, (_,i)=> base + i);
-        const metas = await Promise.all(ids.map(id => getMeta(id)));
-        for (let i=0;i<ids.length;i++){
-          const id = ids[i];
-          const meta = metas[i];
-          if (metaHasTrait(meta, qType, qVal, qText)){
-            gridEl.appendChild(tile(id));
-            found++;
-          }
-        }
-        progEl.textContent = `Scanning ${base} – ${end-1} / 9999 • Found ${found}`;
-        await new Promise(r => setTimeout(r, 0)); // yield to UI
-      }
-      progEl.textContent = `Done. Found ${found}`;
-    }
-
-    async function renderSingle(id){
       const canvas = document.getElementById('searchCanvas');
       const ctx = canvas.getContext('2d');
       ctx.imageSmoothingEnabled = false;
       ctx.clearRect(0,0,canvas.width,canvas.height);
-      ctx.fillStyle = '#000';
-      ctx.fillRect(0,0,canvas.width,canvas.height);
-      try{
-        const img = await loadImageWithFallback(id);
-        const scale = Math.min(canvas.width / img.width, canvas.height / img.height);
-        const w = Math.round(img.width * scale);
-        const h = Math.round(img.height * scale);
-        const x = Math.floor((canvas.width - w)/2);
-        const y = Math.floor((canvas.height - h)/2);
-        ctx.drawImage(img, x, y, w, h);
-        const meta = await getMeta(id);
-        const traits = traitText(meta).replace(/\n/g,'<br>');
-        document.getElementById('searchMeta').innerHTML = `<h4>No-Punk #${id}</h4>${traits || 'No traits'}`;
-      }catch(err){
-        document.getElementById('searchMeta').innerHTML = `No image found for #${id}`;
+      ctx.fillStyle = '#000'; ctx.fillRect(0,0,canvas.width,canvas.height);
+
+      const dlBtn = document.getElementById('downloadPNG');
+      // hide old link until we redraw; also revoke any previous blob URL
+      if (dlBtn){
+        dlBtn.style.display='none';
+        if (__dlBlobUrl){ URL.revokeObjectURL(__dlBlobUrl); __dlBlobUrl = null; }
+      }
+
+      let drawn = false;
+
+      // draw local image (try ALL bases sequentially)
+      await new Promise((resolve)=>{
+        let attempt = 0;
+        const im = new Image();
+        const tryNext = () => {
+          if (attempt >= LOCAL_BASES.length) { resolve(); return; }
+          im.onload = () => {
+            const scale = Math.min(canvas.width/im.width, canvas.height/im.height);
+            const w = Math.round(im.width*scale), h = Math.round(im.height*scale);
+            const x = Math.floor((canvas.width-w)/2), y = Math.floor((canvas.height-h)/2);
+            ctx.drawImage(im, x, y, w, h);
+            drawn = true;
+            resolve();
+          };
+          im.onerror = () => { attempt++; tryNext(); };
+          im.src = buildUrl(LOCAL_BASES[attempt], localIndex, 'png');
+        };
+        tryNext();
+      });
+
+      // traits (local JSON)
+      const meta = await fetchLocalJson(localIndex);
+      const traitsHtml = (meta && Array.isArray(meta.attributes) && meta.attributes.length)
+        ? meta.attributes.map(t=>`${t.trait_type}: ${t.value}`).join('<br>')
+        : 'No traits found';
+      document.getElementById('searchMeta').innerHTML = `<h4>No-Punk #${chainId}</h4>${traitsHtml}`;
+
+      // OpenSea button
+      const osBtn = document.getElementById('searchOS');
+      osBtn.href = OPENSEA_ITEM_BASE + String(chainId);
+      osBtn.textContent='View Token';
+      osBtn.style.display='inline-block';
+
+      // Download PNG button
+      if (dlBtn && drawn){
+        const filename = `NoPunk-${chainId}.png`;
+        // blob preferred; fallback to dataURL
+        if (canvas.toBlob){
+          canvas.toBlob((blob)=>{
+            if (!blob){
+              const url = canvas.toDataURL('image/png');
+              dlBtn.href = url;
+              dlBtn.setAttribute('download', filename);
+              dlBtn.style.display='inline-block';
+              return;
+            }
+            __dlBlobUrl = URL.createObjectURL(blob);
+            dlBtn.href = __dlBlobUrl;
+            dlBtn.setAttribute('download', filename);
+            dlBtn.style.display='inline-block';
+          }, 'image/png');
+        } else {
+          const url = canvas.toDataURL('image/png');
+          dlBtn.href = url;
+          dlBtn.setAttribute('download', filename);
+          dlBtn.style.display='inline-block';
+        }
       }
     }
 
-    async function loadRange(s){
-      start = clampStart(s);
-      if (label) label.textContent = `${start} – ${start + pageSize - 1}`;
-      hideTip();
-      grid.innerHTML = '';
-      const ids = Array.from({ length: pageSize }, (_, k) => start + k);
-      for (const id of ids){
-        grid.appendChild(tile(id));
-      }
-    }
-
-    document.getElementById('prev').addEventListener('click', ()=> loadRange(start - pageSize));
-    document.getElementById('next').addEventListener('click', ()=> loadRange(start + pageSize));
-
-    // Boot: default to Collection
+    /* ---------- BOOT ---------- */
     window.addEventListener('DOMContentLoaded', ()=>{
-      activate('collection');
-      loadRange(0);
+      (async ()=>{
+        await loadTokenMap();     // ensure mapping is ready before first paint
+        activate('collection');
+        renderPage(0);
 
-      const sInput = document.getElementById('searchInput');
-      const sBtn   = document.getElementById('searchBtn');
-      if (sBtn && sInput){
+        const sInput=document.getElementById('searchInput');
+        const sBtn  =document.getElementById('searchBtn');
         sBtn.addEventListener('click', ()=>{
-          const id = parseId(sInput.value);
-          if (isNaN(id)) { alert('Enter #0–9999'); return; }
+          const id = parseChainId(sInput.value);
+          if (Number.isNaN(id)) { alert('Enter a valid token id'); return; }
           activate('search');
           renderSingle(id);
         });
-        sInput.addEventListener('keydown', (e)=>{
-          if (e.key === 'Enter') sBtn.click();
-        });
-      }
-
-      // Traits UI wiring
-      initTraitUI();
-      const traitBtn = document.getElementById('traitFindBtn');
-      const stopBtn  = document.getElementById('traitStopBtn');
-      if (traitBtn){
-        traitBtn.addEventListener('click', ()=>{
-          activate('traits');
-          searchTraits();
-        });
-      }
-      if (stopBtn){
-        stopBtn.addEventListener('click', ()=>{ traitScanCancel = true; });
-      }
+        sInput.addEventListener('keydown', e=>{ if (e.key==='Enter') sBtn.click(); });
+      })();
     });
+    window.addEventListener('beforeunload', ()=>{ if (__dlBlobUrl) { URL.revokeObjectURL(__dlBlobUrl); } });
   </script>
 </body>
 </html>

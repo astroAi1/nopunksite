@@ -8,7 +8,7 @@
   <style>
     @font-face{
       font-family:'RasterForge';
-      src:url('/RasterForgeRegular-JpBgm.ttf') format('truetype'), url('./RasterForgeRegular-JpBgm.ttf') format('truetype'), url('./public/RasterForgeRegular-JpBgm.ttf') format('truetype');
+      src:url('./RasterForgeRegular-JpBgm.ttf') format('truetype'), url('./public/RasterForgeRegular-JpBgm.ttf') format('truetype'), url('/RasterForgeRegular-JpBgm.ttf') format('truetype');
       font-weight:400; font-style:normal; font-display:swap;
     }
     :root{
@@ -20,7 +20,7 @@
     *{box-sizing:border-box}
     html,body{height:100%}
     body{
-      margin:0;background:#000 url('/Gbh4rY5aUAAtNS7.jpeg') center/cover fixed no-repeat;
+      margin:0;background:#000 url('./Gbh4rY5aUAAtNS7.jpeg') center/cover fixed no-repeat;
       color:var(--ink);font-family:'RasterForge',ui-monospace,Menlo,monospace;letter-spacing:.4px;
     }
     .overlay{min-height:100%;background:linear-gradient(180deg,rgba(0,0,0,.85),rgba(0,0,0,.92))}
@@ -48,7 +48,7 @@
     .range{opacity:.85}
     .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(136px,1fr));gap:12px;max-width:var(--maxw);margin:0 auto}
     .tile{background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;box-shadow:var(--shadow);position:relative;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;cursor:pointer}
-    .tile img{width:100%;height:100%;object-fit:contain;image-rendering:pixelated;background:#000}
+    .tile img{width:100%;height:100%;object-fit:contain;image-rendering:pixelated;background:#000;pointer-events:none}
     .tile .num{position:absolute;left:8px;top:8px;font-size:12px;color:var(--muted)}
     .tooltip{position:fixed;display:none;z-index:9999;background:rgba(0,0,0,.92);border:1px solid var(--border);padding:12px;border-radius:8px;width:280px;pointer-events:none;white-space:pre-wrap;box-shadow:var(--shadow)}
     .tooltip h4{margin:0 0 8px;color:var(--accent)}
@@ -93,10 +93,10 @@
         <h1 class="logo">No-Punks</h1>
         <nav class="social" aria-label="Social links">
           <a href="https://x.com/NoPunkism" target="_blank" rel="noopener" aria-label="X (Twitter)">
-            <img src="/OSHY3ewP_400x400.jpg" alt="X (Twitter)"/>
+            <img src="./OSHY3ewP_400x400.jpg" alt="X (Twitter)"/>
           </a>
           <a href="https://opensea.io/collection/nopunkism" target="_blank" rel="noopener" aria-label="OpenSea collection">
-            <img src="/UAEvW2or_400x400.png" alt="OpenSea"/>
+            <img src="./UAEvW2or_400x400.png" alt="OpenSea"/>
           </a>
         </nav>
       </header>
@@ -161,19 +161,19 @@
         <div class="nometa-grid">
           <figure class="nometa-card">
             <a href="https://opensea.io/collection/no-pixelpepen" target="_blank" rel="noopener">
-              <img src="/cb04413e8456e1d457159cfdf2cfdbe3.gif" alt="NoPixelpepen"/>
+              <img src="./cb04413e8456e1d457159cfdf2cfdbe3.gif" alt="NoPixelpepen"/>
               <figcaption class="name">NoPixelpepen</figcaption>
             </a>
           </figure>
           <figure class="nometa-card">
             <a href="https://opensea.io/collection/no-tinydinopunks" target="_blank" rel="noopener">
-              <img src="/cc2dd813629a7e256fafb253dd42edb8.png.avif" alt="No-TinyDinoPunks"/>
+              <img src="./cc2dd813629a7e256fafb253dd42edb8.png.avif" alt="No-TinyDinoPunks"/>
               <figcaption class="name">No-TinyDinoPunks</figcaption>
             </a>
           </figure>
           <figure class="nometa-card">
             <a href="https://opensea.io/collection/no-pnuks" target="_blank" rel="noopener">
-              <img src="/839f1c66dedac508eb0620a0ce3f4a93.png.avif" alt="No-Pnuks"/>
+              <img src="./839f1c66dedac508eb0620a0ce3f4a93.png.avif" alt="No-Pnuks"/>
               <figcaption class="name">No-Pnuks</figcaption>
             </a>
           </figure>
@@ -185,19 +185,19 @@
         <div class="team-grid">
           <figure class="member">
             <a href="https://x.com/Astro___AI" target="_blank" rel="noopener">
-              <img src="/team/Astro.png" alt="Astro"/>
+              <img src="./team/Astro.png" alt="Astro"/>
             </a>
             <figcaption class="name">Astro</figcaption>
           </figure>
           <figure class="member">
             <a href="https://x.com/BB88888888888BB" target="_blank" rel="noopener">
-              <img src="/team/B888B.png" alt="B888B"/>
+              <img src="./team/B888B.png" alt="B888B"/>
             </a>
             <figcaption class="name">B888B</figcaption>
           </figure>
           <figure class="member">
             <a href="https://x.com/holu_art" target="_blank" rel="noopener">
-              <img src="/team/Holu.png" alt="Holu"/>
+              <img src="./team/Holu.png" alt="Holu"/>
             </a>
             <figcaption class="name">Holu</figcaption>
           </figure>
@@ -538,10 +538,23 @@
       img.alt = `No-Punk`;
       img.loading='lazy';
       img.decoding='async';
+      img.draggable = false; // prevent drag opening image
       loadImageForIndex(localIndex, img);
       a.appendChild(img);
 
+      // Set OpenSea link for this tile
       a.href = OPENSEA_ITEM_BASE + String(chainId);
+
+      // Defensive: always open OpenSea even if something intercepts clicks
+      a.addEventListener('click', (ev)=>{
+        ev.preventDefault();
+        // ensure href is correct in case something overwrote it
+        const expected = OPENSEA_ITEM_BASE + String(chainIdForLocal(localIndex));
+        if (!a.href.includes('opensea.io')) {
+          a.href = expected;
+        }
+        window.open(a.href, '_blank', 'noopener');
+      });
 
       // Tooltip (augmented with local JSON if present)
       fetchLocalJson(localIndex).then(meta=>{

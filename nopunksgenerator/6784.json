@@ -1,0 +1,22 @@
+{
+  "name": "No-Punk #6784",
+  "attributes": [
+    {
+      "trait_type": "Smoke",
+      "value": "Cigarette"
+    },
+    {
+      "trait_type": "Hair",
+      "value": "Bandana"
+    },
+    {
+      "trait_type": "Mouth",
+      "value": "Frown"
+    },
+    {
+      "trait_type": "Type",
+      "value": "Zombie"
+    }
+  ],
+  "tokenId": "6784"
+}

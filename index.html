@@ -227,7 +227,7 @@
   <div class="tooltip" id="tooltip"></div>
 
   <script>
-    /* ---------- TRAITS FINDER ---------- */
+    /* ---------- TRAITS FINDER (fast, worker-backed) ---------- */
     (function(){
       const traitTypeSel  = document.getElementById('traitType');
       const traitValueSel = document.getElementById('traitValue');
@@ -239,6 +239,7 @@
 
       if (!traitTypeSel) return;
 
+      /* ---- Load type → values list (for the dropdowns) ---- */
       const TRAIT_FILES = [
         '/trait_values_by_type.json',
         '/public/trait_values_by_type.json',
@@ -280,34 +281,106 @@
         }
       }
 
-      function attributePairs(meta){
-        if (!meta || !Array.isArray(meta.attributes)) return [];
-        return meta.attributes.map(a => ({
-          type: String(a.trait_type || a.type || '').trim(),
-          value: String(a.value ?? '').trim()
-        }));
+      /* ================= SPEED-UP DESIGN =================
+         1) Build an in-browser index ONCE in a Web Worker (non-blocking)
+            - typeMap:  type → [localIndex]
+            - pairMap:  `type|value` → [localIndex]
+            - quickText[localIndex] = lowercased concat of name+attrs (for quick search)
+         2) All subsequent searches are instant (worker does the filtering).
+         3) Rendering is chunked to keep UI smooth.
+      ===================================================== */
+      let worker = null;
+      let indexReady = false;
+      let building = false;
+      let searchToken = 0;
+
+      function ensureWorker(){
+        if (worker) return worker;
+        const src = `(() => {\n\n      let typeMap = Object.create(null);\n      let pairMap = Object.create(null);\n      let quickText = [];\n\n      function buildUrl(base, idx, ext){ return \`${'${'}base}${'${'}idx}.${'${'}ext}\`; }\n\n      async function fetchLocalJson(idx, bases){\n        for (const base of bases){\n          try{\n            const r = await fetch(buildUrl(base, idx, 'json'), { cache:'no-store' });\n            if (r.ok) return await r.json();\n          }catch(e){}\n        }\n        return null;\n      }\n\n      self.onmessage = async (e) => {\n        const { type } = e.data;\n        if (type === 'build') {\n          const total = e.data.total;\n          const bases = e.data.bases || ['./public/','/public/','./','/'];\n          const batch = e.data.batch || 64;\n\n          typeMap = Object.create(null);\n          pairMap = Object.create(null);\n          quickText = new Array(total);\n\n          for (let i=0;i<total;i+=batch){\n            const upto = Math.min(i+batch, total);\n            const promises = [];\n            for (let j=i;j<upto;j++){\n              promises.push(\n                fetchLocalJson(j, bases).then(meta => ({ j, meta }))\n              );\n            }\n            const results = await Promise.all(promises);\n            for (const { j, meta } of results){\n              let text = '';\n              if (meta){\n                if (meta.name) text += ' ' + String(meta.name);\n                if (Array.isArray(meta.attributes)){\n                  for (const a of meta.attributes){\n                    const t = String(a.trait_type || a.type || '');\n                    const v = String(a.value ?? '');\n                    (typeMap[t] ||= []).push(j);\n                    (pairMap[t + '|' + v] ||= []).push(j);\n                    text += ' ' + t + ' ' + v;\n                  }\n                }\n              }\n              quickText[j] = text.toLowerCase();\n            }\n            if ((i % (batch*2)) === 0) self.postMessage({ type:'progress', done: Math.min(i+batch,total), total });\n          }\n          self.postMessage({ type:'built' });\n        } else if (type === 'search') {\n          const { wantType, wantValue, text, total } = e.data;\n          let baseSet = null;\n          if (wantType && wantValue){\n            baseSet = new Set(pairMap[wantType + '|' + wantValue] || []);\n          } else if (wantType){\n            baseSet = new Set(typeMap[wantType] || []);\n          }\n          const q = String(text || '').toLowerCase().trim();\n          let out = [];\n          if (baseSet){\n            if (q){\n              for (const i of baseSet){ if (quickText[i]?.includes(q)) out.push(i); }\n            } else {\n              out = Array.from(baseSet);\n            }\n          } else {\n            if (q){\n              for (let i=0;i<total;i++){ if (quickText[i]?.includes(q)) out.push(i); }\n            } else {\n              out = []; // no criteria → no scan\n            }\n          }\n          self.postMessage({ type:'searchResult', result: out });\n        }\n      };\n    })();`;
+
+        worker = new Worker(URL.createObjectURL(new Blob([src], { type:'application/javascript' })));
+
+        worker.onmessage = (e)=>{
+          const { type } = e.data || {};
+          if (type === 'progress'){
+            const { done, total } = e.data;
+            traitStatus.textContent = `Indexing ${done}/${TOTAL}…`;
+          } else if (type === 'built'){
+            indexReady = true; building = false;
+            traitStatus.textContent = 'Index ready.';
+            // If a search was requested while building, trigger it now
+            if (pendingSearch){ const { wantType, wantValue, text, token } = pendingSearch; pendingSearch = null; doSearch(wantType, wantValue, text, token); }
+          } else if (type === 'searchResult'){
+            const token = currentSearchToken; // capture from closure
+            if (!token || token !== lastIssuedToken) return; // stale
+            renderResults(e.data.result || []);
+          }
+        };
+        return worker;
       }
 
-      function matches(meta){
-        const quick = String(traitQuick.value || '').trim().toLowerCase();
-        const wantType  = String(traitTypeSel.value || '').trim();
+      let pendingSearch = null;
+      let lastIssuedToken = 0;
+      let currentSearchToken = 0;
+
+      function maybeStartIndex(){
+        if (indexReady || building) return;
+        building = true;
+        traitStatus.textContent = 'Indexing 0/' + TOTAL + '…';
+        ensureWorker();
+        worker.postMessage({ type:'build', total: TOTAL, bases: LOCAL_BASES, batch: 64 });
+      }
+
+      // Start indexing as soon as the Traits tab is opened
+      document.addEventListener('click', (e)=>{
+        const t = e.target.closest('.tab');
+        if (t && t.dataset.target === 'traits'){ maybeStartIndex(); }
+      });
+
+      traitGo?.addEventListener('click', ()=>{
+        const token = ++lastIssuedToken; currentSearchToken = token;
+        const wantType = String(traitTypeSel.value || '').trim();
         const wantValue = String(traitValueSel.value || '').trim();
+        const quick = String(traitQuick.value || '').trim();
 
-        const pairs = attributePairs(meta);
+        if (!wantType && !quick){ traitStatus.textContent = 'Pick a Type or enter Quick text.'; return; }
 
-        if (quick){
-          const inName = (meta && meta.name && String(meta.name).toLowerCase().includes(quick));
-          const inAttrs = pairs.some(p => p.type.toLowerCase().includes(quick) || p.value.toLowerCase().includes(quick));
-          if (!(inName || inAttrs)) return false;
-        }
+        traitStatus.textContent = indexReady ? 'Searching…' : 'Indexing… then searching…';
+        if (!indexReady){ pendingSearch = { wantType, wantValue, text: quick, token }; maybeStartIndex(); return; }
+        doSearch(wantType, wantValue, quick, token);
+      });
 
-        if (wantType && wantValue){
-          return pairs.some(p => p.type === wantType && p.value === wantValue);
+      traitStop?.addEventListener('click', ()=>{ lastIssuedToken++; traitStatus.textContent = 'Stopped.'; });
+
+      function doSearch(wantType, wantValue, quick, token){
+        ensureWorker();
+        currentSearchToken = token;
+        worker.postMessage({ type:'search', wantType, wantValue, text: quick, total: TOTAL });
+      }
+
+      function renderResults(localIdxs){
+        traitGrid.innerHTML = '';
+        if (!localIdxs || !localIdxs.length){ traitStatus.textContent = 'No matches.'; return; }
+
+        let i = 0;
+        const BATCH = 64;
+        function step(){
+          const end = Math.min(i + BATCH, localIdxs.length);
+          for (; i < end; i++){
+            const idx = localIdxs[i];
+            const chainId = chainIdForLocal(idx);
+            fetchLocalJson(idx).then(meta=>{
+              traitGrid.appendChild(makeResultTile(idx, chainId, meta));
+            });
+          }
+          if (i < localIdxs.length){
+            traitStatus.textContent = `Rendering ${i}/${localIdxs.length}…`;
+            requestAnimationFrame(step);
+          } else {
+            traitStatus.textContent = `Done. Found ${localIdxs.length}`;
+          }
         }
-        if (wantType && !wantValue){
-          return pairs.some(p => p.type === wantType);
-        }
-        return !!quick;
+        step();
       }
 
       function makeResultTile(localIndex, onChainId, meta){
@@ -347,77 +420,15 @@
         a.addEventListener('touchmove',  move, {passive:true});
         a.addEventListener('touchend',   hideTip);
 
-        // Defensive: force-open OpenSea even if something tries to hijack the link
-        a.addEventListener('click', (ev)=>{
-          ev.preventDefault();
-          ev.stopPropagation();
-          window.open(a.href, '_blank', 'noopener');
-        });
-
+        a.addEventListener('click', (ev)=>{ ev.preventDefault(); ev.stopPropagation(); window.open(a.href, '_blank', 'noopener'); });
         return a;
       }
 
-      let stopFlag = false;
-
-      async function runSearch(){
-        stopFlag = false;
-        traitGrid.innerHTML = '';
-        traitStatus.textContent = 'Scanning…';
-
-        const quick = String(traitQuick.value || '').trim();
-        const wantType  = String(traitTypeSel.value || '').trim();
-        const wantValue = String(traitValueSel.value || '').trim();
-        if (!quick && !wantType){
-          traitStatus.textContent = 'Pick a Type or enter Quick text.';
-          return;
-        }
-
-        let found = 0;
-        const total = TOTAL;
-
-        for (let idx = 0; idx < total; idx++){
-          if (stopFlag) { traitStatus.textContent = `Stopped. Found ${found}`; return; }
-
-          const meta = await fetchLocalJson(idx);
-          if (!meta) {
-            if ((idx % 200) === 0) traitStatus.textContent = `Scanning ${idx+1}/${total}… found ${found}`;
-            continue;
-          }
-
-          if (!matches(meta)) {
-            if ((idx % 200) === 0) traitStatus.textContent = `Scanning ${idx+1}/${total}… found ${found}`;
-            continue;
-          }
-
-          const onId = extractOnChainId(meta, idx+1);
-          traitGrid.appendChild(makeResultTile(idx, onId, meta));
-          found++;
-
-          if ((found % 25) === 0 || (idx % 200) === 0){
-            traitStatus.textContent = `Scanning ${idx+1}/${total}… found ${found}`;
-          }
-        }
-        traitStatus.textContent = `Done. Found ${found}`;
-      }
-
-      traitGo?.addEventListener('click', runSearch);
-      traitStop?.addEventListener('click', ()=>{ stopFlag = true; });
-
+      // Boot dropdowns
       loadTraitValues().then(map=>{
-        if (!map){ 
-          traitStatus.textContent = 'Missing trait_values_by_type.json';
-          return;
-        }
+        if (!map){ traitStatus.textContent = 'Missing trait_values_by_type.json'; return; }
         fillTypeAndValues(map);
       });
-
-      function extractOnChainId(meta, fallback){
-        if (meta && typeof meta === 'object') {
-          if ('tokenId' in meta && Number.isFinite(Number(meta.tokenId))) return Number(meta.tokenId);
-          if ('id' in meta && Number.isFinite(Number(meta.id))) return Number(meta.id);
-        }
-        return chainIdForLocal(fallback-1);
-      }
     })();
 
     /* ---------- CONFIG ---------- */

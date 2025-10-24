@@ -227,7 +227,7 @@
   <div class="tooltip" id="tooltip"></div>
 
   <script>
-    /* ---------- TRAITS FINDER (fast, worker-backed) ---------- */
+    /* ---------- TRAITS FINDER (instant with prebuilt index; falls back to worker) ---------- */
     (function(){
       const traitTypeSel  = document.getElementById('traitType');
       const traitValueSel = document.getElementById('traitValue');
@@ -250,7 +250,7 @@
       async function loadTraitValues(){
         for (const path of TRAIT_FILES){
           try{
-            const r = await fetch(path, { cache:'no-store' });
+            const r = await fetch(path);
             if (r.ok) return await r.json();
           }catch(e){}
         }
@@ -281,25 +281,171 @@
         }
       }
 
-      /* ================= SPEED-UP DESIGN =================
-         1) Build an in-browser index ONCE in a Web Worker (non-blocking)
-            - typeMap:  type → [localIndex]
-            - pairMap:  `type|value` → [localIndex]
-            - quickText[localIndex] = lowercased concat of name+attrs (for quick search)
-         2) All subsequent searches are instant (worker does the filtering).
-         3) Rendering is chunked to keep UI smooth.
-      ===================================================== */
-      let worker = null;
-      let indexReady = false;
-      let building = false;
-      let searchToken = 0;
+      /* ================= SPEED PLAN =================
+         Prefers a single prebuilt index file (fast), and only
+         falls back to the old "worker that reads 10k json files"
+         when that index file isn't available.
+         Prebuilt file path (any of these):
+           /public/traits_index.json
+           ./public/traits_index.json
+           /traits_index.json
+           ./traits_index.json
+         Shape:
+           {
+             "quickText": ["lowercased name + attributes per token index", ...], // length = TOTAL
+             "typeMap": { "TraitType": [localIndex,...] },
+             "pairMap": { "TraitType|Value": [localIndex,...] }
+           }
+      ================================================= */
+      let INDEX = null;         // { quickText, typeMap, pairMap }
+      let indexReady = false;   // true when INDEX loaded or worker finished
+      let building = false;     // true while worker builds (fallback)
+      let lastIssuedToken = 0;  // cancel in-flight searches
+      let currentSearchToken = 0;
 
+      const INDEX_PATHS = [
+        '/public/traits_index.json',
+        './public/traits_index.json',
+        '/traits_index.json',
+        './traits_index.json'
+      ];
+
+      async function tryLoadPrebuilt(){
+        if (INDEX || indexReady) return !!INDEX;
+        for (const p of INDEX_PATHS){
+          try{
+            const r = await fetch(p);
+            if (r.ok){
+              const j = await r.json();
+              // Basic shape guard
+              if (j && Array.isArray(j.quickText) && j.typeMap && j.pairMap){
+                INDEX = j;
+                indexReady = true;
+                traitStatus.textContent = 'Index loaded.';
+                return true;
+              }
+            }
+          }catch(e){}
+        }
+        return false;
+      }
+
+      function doSearchPrebuilt(wantType, wantValue, quick){
+        const q = String(quick || '').toLowerCase().trim();
+        let base = null;
+
+        if (wantType && wantValue){
+          base = INDEX.pairMap[wantType + '|' + wantValue] || [];
+        } else if (wantType){
+          base = INDEX.typeMap[wantType] || [];
+        }
+
+        let out = [];
+        if (base){
+          if (q){
+            for (const i of base){ if (INDEX.quickText[i]?.includes(q)) out.push(i); }
+          } else {
+            out = base.slice();
+          }
+        } else if (q){
+          const qt = INDEX.quickText;
+          for (let i=0;i<qt.length;i++){ if (qt[i]?.includes(q)) out.push(i); }
+        } else {
+          out = [];
+        }
+        return out;
+      }
+
+      /* -------- Fallback worker (only if no prebuilt index) -------- */
+      let worker = null;
       function ensureWorker(){
         if (worker) return worker;
-        const src = `(() => {\n\n      let typeMap = Object.create(null);\n      let pairMap = Object.create(null);\n      let quickText = [];\n\n      function buildUrl(base, idx, ext){ return \`${'${'}base}${'${'}idx}.${'${'}ext}\`; }\n\n      async function fetchLocalJson(idx, bases){\n        for (const base of bases){\n          try{\n            const r = await fetch(buildUrl(base, idx, 'json'), { cache:'no-store' });\n            if (r.ok) return await r.json();\n          }catch(e){}\n        }\n        return null;\n      }\n\n      self.onmessage = async (e) => {\n        const { type } = e.data;\n        if (type === 'build') {\n          const total = e.data.total;\n          const bases = e.data.bases || ['./public/','/public/','./','/'];\n          const batch = e.data.batch || 64;\n\n          typeMap = Object.create(null);\n          pairMap = Object.create(null);\n          quickText = new Array(total);\n\n          for (let i=0;i<total;i+=batch){\n            const upto = Math.min(i+batch, total);\n            const promises = [];\n            for (let j=i;j<upto;j++){\n              promises.push(\n                fetchLocalJson(j, bases).then(meta => ({ j, meta }))\n              );\n            }\n            const results = await Promise.all(promises);\n            for (const { j, meta } of results){\n              let text = '';\n              if (meta){\n                if (meta.name) text += ' ' + String(meta.name);\n                if (Array.isArray(meta.attributes)){\n                  for (const a of meta.attributes){\n                    const t = String(a.trait_type || a.type || '');\n                    const v = String(a.value ?? '');\n                    (typeMap[t] ||= []).push(j);\n                    (pairMap[t + '|' + v] ||= []).push(j);\n                    text += ' ' + t + ' ' + v;\n                  }\n                }\n              }\n              quickText[j] = text.toLowerCase();\n            }\n            if ((i % (batch*2)) === 0) self.postMessage({ type:'progress', done: Math.min(i+batch,total), total });\n          }\n          self.postMessage({ type:'built' });\n        } else if (type === 'search') {\n          const { wantType, wantValue, text, total } = e.data;\n          let baseSet = null;\n          if (wantType && wantValue){\n            baseSet = new Set(pairMap[wantType + '|' + wantValue] || []);\n          } else if (wantType){\n            baseSet = new Set(typeMap[wantType] || []);\n          }\n          const q = String(text || '').toLowerCase().trim();\n          let out = [];\n          if (baseSet){\n            if (q){\n              for (const i of baseSet){ if (quickText[i]?.includes(q)) out.push(i); }\n            } else {\n              out = Array.from(baseSet);\n            }\n          } else {\n            if (q){\n              for (let i=0;i<total;i++){ if (quickText[i]?.includes(q)) out.push(i); }\n            } else {\n              out = []; // no criteria → no scan\n            }\n          }\n          self.postMessage({ type:'searchResult', result: out });\n        }\n      };\n    })();`;
+        const src = `(() => {
+
+      let typeMap = Object.create(null);
+      let pairMap = Object.create(null);
+      let quickText = [];
+
+      function buildUrl(base, idx, ext){ return \`${'${'}base}${'${'}idx}.${'${'}ext}\`; }
+
+      async function fetchLocalJson(idx, bases){
+        for (const base of bases){
+          try{
+            const r = await fetch(buildUrl(base, idx, 'json'));
+            if (r.ok) return await r.json();
+          }catch(e){}
+        }
+        return null;
+      }
+
+      self.onmessage = async (e) => {
+        const { type } = e.data;
+        if (type === 'build') {
+          const total = e.data.total;
+          const bases = e.data.bases || ['./public/','/public/','./','/'];
+          const batch = e.data.batch || 64;
+
+          typeMap = Object.create(null);
+          pairMap = Object.create(null);
+          quickText = new Array(total);
+
+          for (let i=0;i<total;i+=batch){
+            const upto = Math.min(i+batch, total);
+            const promises = [];
+            for (let j=i;j<upto;j++){
+              promises.push(
+                fetchLocalJson(j, bases).then(meta => ({ j, meta }))
+              );
+            }
+            const results = await Promise.all(promises);
+            for (const { j, meta } of results){
+              let text = '';
+              if (meta){
+                if (meta.name) text += ' ' + String(meta.name);
+                if (Array.isArray(meta.attributes)){
+                  for (const a of meta.attributes){
+                    const t = String(a.trait_type || a.type || '');
+                    const v = String(a.value ?? '');
+                    (typeMap[t] ||= []).push(j);
+                    (pairMap[t + '|' + v] ||= []).push(j);
+                    text += ' ' + t + ' ' + v;
+                  }
+                }
+              }
+              quickText[j] = text.toLowerCase();
+            }
+            if ((i % (batch*2)) === 0) self.postMessage({ type:'progress', done: Math.min(i+batch,total), total });
+          }
+          self.postMessage({ type:'built' });
+        } else if (type === 'search') {
+          const { wantType, wantValue, text, total } = e.data;
+          let baseSet = null;
+          if (wantType && wantValue){
+            baseSet = new Set(pairMap[wantType + '|' + wantValue] || []);
+          } else if (wantType){
+            baseSet = new Set(typeMap[wantType] || []);
+          }
+          const q = String(text || '').toLowerCase().trim();
+          let out = [];
+          if (baseSet){
+            if (q){
+              for (const i of baseSet){ if (quickText[i]?.includes(q)) out.push(i); }
+            } else {
+              out = Array.from(baseSet);
+            }
+          } else {
+            if (q){
+              for (let i=0;i<total;i++){ if (quickText[i]?.includes(q)) out.push(i); }
+            } else {
+              out = []; // no criteria → no scan
+            }
+          }
+          self.postMessage({ type:'searchResult', result: out });
+        }
+      };
+    })();`;
 
         worker = new Worker(URL.createObjectURL(new Blob([src], { type:'application/javascript' })));
-
         worker.onmessage = (e)=>{
           const { type } = e.data || {};
           if (type === 'progress'){
@@ -308,11 +454,10 @@
           } else if (type === 'built'){
             indexReady = true; building = false;
             traitStatus.textContent = 'Index ready.';
-            // If a search was requested while building, trigger it now
-            if (pendingSearch){ const { wantType, wantValue, text, token } = pendingSearch; pendingSearch = null; doSearch(wantType, wantValue, text, token); }
+            if (pendingSearch){ const { wantType, wantValue, text, token } = pendingSearch; pendingSearch = null; doWorkerSearch(wantType, wantValue, text, token); }
           } else if (type === 'searchResult'){
-            const token = currentSearchToken; // capture from closure
-            if (!token || token !== lastIssuedToken) return; // stale
+            const token = currentSearchToken;
+            if (!token || token !== lastIssuedToken) return;
             renderResults(e.data.result || []);
           }
         };
@@ -320,8 +465,6 @@
       }
 
       let pendingSearch = null;
-      let lastIssuedToken = 0;
-      let currentSearchToken = 0;
 
       function maybeStartIndex(){
         if (indexReady || building) return;
@@ -331,13 +474,26 @@
         worker.postMessage({ type:'build', total: TOTAL, bases: LOCAL_BASES, batch: 64 });
       }
 
-      // Start indexing as soon as the Traits tab is opened
-      document.addEventListener('click', (e)=>{
+      function doWorkerSearch(wantType, wantValue, quick, token){
+        ensureWorker();
+        currentSearchToken = token;
+        worker.postMessage({ type:'search', wantType, wantValue, text: quick, total: TOTAL });
+      }
+
+      // Start: try to load prebuilt when tab opened
+      document.addEventListener('click', async (e)=>{
         const t = e.target.closest('.tab');
-        if (t && t.dataset.target === 'traits'){ maybeStartIndex(); }
+        if (t && t.dataset.target === 'traits'){
+          const ok = await tryLoadPrebuilt();
+          if (!ok && !indexReady && !building){
+            traitStatus.textContent = 'No prebuilt index found. Building in the background…';
+            maybeStartIndex();
+          }
+        }
       });
 
-      traitGo?.addEventListener('click', ()=>{
+      // Search button
+      traitGo?.addEventListener('click', async ()=>{
         const token = ++lastIssuedToken; currentSearchToken = token;
         const wantType = String(traitTypeSel.value || '').trim();
         const wantValue = String(traitValueSel.value || '').trim();
@@ -345,19 +501,24 @@
 
         if (!wantType && !quick){ traitStatus.textContent = 'Pick a Type or enter Quick text.'; return; }
 
+        // Prefer prebuilt
+        if (await tryLoadPrebuilt()){
+          traitStatus.textContent = 'Searching…';
+          const result = doSearchPrebuilt(wantType, wantValue, quick);
+          renderResults(result);
+          return;
+        }
+
+        // Fallback to worker
         traitStatus.textContent = indexReady ? 'Searching…' : 'Indexing… then searching…';
         if (!indexReady){ pendingSearch = { wantType, wantValue, text: quick, token }; maybeStartIndex(); return; }
-        doSearch(wantType, wantValue, quick, token);
+        doWorkerSearch(wantType, wantValue, quick, token);
       });
 
+      // Stop button
       traitStop?.addEventListener('click', ()=>{ lastIssuedToken++; traitStatus.textContent = 'Stopped.'; });
 
-      function doSearch(wantType, wantValue, quick, token){
-        ensureWorker();
-        currentSearchToken = token;
-        worker.postMessage({ type:'search', wantType, wantValue, text: quick, total: TOTAL });
-      }
-
+      // Render helpers
       function renderResults(localIdxs){
         traitGrid.innerHTML = '';
         if (!localIdxs || !localIdxs.length){ traitStatus.textContent = 'No matches.'; return; }
@@ -470,7 +631,7 @@
     async function fetchLocalJson(idx){
       for (const base of LOCAL_BASES){
         try{
-          const r = await fetch(buildUrl(base, idx, 'json'), { cache:'no-store' });
+          const r = await fetch(buildUrl(base, idx, 'json'));
           if (r.ok) return await r.json();
         }catch(e){}
       }

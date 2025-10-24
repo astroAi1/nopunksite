@@ -241,16 +241,16 @@
 
       /* ---- Load type → values list (for the dropdowns) ---- */
       const TRAIT_FILES = [
-        '/trait_values_by_type.json',
-        '/public/trait_values_by_type.json',
-        './trait_values_by_type.json',
-        './public/trait_values_by_type.json'
+        '/trait_values_by_type.json?v=4',
+        '/public/trait_values_by_type.json?v=4',
+        './trait_values_by_type.json?v=4',
+        './public/trait_values_by_type.json?v=4'
       ];
 
       async function loadTraitValues(){
         for (const path of TRAIT_FILES){
           try{
-            const r = await fetch(path);
+            const r = await fetch(path, { cache: 'no-store' });
             if (r.ok) return await r.json();
           }catch(e){}
         }
@@ -304,17 +304,17 @@
       let currentSearchToken = 0;
 
       const INDEX_PATHS = [
-        '/public/traits_index.json',
-        './public/traits_index.json',
-        '/traits_index.json',
-        './traits_index.json'
+        '/public/traits_index.json?v=4',
+        './public/traits_index.json?v=4',
+        '/traits_index.json?v=4',
+        './traits_index.json?v=4'
       ];
 
       async function tryLoadPrebuilt(){
         if (INDEX || indexReady) return !!INDEX;
         for (const p of INDEX_PATHS){
           try{
-            const r = await fetch(p);
+            const r = await fetch(p, { cache: 'no-store' });
             if (r.ok){
               const j = await r.json();
               // Basic shape guard

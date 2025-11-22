@@ -1,3 +1,4 @@
+
 // server.js
 // NoPunks site server
 // - Serves static files (if needed)
@@ -10,6 +11,7 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const cors = require('cors');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -124,8 +126,16 @@ function indexToTokenId(index) {
 const nftCache = new Map();
 
 // -----------------------------
-// STATIC FILES
+// MIDDLEWARE
 // -----------------------------
+// CORS so nopunks.xyz (Netlify) and nopunksite.onrender.com can both call this API
+app.use(
+  cors({
+    origin: '*',
+    methods: ['GET'],
+  })
+);
+
 // This lets you serve static files if you hit this server directly.
 // (Your main site is on Netlify/Vercel; this doesn’t hurt.)
 app.use(express.static(path.join(__dirname)));

@@ -8,3 +8,6 @@ node_modules/
 .DS_Store
 .env
 
+.env
+.DS_Store
+assets/.DS_Store

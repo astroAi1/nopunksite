@@ -1,887 +1,540 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <meta http-equiv="Cache-Control" content="no-store, max-age=0, must-revalidate"/>
-  <title>No-Punks</title>
-  <style>
-    @font-face{
-      font-family:'RasterForge';
-      src:
-        url('./RasterForgeRegular-JpBgm.ttf?v=3') format('truetype'),
-        url('./public/RasterForgeRegular-JpBgm.ttf?v=3') format('truetype'),
-        url('/RasterForgeRegular-JpBgm.ttf?v=3') format('truetype');
-      font-weight:400; font-style:normal; font-display:swap;
-    }
-    :root{
-      --ink:#e7f5ff; --muted:#9fd8ff; --accent:#73d0ff;
-      --card:#0c0c0c; --border:#2a2a2a;
-      --shadow:0 0 0 1px var(--border), 0 12px 30px rgba(0,0,0,.6);
-      --maxw:1240px;
-    }
-    *{box-sizing:border-box}
-    html,body{height:100%}
-    body{
-      margin:0;background:#000 url('./Gbh4rY5aUAAtNS7.jpeg') center/cover fixed no-repeat;
-      color:var(--ink);font-family:'RasterForge',ui-monospace,Menlo,monospace;letter-spacing:.4px;
-    }
-    .overlay{min-height:100%;background:linear-gradient(180deg,rgba(0,0,0,.85),rgba(0,0,0,.92))}
-    .container{max-width:var(--maxw);margin:0 auto;padding:28px}
-    .masthead{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;margin-bottom:16px}
-    .logo{
-      margin:0;
-      font-size:clamp(48px,7vw,92px);
-      line-height:1.05;
-      letter-spacing:.02em;
-      color:#fff;
-      text-shadow:0 0 3px #040404,0 0 10px #040404;
-    }
-    .social{display:flex;gap:12px;justify-content:center;margin-top:8px}
-    .social a{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border:1px solid var(--border);background:rgba(12,12,12,.78);border-radius:8px;box-shadow:var(--shadow);text-decoration:none}
-    .social a:hover{border-color:var(--accent);box-shadow:0 0 12px rgba(115,208,255,.25) inset}
-    .social img{width:22px;height:22px;border-radius:4px;display:block}
-    .tabs{display:flex;justify-content:center;gap:10px;margin:18px 0 22px;flex-wrap:wrap}
-    .tab{padding:10px 14px;border:1px solid var(--border);background:rgba(12,12,12,.78);border-radius:8px;cursor:pointer;color:var(--ink);font-size:15px}
-    .tab:hover{border-color:var(--accent);color:var(--accent)}
-    .tab.active{border-color:var(--accent);color:var(--accent);box-shadow:0 0 12px rgba(115,208,255,.25) inset}
-    .section{display:none}.section.active{display:block}
-    .btn{background:#000;color:var(--ink);border:1px solid var(--border);border-radius:8px;padding:10px 14px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:8px}
-    .btn:hover{border-color:var(--accent);color:var(--accent)}
-    .range{opacity:.85}
-    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(136px,1fr));gap:12px;max-width:var(--maxw);margin:0 auto}
-    .tile{background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;box-shadow:var(--shadow);position:relative;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;cursor:pointer}
-    .tile img{width:100%;height:100%;object-fit:contain;image-rendering:pixelated;background:#000;pointer-events:none;user-select:none;-webkit-user-drag:none}
-    .tile .num{position:absolute;left:8px;top:8px;font-size:12px;color:var(--muted)}
-    .tooltip{position:fixed;display:none;z-index:9999;background:rgba(0,0,0,.92);border:1px solid var(--border);padding:12px;border-radius:8px;width:280px;pointer-events:none;white-space:pre-wrap;box-shadow:var(--shadow)}
-    .tooltip h4{margin:0 0 8px;color:var(--accent)}
-    .search-wrap{display:flex;flex-direction:column;align-items:center;gap:12px}
-    .search-controls{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;margin:10px 0}
-    .search-input{padding:10px 12px;border:1px solid var(--border);background:#000;color:var(--ink);border-radius:8px;font-size:15px;min-width:220px}
-    #searchCanvas{width:min(92vw,1024px);height:auto;aspect-ratio:1/1;border:1px solid var(--border);background:#000;image-rendering:pixelated;display:block;margin:0 auto}
-    #searchMeta{color:var(--muted);text-align:center}
-    .nometa-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;max-width:var(--maxw);margin:0 auto}
-    .nometa-card{background:rgba(12,12,12,.78);border:1px solid var(--border);border-radius:12px;padding:12px;text-align:center;box-shadow:var(--shadow)}
-    .nometa-card a{display:block;text-decoration:none;color:var(--ink)}
-    .nometa-card img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:10px;border:1px solid var(--border);image-rendering:pixelated;background:#000}
-    .nometa-card .name{margin-top:10px;color:var(--accent)}
-    .team-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;max-width:var(--maxw);margin:0 auto}
-    .member{background:rgba(12,12,12,.78);border:1px solid var(--border);border-radius:12px;padding:12px;text-align:center;box-shadow:var(--shadow)}
-    .member img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:10px;border:1px solid var(--border);image-rendering:pixelated;background:#000}
-    .member .name{margin-top:10px;color:var(--accent)}
-    .about{background:rgba(12,12,12,.78);border:1px solid var(--border);border-radius:12px;padding:18px;line-height:1.9;box-shadow:var(--shadow);max-width:var(--maxw);margin:0 auto}
-    footer{margin-top:28px;color:var(--muted);text-align:center}
-    /* --- Mobile overflow fixes (iOS) --- */
-    html,body{max-width:100%; overflow-x:hidden;}
-    img,canvas{max-width:100%; height:auto; display:block;}
-    @media (max-width:600px){
-      .container{padding:20px}
-      .tabs{gap:8px}
-      .grid{grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
-      .search-controls{gap:8px}
-    }
-    /* ---- Traits finder layout ---- */
-    #traitControls label { display:inline-flex; align-items:center; gap:6px; }
-    #traitControls select { min-width:180px }
-    #traitControls .btn { min-width:120px }
-    #traitStatus { text-align:center; margin:8px 0 14px }
-    #traitGrid .tile .num { position:absolute; left:8px; top:8px; font-size:12px; color:var(--muted) }
-  </style>
-  <script>
-    /* Nuke any old service worker that could be caching stale HTML/JS */
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister()));
-    }
-  </script>
-</head>
-<body>
-  <div class="overlay">
-    <div class="container">
-      <header class="masthead">
-        <h1 class="logo">No-Punks</h1>
-        <nav class="social" aria-label="Social links">
-          <a href="https://x.com/NoPunkism" target="_blank" rel="noopener" aria-label="X (Twitter)">
-            <img src="./OSHY3ewP_400x400.jpg" alt="X (Twitter)"/>
-          </a>
-          <a href="https://opensea.io/collection/nopunkism" target="_blank" rel="noopener" aria-label="OpenSea collection">
-            <img src="./UAEvW2or_400x400.png" alt="OpenSea"/>
-          </a>
-        </nav>
+  <head>
+    <meta charset="utf-8" />
+    <title>NoPunks • NoMeta</title>
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <link rel="stylesheet" href="/assets/css/style.css" />
+  </head>
+  <body>
+    <div class="np-shell">
+      <!-- HEADER -->
+      <header>
+        <div class="np-header-inner">
+          <div class="np-header-kicker">NOPUNKS • NOMETA</div>
+
+          <div class="np-title-block">
+            <h1 class="np-title">NO-PUNKS</h1>
+            <div class="np-title-mark">
+              <span class="np-title-triangle np-title-triangle--left"></span>
+              <span class="np-title-circle"></span>
+              <span class="np-title-triangle np-title-triangle--right"></span>
+            </div>
+          </div>
+
+          <p class="np-header-tagline">
+            Base is for believers • NoPunks is for minimalists • 10,000 piece
+            minimalist derivative of CryptoPunks on Base.
+          </p>
+
+          <!-- Social icons -->
+          <div
+            class="mt-2 flex items-center justify-center gap-3 text-xs text-white/60"
+          >
+            <a
+              href="https://x.com/NoPunkism"
+              target="_blank"
+              rel="noreferrer"
+              aria-label="NoPunkism on X"
+            >
+              <img
+                src="/public/icons/X.jpg"
+                alt="X"
+                style="width: 22px; height: 22px; border-radius: 999px"
+              />
+            </a>
+            <a
+              href="https://opensea.io/collection/nopunkism"
+              target="_blank"
+              rel="noreferrer"
+              aria-label="NoPunkism on OpenSea"
+            >
+              <img
+                src="/public/icons/opensea.png"
+                alt="OpenSea"
+                style="width: 24px; height: 24px"
+              />
+            </a>
+          </div>
+        </div>
       </header>
 
-      <div class="tabs" id="tabs">
-        <button class="tab active" data-target="collection">Collection</button>
-        <button class="tab" data-target="search">Search</button>
-        <button class="tab" data-target="traits">Traits</button>
-        <button class="tab" data-target="no-meta">No-Meta</button>
-        <button class="tab" data-target="team">Team</button>
-        <button class="tab" data-target="about">About</button>
-      </div>
-
-      <!-- Collection -->
-      <section id="collection" class="section">
-        <div style="display:flex;gap:12px;align-items:center;justify-content:center;margin-bottom:12px;">
-          <button id="prev" class="btn">Prev</button>
-          <span id="rangeLabel" class="range">Showing 0–0</span>
-          <button id="next" class="btn">Next</button>
-        </div>
-        <div id="grid" class="grid"></div>
-      </section>
-
-      <!-- Search -->
-      <section id="search" class="section">
-        <div class="search-wrap">
-          <div class="search-controls">
-            <input id="searchInput" class="search-input" placeholder="Token id (1–10000)" inputmode="numeric"/>
-            <button id="searchBtn" class="btn">Search</button>
+      <!-- MAIN -->
+      <main class="np-main">
+        <!-- TABS -->
+        <section class="mb-6 flex justify-center">
+          <div class="np-tabs">
+            <button
+              type="button"
+              class="np-tab np-tab--active"
+              data-tab="collection"
+            >
+              Collection
+            </button>
+            <button type="button" class="np-tab" data-tab="showcase">
+              Showcase
+            </button>
+            <button type="button" class="np-tab" data-tab="about">
+              About
+            </button>
+            <button type="button" class="np-tab" data-tab="team">
+              Team
+            </button>
+            <button type="button" class="np-tab" data-tab="nometa">
+              No-Meta
+            </button>
+            <button type="button" class="np-tab" data-tab="sales">
+              Sales
+            </button>
           </div>
-          <canvas id="searchCanvas" width="1024" height="1024"></canvas>
-          <div id="searchMeta" class="range"></div>
-          <a id="searchOS" class="btn" href="#" target="_blank" rel="noopener" style="display:none;">View Token</a>
-          <a id="downloadPNG" class="btn" href="#" style="display:none;">Download PNG</a>
-        </div>
-      </section>
+        </section>
 
-      <!-- Traits -->
-      <section id="traits" class="section">
-        <div class="search-wrap">
-          <div class="search-controls" id="traitControls">
-            <label>Type:&nbsp;
-              <select id="traitType"></select>
-            </label>
-            <label>Value:&nbsp;
-              <select id="traitValue">
-                <option value="">— any —</option>
-              </select>
-            </label>
-            <span class="range">or quick text:&nbsp;</span>
-            <input id="traitQuick" class="search-input" placeholder="e.g., 3D Glasses"/>
-            <button id="traitGo" class="btn">Find Matches</button>
-            <button id="traitStop" class="btn">Stop</button>
+        <!-- COLLECTION TAB -->
+        <section
+          id="tab-collection"
+          data-tab-section="collection"
+          class="np-section"
+          aria-labelledby="collection-heading"
+        >
+          <div class="mb-4 flex items-center justify-between gap-4">
+            <div>
+              <h2
+                id="collection-heading"
+                class="text-sm font-semibold uppercase tracking-[0.25em] text-white/80"
+              >
+                Collection
+              </h2>
+              <p
+                id="collection-summary"
+                class="mt-2 text-xs text-white/60 leading-relaxed"
+              >
+                NoMeta loading...
+              </p>
+            </div>
+
+            <div
+              class="flex items-center gap-2 text-[11px] text-white/70 flex-shrink-0"
+            >
+              <button
+                id="prev-page"
+                type="button"
+                class="rounded-full border border-white/10 bg-white/5 px-2 py-1 disabled:opacity-40 hover:bg-white/[0.06]"
+                disabled
+              >
+                Prev
+              </button>
+              <span id="page-info" class="tabular-nums">Page 1 / ?</span>
+              <button
+                id="next-page"
+                type="button"
+                class="rounded-full border border-white/10 bg-white/5 px-2 py-1 disabled:opacity-40 hover:bg-white/[0.06]"
+                disabled
+              >
+                Next
+              </button>
+            </div>
           </div>
-          <div id="traitStatus" class="range">Idle.</div>
-        </div>
-        <div id="traitGrid" class="grid"></div>
-      </section>
 
-      <!-- No-Meta -->
-      <section id="no-meta" class="section">
-        <div class="nometa-grid">
-          <figure class="nometa-card">
-            <a href="https://opensea.io/collection/no-pixelpepen" target="_blank" rel="noopener">
-              <img src="./cb04413e8456e1d457159cfdf2cfdbe3.gif" alt="NoPixelpepen"/>
-              <figcaption class="name">NoPixelpepen</figcaption>
-            </a>
-          </figure>
-          <figure class="nometa-card">
-            <a href="https://opensea.io/collection/no-tinydinopunks" target="_blank" rel="noopener">
-              <img src="./cc2dd813629a7e256fafb253dd42edb8.png.avif" alt="No-TinyDinoPunks"/>
-              <figcaption class="name">No-TinyDinoPunks</figcaption>
-            </a>
-          </figure>
-          <figure class="nometa-card">
-            <a href="https://opensea.io/collection/no-pnuks" target="_blank" rel="noopener">
-              <img src="./839f1c66dedac508eb0620a0ce3f4a93.png.avif" alt="No-Pnuks"/>
-              <figcaption class="name">No-Pnuks</figcaption>
-            </a>
-          </figure>
-        </div>
-      </section>
+          <div
+            id="collection-grid"
+            class="mt-4 np-collection-grid"
+            aria-live="polite"
+          ></div>
 
-      <!-- Team -->
-      <section id="team" class="section">
-        <div class="team-grid">
-          <figure class="member">
-            <a href="https://x.com/Astro___AI" target="_blank" rel="noopener">
-              <img src="./team/Astro.png" alt="Astro"/>
-            </a>
-            <figcaption class="name">Astro</figcaption>
-          </figure>
-          <figure class="member">
-            <a href="https://x.com/BB88888888888BB" target="_blank" rel="noopener">
-              <img src="./team/B888B.png" alt="B888B"/>
-            </a>
-            <figcaption class="name">B888B</figcaption>
-          </figure>
-          <figure class="member">
-            <a href="https://x.com/holu_art" target="_blank" rel="noopener">
-              <img src="./team/Holu.png" alt="Holu"/>
-            </a>
-            <figcaption class="name">Holu</figcaption>
-          </figure>
-        </div>
-      </section>
+          <div
+            id="collection-error"
+            class="mt-4 text-xs text-red-400"
+            style="display: none"
+          ></div>
+        </section>
 
-      <!-- About -->
-      <section id="about" class="section">
-        <div class="about">
-          <p><strong>No-punks</strong> is a simplified iteration of the CryptoPunks collection by color palette reduction. The reduced color palette and simplified details contribute to a more abstract and minimalist aesthetic, emphasizing a uniform look while retaining the essence of the
-          original image. Collection is prepared as <strong>1:1</strong> to stay true to the original CryptoPunks. <em>This collection may or may not be visible!</em></p>
-        </div>
-      </section>
+        <!-- SHOWCASE TAB -->
+        <section
+          id="tab-showcase"
+          data-tab-section="showcase"
+          class="np-section hidden"
+        >
+          <div class="space-y-6">
+            <div>
+              <h2
+                class="text-sm font-semibold uppercase tracking-[0.25em] text-white/80"
+              >
+                Showcase
+              </h2>
+            </div>
 
-      <footer>© No-Punks</footer>
+            <div
+              id="showcase-grid"
+              class="np-showcase-grid"
+              aria-live="polite"
+            ></div>
+
+            <p id="showcase-status" class="text-[11px] text-white/50">
+              NoMeta loading...
+            </p>
+          </div>
+        </section>
+
+        <!-- ABOUT TAB -->
+        <section
+          id="tab-about"
+          data-tab-section="about"
+          class="np-section hidden"
+        >
+          <div class="grid gap-6 md:grid-cols-[2fr,1.3fr]">
+            <div class="space-y-3 text-sm text-white/70">
+              <p>
+                NoPunks is a simplified iteration of the CryptoPunks collection
+                by colour palette reduction. The reduced palette and stripped
+                detail push the characters toward abstraction while keeping the
+                original silhouettes intact.
+              </p>
+              <p>
+                Every piece is built on a strict 24×24 grid, then upscaled for
+                display. Traits stay; noise goes. It’s all about seeing how
+                little information you need before your brain still says “punk”.
+              </p>
+              <p>
+                Launched on Base in 2024 and evolving under the broader
+                <span class="font-semibold">NoMeta</span> umbrella, the project
+                keeps experimenting with derivatives, glitches, and new formats
+                while staying loyal to the original pixel discipline.
+              </p>
+            </div>
+
+            <div
+              class="space-y-3 rounded-lg border border-white/10 bg-white/[0.03] p-4 text-xs text-white/70"
+            >
+              <div
+                class="text-[10px] uppercase tracking-[0.25em] text-white/40"
+              >
+                Project Notes
+              </div>
+              <ul class="list-disc space-y-1 pl-4">
+                <li>1:1 mapping to original CryptoPunks IDs.</li>
+                <li>Traits preserved, palettes compressed.</li>
+                <li>Strict black backgrounds, #040404 outlines.</li>
+                <li>Built for long-term collectors, not quick-flip meta.</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <!-- TEAM TAB -->
+        <section
+          id="tab-team"
+          data-tab-section="team"
+          class="np-section hidden"
+        >
+          <p class="mb-4 text-xs text-white/60">
+            People shaping the pixels and the surrounding chaos.
+          </p>
+
+          <div class="np-team-grid">
+            <!-- Astro-AI -->
+            <article class="np-team-card">
+              <div class="mb-3 flex items-center gap-3">
+                <div class="h-10 w-10 overflow-hidden rounded-sm bg-black">
+                  <img
+                    src="/public/team/astro.png"
+                    alt="Astro-AI"
+                    class="h-full w-full object-cover"
+                    loading="lazy"
+                  />
+                </div>
+                <div>
+                  <div
+                    class="text-[10px] uppercase tracking-[0.25em] text-white/40"
+                  >
+                    NoPunks / NoMeta • Generative
+                  </div>
+                  <div class="mt-0.5 text-sm font-semibold">Astro-AI</div>
+                </div>
+              </div>
+              <p>
+                Astro-AI started NoPunks on Base as a minimalist, no-meta
+                derivative of CryptoPunks, and keeps pushing the art, glitch
+                experiments, and on-chain tooling forward.
+              </p>
+            </article>
+
+            <!-- Holu -->
+            <article class="np-team-card">
+              <div class="mb-3 flex items-center gap-3">
+                <div class="h-10 w-10 overflow-hidden rounded-sm bg-black">
+                  <img
+                    src="/public/team/holu.png"
+                    alt="Holu"
+                    class="h-full w-full object-cover"
+                    loading="lazy"
+                  />
+                </div>
+                <div>
+                  <div
+                    class="text-[10px] uppercase tracking-[0.25em] text-white/40"
+                  >
+                    Co-Founder
+                  </div>
+                  <div class="mt-0.5 text-sm font-semibold">Holu</div>
+                </div>
+              </div>
+              <p>
+                Original collaborator on NoPunks, helping define the palette,
+                structure and early direction.
+              </p>
+            </article>
+
+            <!-- B888B -->
+            <article class="np-team-card">
+              <div class="mb-3 flex items-center gap-3">
+                <div class="h-10 w-10 overflow-hidden rounded-sm bg-black">
+                  <img
+                    src="/public/team/b888b.png"
+                    alt="B888B"
+                    class="h-full w-full object-cover"
+                    loading="lazy"
+                  />
+                </div>
+                <div>
+                  <div
+                    class="text-[10px] uppercase tracking-[0.25em] text-white/40"
+                  >
+                    Collector / Strategy
+                  </div>
+                  <div class="mt-0.5 text-sm font-semibold">B888B</div>
+                </div>
+              </div>
+              <p>
+                Long-term collector and strategist, helping shape signal,
+                feedback loops, and direction across drops and experiments.
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <!-- NOMETA TAB -->
+        <section
+          id="tab-nometa"
+          data-tab-section="nometa"
+          class="np-section hidden"
+        >
+          <div class="max-w-6xl mx-auto px-4 lg:px-0 py-10 flex flex-col gap-8">
+            <header class="flex flex-col gap-3">
+              <h2
+                class="text-2xl lg:text-3xl font-black tracking-[0.3em] text-white uppercase"
+              >
+                NO-META
+              </h2>
+              <p class="text-sm text-white/70 max-w-2xl">
+                NoMeta is the wider universe around NoPunks — cross-collection
+                derivatives and side projects that stay loyal to the minimal
+                pixel spirit.
+              </p>
+            </header>
+
+            <div class="np-nometa-grid">
+              <!-- NoPnuk -->
+              <figure class="flex flex-col gap-3">
+                <a
+                  href="https://opensea.io/collection/no-pnuks"
+                  target="_blank"
+                  rel="noreferrer"
+                  class="aspect-square bg-black rounded overflow-hidden flex items-center justify-center"
+                >
+                  <img
+                    src="/public/no-meta/NoPnuk.png.avif"
+                    alt="NoPnuk"
+                    loading="lazy"
+                  />
+                </a>
+                <figcaption
+                  class="text-xs text-white/60 uppercase tracking-[0.25em]"
+                >
+                  No-Pnuk
+                </figcaption>
+                <p class="text-[11px] text-white/60 leading-relaxed">
+                  A warped, glitched cousin of NoPunks — same spirit, different
+                  mutation.
+                </p>
+              </figure>
+
+              <!-- NoPixelpepen -->
+              <figure class="flex flex-col gap-3">
+                <a
+                  href="https://opensea.io/collection/no-pixelpepen"
+                  target="_blank"
+                  rel="noreferrer"
+                  class="aspect-square bg-black rounded overflow-hidden flex items-center justify-center"
+                >
+                  <img
+                    src="/public/no-meta/NoPixelpepen.gif"
+                    alt="NoPixelpepen"
+                    loading="lazy"
+                  />
+                </a>
+                <figcaption
+                  class="text-xs text-white/60 uppercase tracking-[0.25em]"
+                >
+                  No-Pixelpepen
+                </figcaption>
+                <p class="text-[11px] text-white/60 leading-relaxed">
+                  A pixel-pilled riff on Opepen culture, run through the NoMeta
+                  filter.
+                </p>
+              </figure>
+
+              <!-- NoTinyDinos -->
+              <figure class="flex flex-col gap-3">
+                <a
+                  href="https://opensea.io/collection/no-tinydinopunks"
+                  target="_blank"
+                  rel="noreferrer"
+                  class="aspect-square bg-black rounded overflow-hidden flex items-center justify-center"
+                >
+                  <img
+                    src="/public/no-meta/NoTinyDinos.png.avif"
+                    alt="NoTinyDinos"
+                    loading="lazy"
+                  />
+                </a>
+                <figcaption
+                  class="text-xs text-white/60 uppercase tracking-[0.25em]"
+                >
+                  No-TinyDinos
+                </figcaption>
+                <p class="text-[11px] text-white/60 leading-relaxed">
+                  Tiny dinos, lights out — a tribute collection that keeps
+                  everything in shadow.
+                </p>
+              </figure>
+            </div>
+          </div>
+        </section>
+
+        <!-- SALES TAB -->
+        <section
+          id="tab-sales"
+          data-tab-section="sales"
+          class="np-section hidden"
+        >
+          <div class="space-y-6">
+            <div>
+              <h2
+                class="text-sm font-semibold uppercase tracking-[0.25em] text-white/80"
+              >
+                Sales &amp; Market
+              </h2>
+            </div>
+
+            <!-- Stat cards -->
+            <div class="grid gap-4 sm:grid-cols-3">
+              <div
+                class="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-xs text-white/70"
+              >
+                <div
+                  class="text-[10px] uppercase tracking-[0.25em] text-white/40"
+                >
+                  Floor (Ξ)
+                </div>
+                <div
+                  id="floor-price"
+                  class="mt-2 text-lg font-semibold text-white/90"
+                >
+                  --
+                </div>
+              </div>
+              <div
+                class="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-xs text-white/70"
+              >
+                <div
+                  class="text-[10px] uppercase tracking-[0.25em] text-white/40"
+                >
+                  Volume Traded (Ξ)
+                </div>
+                <div
+                  id="total-volume"
+                  class="mt-2 text-lg font-semibold text-white/90"
+                >
+                  --
+                </div>
+              </div>
+              <div
+                class="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-xs text-white/70"
+              >
+                <div
+                  class="text-[10px] uppercase tracking-[0.25em] text-white/40"
+                >
+                  Unique Holders
+                </div>
+                <div
+                  id="num-owners"
+                  class="mt-2 text-lg font-semibold text-white/90"
+                >
+                  --
+                </div>
+              </div>
+            </div>
+
+            <p id="sales-status" class="text-[11px] text-white/50">
+              NoMeta loading...
+            </p>
+
+            <!-- Recent sales list -->
+            <div class="space-y-3">
+              <h3
+                class="text-[11px] uppercase tracking-[0.25em] text-white/50"
+              >
+                Recent Sales
+              </h3>
+              <div
+                id="recent-sales-list"
+                class="space-y-2 text-xs text-white/70"
+              ></div>
+            </div>
+
+            <!-- Listed tokens -->
+            <div class="space-y-3">
+              <h3
+                class="text-[11px] uppercase tracking-[0.25em] text-white/50"
+              >
+                Listed No-Punks
+              </h3>
+              <div
+                id="listed-tokens-list"
+                class="space-y-2 text-xs text-white/70"
+              ></div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <!-- FOOTER -->
+      <footer class="border-t border-white/10 bg-black/80">
+        <div
+          class="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-4 text-[10px] text-white/40 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <span>NoPunks • A NoMeta project • Built on Base</span>
+          <span class="uppercase tracking-[0.25em]">
+            Lights Out • Traits Stay
+          </span>
+        </div>
+      </footer>
     </div>
-  </div>
 
-  <div class="tooltip" id="tooltip"></div>
-
-  <script>
-    /* ---------- TRAITS FINDER (instant with prebuilt index; falls back to worker) ---------- */
-    (function(){
-      const traitTypeSel  = document.getElementById('traitType');
-      const traitValueSel = document.getElementById('traitValue');
-      const traitQuick    = document.getElementById('traitQuick');
-      const traitGo       = document.getElementById('traitGo');
-      const traitStop     = document.getElementById('traitStop');
-      const traitGrid     = document.getElementById('traitGrid');
-      const traitStatus   = document.getElementById('traitStatus');
-
-      if (!traitTypeSel) return;
-
-      /* ---- Load type → values list (for the dropdowns) ---- */
-      const TRAIT_FILES = [
-        '/trait_values_by_type.json?v=4',
-        '/public/trait_values_by_type.json?v=4',
-        './trait_values_by_type.json?v=4',
-        './public/trait_values_by_type.json?v=4'
-      ];
-
-      async function loadTraitValues(){
-        for (const path of TRAIT_FILES){
-          try{
-            const r = await fetch(path, { cache: 'no-store' });
-            if (r.ok) return await r.json();
-          }catch(e){}
-        }
-        return null;
-      }
-
-      function fillTypeAndValues(map){
-        traitTypeSel.innerHTML = '';
-        const types = Object.keys(map || {});
-        for (const t of types){
-          const opt = document.createElement('option');
-          opt.value = t; opt.textContent = t;
-          traitTypeSel.appendChild(opt);
-        }
-        traitTypeSel.addEventListener('change', ()=>{
-          const v = traitTypeSel.value;
-          fillValues(map[v] || []);
-        });
-        const first = types[0] || '';
-        fillValues(map[first] || []);
-      }
-      function fillValues(values){
-        traitValueSel.innerHTML = '<option value="">— any —</option>';
-        for (const v of values){
-          const opt = document.createElement('option');
-          opt.value = v; opt.textContent = v;
-          traitValueSel.appendChild(opt);
-        }
-      }
-
-      /* ================= SPEED PLAN =================
-         Prefers a single prebuilt index file (fast), and only
-         falls back to the old "worker that reads 10k json files"
-         when that index file isn't available.
-         Prebuilt file path (any of these):
-           /public/traits_index.json
-           ./public/traits_index.json
-           /traits_index.json
-           ./traits_index.json
-         Shape:
-           {
-             "quickText": ["lowercased name + attributes per token index", ...], // length = TOTAL
-             "typeMap": { "TraitType": [localIndex,...] },
-             "pairMap": { "TraitType|Value": [localIndex,...] }
-           }
-      ================================================= */
-      let INDEX = null;         // { quickText, typeMap, pairMap }
-      let indexReady = false;   // true when INDEX loaded or worker finished
-      let building = false;     // true while worker builds (fallback)
-      let lastIssuedToken = 0;  // cancel in-flight searches
-      let currentSearchToken = 0;
-
-      const INDEX_PATHS = [
-        '/public/traits_index.json?v=4',
-        './public/traits_index.json?v=4',
-        '/traits_index.json?v=4',
-        './traits_index.json?v=4'
-      ];
-
-      async function tryLoadPrebuilt(){
-        if (INDEX || indexReady) return !!INDEX;
-        for (const p of INDEX_PATHS){
-          try{
-            const r = await fetch(p, { cache: 'no-store' });
-            if (r.ok){
-              const j = await r.json();
-              // Basic shape guard
-              if (j && Array.isArray(j.quickText) && j.typeMap && j.pairMap){
-                INDEX = j;
-                indexReady = true;
-                traitStatus.textContent = 'Index loaded.';
-                return true;
-              }
-            }
-          }catch(e){}
-        }
-        return false;
-      }
-
-      function doSearchPrebuilt(wantType, wantValue, quick){
-        const q = String(quick || '').toLowerCase().trim();
-        let base = null;
-
-        if (wantType && wantValue){
-          base = INDEX.pairMap[wantType + '|' + wantValue] || [];
-        } else if (wantType){
-          base = INDEX.typeMap[wantType] || [];
-        }
-
-        let out = [];
-        if (base){
-          if (q){
-            for (const i of base){ if (INDEX.quickText[i]?.includes(q)) out.push(i); }
-          } else {
-            out = base.slice();
-          }
-        } else if (q){
-          const qt = INDEX.quickText;
-          for (let i=0;i<qt.length;i++){ if (qt[i]?.includes(q)) out.push(i); }
-        } else {
-          out = [];
-        }
-        return out;
-      }
-
-      /* -------- Fallback worker (only if no prebuilt index) -------- */
-      let worker = null;
-      function ensureWorker(){
-        if (worker) return worker;
-        const src = `(() => {
-
-      let typeMap = Object.create(null);
-      let pairMap = Object.create(null);
-      let quickText = [];
-
-      function buildUrl(base, idx, ext){ return \`${'${'}base}${'${'}idx}.${'${'}ext}\`; }
-
-      async function fetchLocalJson(idx, bases){
-        for (const base of bases){
-          try{
-            const r = await fetch(buildUrl(base, idx, 'json'));
-            if (r.ok) return await r.json();
-          }catch(e){}
-        }
-        return null;
-      }
-
-      self.onmessage = async (e) => {
-        const { type } = e.data;
-        if (type === 'build') {
-          const total = e.data.total;
-          const bases = e.data.bases || ['./public/','/public/','./','/'];
-          const batch = e.data.batch || 64;
-
-          typeMap = Object.create(null);
-          pairMap = Object.create(null);
-          quickText = new Array(total);
-
-          for (let i=0;i<total;i+=batch){
-            const upto = Math.min(i+batch, total);
-            const promises = [];
-            for (let j=i;j<upto;j++){
-              promises.push(
-                fetchLocalJson(j, bases).then(meta => ({ j, meta }))
-              );
-            }
-            const results = await Promise.all(promises);
-            for (const { j, meta } of results){
-              let text = '';
-              if (meta){
-                if (meta.name) text += ' ' + String(meta.name);
-                if (Array.isArray(meta.attributes)){
-                  for (const a of meta.attributes){
-                    const t = String(a.trait_type || a.type || '');
-                    const v = String(a.value ?? '');
-                    (typeMap[t] ||= []).push(j);
-                    (pairMap[t + '|' + v] ||= []).push(j);
-                    text += ' ' + t + ' ' + v;
-                  }
-                }
-              }
-              quickText[j] = text.toLowerCase();
-            }
-            if ((i % (batch*2)) === 0) self.postMessage({ type:'progress', done: Math.min(i+batch,total), total });
-          }
-          self.postMessage({ type:'built' });
-        } else if (type === 'search') {
-          const { wantType, wantValue, text, total } = e.data;
-          let baseSet = null;
-          if (wantType && wantValue){
-            baseSet = new Set(pairMap[wantType + '|' + wantValue] || []);
-          } else if (wantType){
-            baseSet = new Set(typeMap[wantType] || []);
-          }
-          const q = String(text || '').toLowerCase().trim();
-          let out = [];
-          if (baseSet){
-            if (q){
-              for (const i of baseSet){ if (quickText[i]?.includes(q)) out.push(i); }
-            } else {
-              out = Array.from(baseSet);
-            }
-          } else {
-            if (q){
-              for (let i=0;i<total;i++){ if (quickText[i]?.includes(q)) out.push(i); }
-            } else {
-              out = []; // no criteria → no scan
-            }
-          }
-          self.postMessage({ type:'searchResult', result: out });
-        }
-      };
-    })();`;
-
-        worker = new Worker(URL.createObjectURL(new Blob([src], { type:'application/javascript' })));
-        worker.onmessage = (e)=>{
-          const { type } = e.data || {};
-          if (type === 'progress'){
-            const { done, total } = e.data;
-            traitStatus.textContent = `Indexing ${done}/${TOTAL}…`;
-          } else if (type === 'built'){
-            indexReady = true; building = false;
-            traitStatus.textContent = 'Index ready.';
-            if (pendingSearch){ const { wantType, wantValue, text, token } = pendingSearch; pendingSearch = null; doWorkerSearch(wantType, wantValue, text, token); }
-          } else if (type === 'searchResult'){
-            const token = currentSearchToken;
-            if (!token || token !== lastIssuedToken) return;
-            renderResults(e.data.result || []);
-          }
-        };
-        return worker;
-      }
-
-      let pendingSearch = null;
-
-      function maybeStartIndex(){
-        if (indexReady || building) return;
-        building = true;
-        traitStatus.textContent = 'Indexing 0/' + TOTAL + '…';
-        ensureWorker();
-        worker.postMessage({ type:'build', total: TOTAL, bases: LOCAL_BASES, batch: 64 });
-      }
-
-      function doWorkerSearch(wantType, wantValue, quick, token){
-        ensureWorker();
-        currentSearchToken = token;
-        worker.postMessage({ type:'search', wantType, wantValue, text: quick, total: TOTAL });
-      }
-
-      // Start: try to load prebuilt when tab opened
-      document.addEventListener('click', async (e)=>{
-        const t = e.target.closest('.tab');
-        if (t && t.dataset.target === 'traits'){
-          const ok = await tryLoadPrebuilt();
-          if (!ok && !indexReady && !building){
-            traitStatus.textContent = 'No prebuilt index found. Building in the background…';
-            maybeStartIndex();
-          }
-        }
-      });
-
-      // Search button
-      traitGo?.addEventListener('click', async ()=>{
-        const token = ++lastIssuedToken; currentSearchToken = token;
-        const wantType = String(traitTypeSel.value || '').trim();
-        const wantValue = String(traitValueSel.value || '').trim();
-        const quick = String(traitQuick.value || '').trim();
-
-        if (!wantType && !quick){ traitStatus.textContent = 'Pick a Type or enter Quick text.'; return; }
-
-        // Prefer prebuilt
-        if (await tryLoadPrebuilt()){
-          traitStatus.textContent = 'Searching…';
-          const result = doSearchPrebuilt(wantType, wantValue, quick);
-          renderResults(result);
-          return;
-        }
-
-        // Fallback to worker
-        traitStatus.textContent = indexReady ? 'Searching…' : 'Indexing… then searching…';
-        if (!indexReady){ pendingSearch = { wantType, wantValue, text: quick, token }; maybeStartIndex(); return; }
-        doWorkerSearch(wantType, wantValue, quick, token);
-      });
-
-      // Stop button
-      traitStop?.addEventListener('click', ()=>{ lastIssuedToken++; traitStatus.textContent = 'Stopped.'; });
-
-      // Render helpers
-      function renderResults(localIdxs){
-        traitGrid.innerHTML = '';
-        if (!localIdxs || !localIdxs.length){ traitStatus.textContent = 'No matches.'; return; }
-
-        let i = 0;
-        const BATCH = 64;
-        function step(){
-          const end = Math.min(i + BATCH, localIdxs.length);
-          for (; i < end; i++){
-            const idx = localIdxs[i];
-            const chainId = chainIdForLocal(idx);
-            fetchLocalJson(idx).then(meta=>{
-              traitGrid.appendChild(makeResultTile(idx, chainId, meta));
-            });
-          }
-          if (i < localIdxs.length){
-            traitStatus.textContent = `Rendering ${i}/${localIdxs.length}…`;
-            requestAnimationFrame(step);
-          } else {
-            traitStatus.textContent = `Done. Found ${localIdxs.length}`;
-          }
-        }
-        step();
-      }
-
-      function makeResultTile(localIndex, onChainId, meta){
-        const a = document.createElement('a');
-        a.className = 'tile';
-        a.target = '_blank'; a.rel='noopener noreferrer';
-        a.href = OPENSEA_ITEM_BASE + String(onChainId);
-
-        const num = document.createElement('span');
-        num.className = 'num';
-        num.textContent = `#${onChainId}`;
-        a.appendChild(num);
-
-        const img = document.createElement('img');
-        img.alt = `No-Punk #${onChainId}`;
-        img.loading='lazy';
-        img.decoding='async';
-        img.draggable=false;
-        img.style.pointerEvents='none';
-        loadImageForIndex(localIndex, img);
-        a.appendChild(img);
-
-        let html = `<h4>No-Punk #${onChainId}</h4>`;
-        if (meta && Array.isArray(meta.attributes)){
-          html += meta.attributes.map(t => `${t.trait_type}: ${t.value}`).join('<br>');
-        } else {
-          html += 'No traits found';
-        }
-        const move = (e)=>{
-          const p = e.touches ? e.touches[0] : e;
-          showTip(p.clientX, p.clientY, html);
-        };
-        a.addEventListener('mouseenter', move);
-        a.addEventListener('mousemove', move);
-        a.addEventListener('mouseleave', hideTip);
-        a.addEventListener('touchstart', move, {passive:true});
-        a.addEventListener('touchmove',  move, {passive:true});
-        a.addEventListener('touchend',   hideTip);
-
-        a.addEventListener('click', (ev)=>{ ev.preventDefault(); ev.stopPropagation(); window.open(a.href, '_blank', 'noopener'); });
-        return a;
-      }
-
-      // Boot dropdowns
-      loadTraitValues().then(map=>{
-        if (!map){ traitStatus.textContent = 'Missing trait_values_by_type.json'; return; }
-        fillTypeAndValues(map);
-      });
-    })();
-
-    /* ---------- CONFIG ---------- */
-    const TOTAL = 10000;                       // local files 0..9999
-    const PAGE_SIZE = 50;                      // grid page size
-    const LOCAL_BASES = ['./public/', '/public/', './', '/']; // robust local asset bases
-    const CONTRACT = '0x4ed83635e2309a7c067d0f98efca47b920bf79b1';
-    const OPENSEA_ITEM_BASE = `https://opensea.io/item/base/${CONTRACT}/`;
-
-    /* ---------- TABS ---------- */
-    function activate(id){
-      document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.target===id));
-      document.querySelectorAll('.section').forEach(s => s.classList.toggle('active', s.id===id));
-    }
-    document.addEventListener('click', e=>{
-      const t=e.target.closest('.tab'); if(!t) return;
-      activate(t.dataset.target);
-      if (t.dataset.target==='collection' && !document.getElementById('grid').childElementCount){ renderPage(0); }
-    });
-
-    /* ---------- TOOLTIP ---------- */
-    const tip = document.getElementById('tooltip');
-    function showTip(x,y,html){ tip.innerHTML=html; tip.style.left=(x+14)+'px'; tip.style.top=(y+14)+'px'; tip.style.display='block'; }
-    function hideTip(){ tip.style.display='none'; }
-
-    /* ---------- PATH HELPERS ---------- */
-    function buildUrl(base, idx, ext){ return `${base}${idx}.${ext}`; }
-
-    function loadImageForIndex(idx, imgEl){
-      let attempt = 0;
-      const tryNext = ()=>{
-        if (attempt >= LOCAL_BASES.length){ return; }
-        imgEl.src = buildUrl(LOCAL_BASES[attempt++], idx, 'png');
-      };
-      imgEl.onerror = tryNext;
-      tryNext();
-    }
-
-    async function fetchLocalJson(idx){
-      for (const base of LOCAL_BASES){
-        try{
-          const r = await fetch(buildUrl(base, idx, 'json'));
-          if (r.ok) return await r.json();
-        }catch(e){}
-      }
-      return null;
-    }
-
-    /* ---------- TOKEN MAP (supports 0- or 1-based keys) ---------- */
-    let TOKEN_MAP = null;
-    let MAP_IS_ONE_BASED_KEYS = false;
-    let INVERSE_MAP = null;
-
-    function toInt(n){ const x = parseInt(n,10); return Number.isFinite(x) ? x : NaN; }
-
-    async function loadTokenMap(){
-      try{
-        const candidates = [
-          './public/token_map.json',
-          '/public/token_map.json',
-          './token_map.json',
-          '/token_map.json'
-        ];
-        let raw = null;
-        for (const p of candidates){
-          try{
-            const r = await fetch(p, { cache:'no-store' });
-            if (r.ok){ raw = await r.json(); break; }
-          }catch(e){}
-        }
-        if (!raw) throw 0;
-
-        TOKEN_MAP = {};
-        if (Array.isArray(raw)){
-          raw.forEach((v,i)=>{ const n = toInt(v); if (Number.isFinite(n)) TOKEN_MAP[i] = n; });
-        } else if (raw && typeof raw === 'object'){
-          for (const [k,v] of Object.entries(raw)){
-            const ki = toInt(k), vi = toInt(v);
-            if (Number.isFinite(ki) && Number.isFinite(vi)) TOKEN_MAP[ki] = vi;
-          }
-        }
-
-        const hasZero = Object.prototype.hasOwnProperty.call(TOKEN_MAP, 0);
-        const hasOne  = Object.prototype.hasOwnProperty.call(TOKEN_MAP, 1);
-        MAP_IS_ONE_BASED_KEYS = !hasZero && hasOne;
-
-        INVERSE_MAP = {};
-        for (const [kStr, v] of Object.entries(TOKEN_MAP)){
-          const k = toInt(kStr);
-          const localIndex = MAP_IS_ONE_BASED_KEYS ? (k - 1) : k;
-          if (localIndex >= 0) INVERSE_MAP[v] = localIndex;
-        }
-
-        console.log('token_map loaded:', Object.keys(TOKEN_MAP).length, 'entries;',
-                    MAP_IS_ONE_BASED_KEYS ? '1-based keys' : '0-based keys');
-      }catch(e){
-        console.warn('No valid token_map.json found. Using identity mapping.');
-        TOKEN_MAP = null; MAP_IS_ONE_BASED_KEYS = false; INVERSE_MAP = null;
-      }
-    }
-
-    function chainIdForLocal(localIdx){
-      if (!TOKEN_MAP) return localIdx + 1;
-      const lookupKey = MAP_IS_ONE_BASED_KEYS ? (localIdx + 1) : localIdx;
-      const v = TOKEN_MAP[lookupKey];
-      return Number.isFinite(v) ? v : (localIdx + 1);
-    }
-
-    function localForChain(chainId){
-      if (!INVERSE_MAP) return chainId - 1;
-      if (Object.prototype.hasOwnProperty.call(INVERSE_MAP, chainId)) return INVERSE_MAP[chainId];
-      return chainId - 1;
-    }
-
-    /* ---------- COLLECTION GRID ---------- */
-    const grid  = document.getElementById('grid');
-    const label = document.getElementById('rangeLabel');
-    let pageStart = 0;
-
-    function tileFromLocal(localIndex){
-      const a = document.createElement('a');
-      a.className = 'tile';
-      a.target = '_blank'; a.rel='noopener noreferrer';
-
-      const chainId = chainIdForLocal(localIndex);
-
-      const num = document.createElement('span');
-      num.className = 'num';
-      num.textContent = `#${chainId}`;
-      a.appendChild(num);
-
-      const img = document.createElement('img');
-      img.alt = `No-Punk`;
-      img.loading='lazy';
-      img.decoding='async';
-      img.draggable=false;
-      img.style.pointerEvents='none';
-      loadImageForIndex(localIndex, img);
-      a.appendChild(img);
-
-      a.href = OPENSEA_ITEM_BASE + String(chainId);
-
-      // Tooltip
-      fetchLocalJson(localIndex).then(meta=>{
-        let html = `<h4>No-Punk #${chainId}</h4>`;
-        if (meta && Array.isArray(meta.attributes) && meta.attributes.length){
-          html += meta.attributes.map(t => `${t.trait_type}: ${t.value}`).join('<br>');
-        } else {
-          html += 'No traits found';
-        }
-        const move = (e)=>{
-          const p = e.touches ? e.touches[0] : e;
-          showTip(p.clientX, p.clientY, html);
-        };
-        a.addEventListener('mouseenter', move);
-        a.addEventListener('mousemove', move);
-        a.addEventListener('mouseleave', hideTip);
-        a.addEventListener('touchstart', move, {passive:true});
-        a.addEventListener('touchmove',  move, {passive:true});
-        a.addEventListener('touchend',   hideTip);
-      });
-
-      // Defensive click: always force OpenSea
-      a.addEventListener('click', (ev)=>{
-        ev.preventDefault();
-        ev.stopPropagation();
-        window.open(a.href, '_blank', 'noopener');
-      });
-
-      return a;
-    }
-
-    function renderPage(start){
-      hideTip();
-      const s = Math.max(0, Math.min(TOTAL-1, start));
-      pageStart = s;
-      grid.innerHTML = '';
-      const end = Math.min(TOTAL, s + PAGE_SIZE);
-      for (let i=s; i<end; i++){
-        grid.appendChild(tileFromLocal(i));
-      }
-      if (label) label.textContent = `Showing ${s+1}–${end} of ${TOTAL}`;
-    }
-
-    document.getElementById('prev').addEventListener('click', ()=> renderPage(Math.max(0, pageStart - PAGE_SIZE)));
-    document.getElementById('next').addEventListener('click', ()=> renderPage(Math.min(TOTAL-1, pageStart + PAGE_SIZE)));
-
-    /* ---------- SEARCH (by on-chain id; shows local image best-effort) ---------- */
-    let __dlBlobUrl = null;
-    function parseChainId(v){
-      if (!v) return NaN;
-      let s = String(v).trim();
-      if (s.startsWith('#')) s = s.slice(1);
-      const n = parseInt(s,10);
-      return (isNaN(n) || n < 1 || n > 100000) ? NaN : n;
-    }
-
-    async function renderSingle(chainId){
-      const localIndex = localForChain(chainId);
-
-      const canvas = document.getElementById('searchCanvas');
-      const ctx = canvas.getContext('2d');
-      ctx.imageSmoothingEnabled = false;
-      ctx.clearRect(0,0,canvas.width,canvas.height);
-      ctx.fillStyle = '#000'; ctx.fillRect(0,0,canvas.width,canvas.height);
-
-      const dlBtn = document.getElementById('downloadPNG');
-      if (dlBtn){
-        dlBtn.style.display='none';
-        if (__dlBlobUrl){ URL.revokeObjectURL(__dlBlobUrl); __dlBlobUrl = null; }
-      }
-
-      let drawn = false;
-
-      // draw local image (tries all bases)
-      await new Promise((resolve)=>{
-        let attempt = 0;
-        const im = new Image();
-        const tryNext = () => {
-          if (attempt >= LOCAL_BASES.length) { resolve(); return; }
-          im.onload = () => {
-            const scale = Math.min(canvas.width/im.width, canvas.height/im.height);
-            const w = Math.round(im.width*scale), h = Math.round(im.height*scale);
-            const x = Math.floor((canvas.width-w)/2), y = Math.floor((canvas.height-h)/2);
-            ctx.drawImage(im, x, y, w, h);
-            drawn = true;
-            resolve();
-          };
-          im.onerror = () => { attempt++; tryNext(); };
-          im.src = buildUrl(LOCAL_BASES[attempt], localIndex, 'png');
-        };
-        tryNext();
-      });
-
-      // traits (local JSON)
-      const meta = await fetchLocalJson(localIndex);
-      const traitsHtml = (meta && Array.isArray(meta.attributes) && meta.attributes.length)
-        ? meta.attributes.map(t=>`${t.trait_type}: ${t.value}`).join('<br>')
-        : 'No traits found';
-      document.getElementById('searchMeta').innerHTML = `<h4>No-Punk #${chainId}</h4>${traitsHtml}`;
-
-      // OpenSea button
-      const osBtn = document.getElementById('searchOS');
-      osBtn.href = OPENSEA_ITEM_BASE + String(chainId);
-      osBtn.textContent='View Token';
-      osBtn.style.display='inline-block';
-
-      // Download PNG button
-      if (dlBtn && drawn){
-        const filename = `NoPunk-${chainId}.png`;
-        if (canvas.toBlob){
-          canvas.toBlob((blob)=>{
-            if (!blob){
-              const url = canvas.toDataURL('image/png');
-              dlBtn.href = url;
-              dlBtn.setAttribute('download', filename);
-              dlBtn.style.display='inline-block';
-              return;
-            }
-            __dlBlobUrl = URL.createObjectURL(blob);
-            dlBtn.href = __dlBlobUrl;
-            dlBtn.setAttribute('download', filename);
-            dlBtn.style.display='inline-block';
-          }, 'image/png');
-        } else {
-          const url = canvas.toDataURL('image/png');
-          dlBtn.href = url;
-          dlBtn.setAttribute('download', filename);
-          dlBtn.style.display='inline-block';
-        }
-      }
-    }
-
-    /* ---------- BOOT ---------- */
-    window.addEventListener('DOMContentLoaded', ()=>{
-      (async ()=>{
-        await loadTokenMap();     // ensure mapping is ready before first paint
-        activate('collection');
-        renderPage(0);
-
-        const sInput=document.getElementById('searchInput');
-        const sBtn  =document.getElementById('searchBtn');
-        sBtn.addEventListener('click', ()=>{
-          const id = parseChainId(sInput.value);
-          if (Number.isNaN(id)) { alert('Enter a valid token id'); return; }
-          activate('search');
-          renderSingle(id);
-        });
-        sInput.addEventListener('keydown', e=>{ if (e.key==='Enter') sBtn.click(); });
-      })();
-    });
-    window.addEventListener('beforeunload', ()=>{ if (__dlBlobUrl) { URL.revokeObjectURL(__dlBlobUrl); } });
-  </script>
-</body>
+    <!-- Global traits tooltip used by website.js (liquid glass hover) -->
+    <div
+      id="np-traits-tooltip"
+      class="np-traits-tooltip hidden"
+      role="tooltip"
+      aria-live="polite"
+    >
+      <div class="np-traits-header"></div>
+      <div class="np-traits-body"></div>
+    </div>
+
+    <script src="/assets/website.js" defer></script>
+  </body>
 </html>

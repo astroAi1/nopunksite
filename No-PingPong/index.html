@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>No-PingPong · NoPunks on Base</title>
+    <link rel="stylesheet" href="./style.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+  </head>
+  <body>
+    <main class="wrapper">
+      <header class="header">
+        <div class="header-top">
+          <div class="title-block">
+            <h1>NO-PINGPONG</h1>
+            <p class="subtitle">
+              Pick your NoPunks, then play Pong.<br />
+              <span>Left: W/S · Right: CPU</span>
+            </p>
+          </div>
+
+          <div class="wallet">
+            <button id="connect-wallet" class="wallet-btn">Connect Wallet</button>
+            <div class="wallet-meta">
+              <span id="wallet-address" class="wallet-address">Not connected</span>
+              <span id="wallet-network" class="wallet-network">Target: Base</span>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Top row: controls only -->
+      <section class="controls">
+        <div class="player-control">
+          <h2>Left Player</h2>
+          <label>
+            NoPunk ID
+            <input
+              id="left-id"
+              type="number"
+              min="0"
+              max="9999"
+              value="0"
+            />
+          </label>
+          <canvas id="left-preview" width="72" height="72"></canvas>
+        </div>
+
+        <div class="player-control">
+          <h2>Right Player (CPU)</h2>
+          <label>
+            NoPunk ID
+            <input
+              id="right-id"
+              type="number"
+              min="0"
+              max="9999"
+              value="1"
+            />
+          </label>
+          <canvas id="right-preview" width="72" height="72"></canvas>
+        </div>
+
+        <div class="buttons">
+          <button id="randomize">Randomize Players</button>
+          <button id="reset">Reset Rally</button>
+        </div>
+      </section>
+
+      <!-- Bottom row: game on the left, leaderboard + online on the right -->
+      <section class="bottom-row">
+        <div class="bottom-left">
+          <section class="game-area">
+            <canvas id="game" width="800" height="400"></canvas>
+            <div class="score">
+              <span id="score-left">0</span>
+              <span class="score-separator">:</span>
+              <span id="score-right">0</span>
+            </div>
+          </section>
+        </div>
+
+        <div class="bottom-right">
+          <section class="leaderboard">
+            <div class="leaderboard-header">
+              <h2>Session Leaderboard</h2>
+              <p>Connect your Base wallet and play. Scores are local for now – ready for prizes later.</p>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Player</th>
+                  <th>Points For</th>
+                  <th>Points Against</th>
+                  <th>Diff</th>
+                </tr>
+              </thead>
+              <tbody id="leaderboard-body">
+                <tr class="placeholder">
+                  <td colspan="4">Connect your wallet and start scoring to appear here.</td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section class="online">
+            <div class="online-header">
+              <h2>Players Online</h2>
+              <p>Connect your wallet to appear online. Invites are local stubs for now – plug into Base later.</p>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Player</th>
+                  <th>Status</th>
+                  <th>Invite</th>
+                </tr>
+              </thead>
+              <tbody id="online-body">
+                <tr class="placeholder">
+                  <td colspan="3">No other players online yet.</td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <script src="./grind.js"></script>
+  </body>
+</html>

@@ -11,4 +11,4 @@
   Cache-Control: no-cache
 
 /public/trait_values_by_type.json
-  Cache-Control: no-cache
+  Cache-Control: no-cache 

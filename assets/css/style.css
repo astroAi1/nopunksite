@@ -868,3 +868,14 @@ footer span {
     height: 30rem;
   }
 }
+.np-tabs {
+  flex-wrap: wrap;
+}
+
+@media (max-width: 480px) {
+  .np-tab {
+    flex: 1 1 45%;
+    text-align: center;
+    margin-bottom: 0.15rem;
+  }
+}

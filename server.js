@@ -1,6 +1,6 @@
 // server.js
 // NoPunks site server
-// - Serves static files
+// - Serves static files (if needed)
 // - Proxies OpenSea for NFT metadata + stats + sales + listings
 // - Uses token_map.json to map 0–9999 index -> real token ID
 // - Exposes /api/showcase for daily rotating cross-collection picks
@@ -17,11 +17,22 @@ const PORT = process.env.PORT || 3000;
 // -----------------------------
 // CONFIG
 // -----------------------------
-const CHAIN = process.env.CHAIN || 'base';
+// Prefer OPENSEA_* envs if present (matches your .env),
+// fall back to older names or hard-coded defaults.
+const CHAIN =
+  process.env.OPENSEA_CHAIN ||
+  process.env.CHAIN ||
+  'base';
+
 const CONTRACT =
+  process.env.OPENSEA_CONTRACT ||
   process.env.CONTRACT ||
   '0x4ed83635e2309a7c067d0f98efca47b920bf79b1'; // NoPunks contract
-const COLLECTION_SLUG = process.env.COLLECTION_SLUG || 'nopunkism';
+
+const COLLECTION_SLUG =
+  process.env.OPENSEA_COLLECTION_SLUG ||
+  process.env.COLLECTION_SLUG ||
+  'nopunkism';
 
 // Side collections
 const NOPNUK_CONTRACT =
@@ -115,6 +126,8 @@ const nftCache = new Map();
 // -----------------------------
 // STATIC FILES
 // -----------------------------
+// This lets you serve static files if you hit this server directly.
+// (Your main site is on Netlify/Vercel; this doesn’t hurt.)
 app.use(express.static(path.join(__dirname)));
 
 // -----------------------------
@@ -248,6 +261,56 @@ app.get('/api/nft/:index', async (req, res) => {
   } catch (err) {
     console.error('NFT API error:', err.message || err);
     res.status(500).json({ error: 'Failed to fetch NFT from OpenSea' });
+  }
+});
+
+// =======================
+// /api/collection
+// (used by website.js for the main grid)
+// =======================
+app.get('/api/collection', async (req, res) => {
+  try {
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const pageSizeRaw = parseInt(req.query.pageSize, 10) || 50;
+    const pageSize = Math.min(Math.max(pageSizeRaw, 1), 50); // OpenSea limit 50
+    const offset = (page - 1) * pageSize;
+
+    const url =
+      `https://api.opensea.io/api/v2/collection/${COLLECTION_SLUG}/nfts` +
+      `?limit=${pageSize}&offset=${offset}&chain=${CHAIN}`;
+
+    const data = await queueOpenSeaRequest(url, 'Collection page', 25000);
+
+    const nfts = Array.isArray(data.nfts)
+      ? data.nfts
+      : Array.isArray(data.assets)
+      ? data.assets
+      : [];
+
+    const tokens = nfts.map((nft) => {
+      const image_url = normaliseImageUrl(
+        nft.image_url ||
+          nft.image_original_url ||
+          nft.display_image_url ||
+          (nft.media &&
+            nft.media[0] &&
+            (nft.media[0].thumbnail || nft.media[0].gateway)) ||
+          ''
+      );
+      return { ...nft, image_url };
+    });
+
+    res.json({
+      tokens,
+      total: NOPUNKS_SUPPLY, // frontend already has fallback; we give the exact supply here
+    });
+  } catch (err) {
+    console.error('Collection API error:', err.message || err);
+    res.status(502).json({
+      tokens: [],
+      total: NOPUNKS_SUPPLY,
+      error: 'Collection unavailable',
+    });
   }
 });
 
@@ -474,11 +537,27 @@ app.get('/api/stats', async (req, res) => {
     if (totalVolume != null) rawStats.total_volume = totalVolume;
     if (numOwners != null) rawStats.num_owners = numOwners;
 
+    // Match what website.js expects (various key names on top-level)
     res.json({
+      // canonical
       floorPrice,
       totalVolume,
       numOwners,
       stats: rawStats,
+
+      // aliases for the frontend helper
+      floorPriceEth: floorPrice,
+      floor_price_eth: floorPrice,
+      floor_price: floorPrice,
+      floor: floorPrice,
+
+      totalVolumeEth: totalVolume,
+      total_volume_eth: totalVolume,
+      total_volume: totalVolume,
+      volume: totalVolume,
+
+      num_owners: numOwners,
+      owners: numOwners,
     });
   } catch (err) {
     console.error('Stats API error:', err.message || err);
@@ -493,9 +572,9 @@ app.get('/api/stats', async (req, res) => {
 });
 
 // =======================
-// /api/recent-sales
+// /api/recent-sales + alias /api/sales/recent
 // =======================
-app.get('/api/recent-sales', async (req, res) => {
+async function handleRecentSales(req, res) {
   try {
     const url =
       `https://api.opensea.io/api/v2/events/collection/${COLLECTION_SLUG}` +
@@ -536,6 +615,7 @@ app.get('/api/recent-sales', async (req, res) => {
 
       return {
         onChainId: tokenId,
+        token_id: tokenId ? String(tokenId) : null, // for website.js getTokenId(...)
         price,
         unit: symbol,
         time,
@@ -548,7 +628,10 @@ app.get('/api/recent-sales', async (req, res) => {
     console.error('Recent sales API error:', err.message || err);
     res.status(502).json({ sales: [], error: 'Recent sales unavailable' });
   }
-});
+}
+
+app.get('/api/recent-sales', handleRecentSales);
+app.get('/api/sales/recent', handleRecentSales); // alias used by website.js
 
 // =======================
 // /api/listed
@@ -594,6 +677,7 @@ app.get('/api/listed', async (req, res) => {
 
       return {
         onChainId: tokenId,
+        token_id: tokenId ? String(tokenId) : null, // for website.js helper
         price,
         unit: 'ETH',
         source: 'OpenSea',

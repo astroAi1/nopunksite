@@ -8,8 +8,8 @@
   // CONFIG
   // =========================
 
-  // Backend API base (Render)
-  // If Render gave you a different URL, change it here.
+  // Backend API base
+  // Empty string = same origin (works for onrender.com and nopunks.xyz)
   const API_BASE = "https://nopunksite.onrender.com";
 
   const TOTAL_SUPPLY = 10000;
@@ -21,6 +21,7 @@
 
   function apiUrl(path) {
     if (path.startsWith("http")) return path;
+    if (!API_BASE) return path; // same-origin relative requests
     return `${API_BASE}${path}`;
   }
 
@@ -524,7 +525,7 @@
           console.warn("Stats fetch failed", err);
           return {};
         }),
-        fetchJson("/api/sales/recent").catch((err) => {
+        fetchJson("/api/recent-sales").catch((err) => {
           console.warn("Recent sales fetch failed", err);
           return {};
         }),

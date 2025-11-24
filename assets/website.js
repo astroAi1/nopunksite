@@ -31,7 +31,7 @@
 
   async function fetchJson(path) {
     const res = await fetch(apiUrl(path), {
-      headers: { "Accept": "application/json" }
+      headers: { Accept: "application/json" }
     });
     if (!res.ok) {
       throw new Error(`HTTP ${res.status} for ${path}`);
@@ -88,10 +88,12 @@
   let isLoadingCollection = false;
 
   function getTokenId(token) {
+    if (!token) return "";
     return (
       token.token_id ||
       token.tokenId ||
       token.onChainId ||
+      (token.id && token.id.tokenId) ||
       token.id ||
       token.identifier ||
       ""
@@ -103,31 +105,54 @@
   }
 
   function getTokenImageUrl(token) {
+    if (!token) return "";
+    const t = token.nft || token; // handle nested nft objects just in case
     return (
-      token.image_url ||
-      token.image ||
-      token.image_original_url ||
-      (token.media && token.media[0] && token.media[0].gateway) ||
+      t.image_url ||
+      t.image ||
+      t.image_original_url ||
+      t.display_image_url ||
+      (t.media && t.media[0] && (t.media[0].gateway || t.media[0].thumbnail)) ||
       ""
     );
   }
 
   function getTokenPermalink(token, tokenId) {
-    if (token.permalink) return token.permalink;
-    if (token.external_url) return token.external_url;
-    if (token.opensea_url) return token.opensea_url;
+    if (!token) return "#";
+    const t = token.nft || token;
+    if (t.permalink) return t.permalink;
+    if (t.external_url) return t.external_url;
+    if (t.opensea_url) return t.opensea_url;
     if (!tokenId) return "#";
     // Fallback OpenSea URL for Base
     return `https://opensea.io/assets/base/0x4ed83635e2309a7c067d0f98efca47b920bf79b1/${tokenId}`;
   }
 
   function getTokenTraits(token) {
+    if (!token) return [];
+
+    // direct traits/attributes
     if (Array.isArray(token.traits)) return token.traits;
     if (Array.isArray(token.attributes)) return token.attributes;
-    if (token.metadata) {
-      if (Array.isArray(token.metadata.traits)) return token.metadata.traits;
-      if (Array.isArray(token.metadata.attributes)) return token.metadata.attributes;
+
+    // common metadata containers
+    const metaSources = [
+      token.metadata,
+      token.raw_metadata,
+      token.openSeaMetadata,
+      token.meta
+    ];
+    for (const meta of metaSources) {
+      if (!meta) continue;
+      if (Array.isArray(meta.traits)) return meta.traits;
+      if (Array.isArray(meta.attributes)) return meta.attributes;
     }
+
+    // nested nft object (some OpenSea responses wrap it)
+    if (token.nft && token.nft !== token) {
+      return getTokenTraits(token.nft);
+    }
+
     return [];
   }
 
@@ -135,7 +160,7 @@
     const totalPages = Math.ceil((total || TOTAL_SUPPLY) / PAGE_SIZE);
 
     const html = tokens
-      .map((token) => {
+      .map((token, idx) => {
         const tokenId = getTokenId(token);
         const displayId = tokenId ? `NO-PUNK #${tokenId}` : "NO-PUNK";
         const name = getTokenName(token, tokenId);
@@ -143,12 +168,18 @@
         const permalink = getTokenPermalink(token, tokenId);
         const traits = getTokenTraits(token);
 
-        const traitsJson = encodeURIComponent(JSON.stringify(traits));
+        // 0–9999 index into the full collection (used for /api/nft/:index)
+        const globalIndex = (page - 1) * PAGE_SIZE + idx;
+
+        const traitsJson = encodeURIComponent(JSON.stringify(traits || []));
 
         return `
-          <article class="np-card" data-token-id="${safeText(
-            tokenId
-          )}" data-traits="${traitsJson}">
+          <article
+            class="np-card"
+            data-token-id="${safeText(tokenId)}"
+            data-index="${globalIndex}"
+            data-traits="${traitsJson}"
+          >
             <a class="np-card-link" href="${permalink}" target="_blank" rel="noreferrer">
               <div class="np-card-image-wrap">
                 <img src="${imageUrl}" alt="${name}" loading="lazy" />
@@ -268,7 +299,10 @@
 
     // Default: to the right of the card
     let top =
-      cardRect.top + window.scrollY + cardRect.height / 2 - tooltipRect.height / 2;
+      cardRect.top +
+      window.scrollY +
+      cardRect.height / 2 -
+      tooltipRect.height / 2;
     let left = cardRect.right + 16 + window.scrollX;
 
     // If it would overflow right, flip to left side
@@ -285,6 +319,18 @@
     tooltip.style.left = `${left}px`;
   }
 
+  function parseTraitsFromDataset(cardEl) {
+    try {
+      const encoded = cardEl.dataset.traits;
+      if (!encoded) return [];
+      const decoded = decodeURIComponent(encoded);
+      const traits = JSON.parse(decoded);
+      return Array.isArray(traits) ? traits : [];
+    } catch {
+      return [];
+    }
+  }
+
   function showTooltipForCard(cardEl) {
     const tooltip = ensureTooltipEl();
     const headerEl = tooltip.querySelector(".np-traits-header");
@@ -293,19 +339,58 @@
     const tokenId = cardEl.dataset.tokenId || "";
     headerEl.textContent = tokenId ? `NO-PUNK #${tokenId}` : "NO-PUNK";
 
-    let traits = [];
-    try {
-      const encoded = cardEl.dataset.traits || "[]";
-      const decoded = decodeURIComponent(encoded);
-      traits = JSON.parse(decoded);
-    } catch (err) {
-      traits = [];
+    let traits = parseTraitsFromDataset(cardEl);
+
+    // If we already have traits, render immediately.
+    if (traits.length > 0) {
+      bodyEl.innerHTML = formatTraitsForTooltip(traits);
+      tooltip.classList.remove("hidden");
+      positionTooltip(cardEl.getBoundingClientRect());
+      return;
     }
 
-    bodyEl.innerHTML = formatTraitsForTooltip(traits);
-
+    // Otherwise, show loading state and fetch from /api/nft/:index
+    bodyEl.innerHTML =
+      '<div class="np-traits-empty">Loading traits…</div>';
     tooltip.classList.remove("hidden");
     positionTooltip(cardEl.getBoundingClientRect());
+
+    const indexStr = cardEl.dataset.index;
+    const index = parseInt(indexStr, 10);
+    if (Number.isNaN(index) || index < 0 || index >= TOTAL_SUPPLY) {
+      bodyEl.innerHTML =
+        '<div class="np-traits-empty">Traits unavailable.</div>';
+      return;
+    }
+
+    // Avoid duplicate fetches
+    if (cardEl.dataset.traitsLoading === "1") {
+      return;
+    }
+    cardEl.dataset.traitsLoading = "1";
+
+    fetchJson(`/api/nft/${index}`)
+      .then((nft) => {
+        const freshTraits = getTokenTraits(nft) || [];
+        cardEl.dataset.traits = encodeURIComponent(
+          JSON.stringify(freshTraits)
+        );
+        delete cardEl.dataset.traitsLoading;
+
+        // Only update if tooltip is still visible for this card
+        if (!tooltip.classList.contains("hidden")) {
+          bodyEl.innerHTML = formatTraitsForTooltip(freshTraits);
+          positionTooltip(cardEl.getBoundingClientRect());
+        }
+      })
+      .catch((err) => {
+        console.error("Trait fetch error:", err);
+        delete cardEl.dataset.traitsLoading;
+        if (!tooltip.classList.contains("hidden")) {
+          bodyEl.innerHTML =
+            '<div class="np-traits-empty">Traits unavailable.</div>';
+        }
+      });
   }
 
   function hideTooltip() {
@@ -335,12 +420,25 @@
   const showcaseStatusEl = document.getElementById("showcase-status");
 
   function getProjectLabel(item) {
+    if (!item) return "NOPUNKS • NOMETA";
+
     // Prefer explicit label from the API if present
     if (item.projectLabel) return item.projectLabel;
     if (item.project_header) return item.project_header;
 
-    const slug = (item.project || item.collection || "").toLowerCase();
+    // Our server sends `key` and `label` for showcase entries
+    const key = (item.key || "").toLowerCase();
+    if (key.includes("pnuk")) return "NOPNUK • NOMETA";
+    if (key.includes("pixelpepen")) return "NO-PIXELPEPEN • NOMETA";
+    if (key.includes("tiny") || key.includes("dino"))
+      return "NO-TINYDINOS • NOMETA";
 
+    if (item.label) {
+      // Generic label -> UPPERCASE • NOMETA, e.g. "NoPunks" -> "NOPUNKS • NOMETA"
+      return `${safeText(item.label, "").toUpperCase()} • NOMETA`;
+    }
+
+    const slug = (item.project || item.collection || "").toLowerCase();
     if (slug.includes("pnuk")) return "NOPNUK • NOMETA";
     if (slug.includes("pixelpepen")) return "NO-PIXELPEPEN • NOMETA";
     if (slug.includes("tiny") || slug.includes("dino"))
@@ -351,12 +449,13 @@
 
   function createShowcaseCardHtml(item) {
     const tokenId =
-      item.token_id || item.tokenId || item.id || item.identifier || item.onChainId || "";
-    const imageUrl =
-      item.image_url ||
-      item.image ||
-      (item.media && item.media[0] && item.media[0].gateway) ||
+      item.token_id ||
+      item.tokenId ||
+      item.id ||
+      item.identifier ||
+      item.onChainId ||
       "";
+    const imageUrl = getTokenImageUrl(item);
     const permalink =
       item.permalink || item.external_url || item.opensea_url || "#";
 
@@ -547,17 +646,30 @@
 
       // Stats
       const floor =
-        stats.floorPriceEth ||
-        stats.floor_price_eth ||
-        stats.floor_price ||
-        stats.floor ||
+        stats.floorPrice ??
+        stats.floorPriceEth ??
+        stats.floor_price_eth ??
+        stats.floor_price ??
+        stats.floor ??
+        (stats.stats &&
+          (stats.stats.floor_price ??
+            stats.stats.floorPrice ??
+            stats.stats.floor_price_eth)) ??
         null;
+
       const volume =
-        stats.totalVolumeEth ||
-        stats.total_volume_eth ||
-        stats.volume ||
+        stats.totalVolume ??
+        stats.totalVolumeEth ??
+        stats.total_volume_eth ??
+        stats.volume ??
+        (stats.stats &&
+          (stats.stats.total_volume ??
+            stats.stats.volume ??
+            stats.stats.total_volume_eth)) ??
         null;
-      const owners = stats.numOwners || stats.num_owners || stats.owners || "--";
+
+      const owners =
+        stats.numOwners || stats.num_owners || stats.owners || "--";
 
       floorPriceEl.textContent = `${formatEth(floor)} Ξ`;
       totalVolumeEl.textContent = `${formatEth(volume)} Ξ`;

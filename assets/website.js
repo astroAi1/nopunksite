@@ -45,6 +45,93 @@
   }
 
   // =========================
+  // Local traits index (ensures NoPunks traits match)
+  // =========================
+
+  let traitsIndexPromise = null;
+  let traitsByTokenId = null;
+  let traitsByIndex = null;
+
+  function normaliseTraitsEntry(entry) {
+    if (!entry) return [];
+    if (Array.isArray(entry)) return entry;
+    if (Array.isArray(entry.traits)) return entry.traits;
+    if (Array.isArray(entry.attributes)) return entry.attributes;
+    return [];
+  }
+
+  function loadTraitsIndex() {
+    if (traitsIndexPromise) return traitsIndexPromise;
+
+    traitsIndexPromise = fetch("/traits/traits_index.json")
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status} for traits_index.json`);
+        }
+        return res.json();
+      })
+      .then((data) => {
+        traitsByTokenId = {};
+        traitsByIndex = {};
+
+        if (Array.isArray(data)) {
+          data.forEach((entry, idx) => {
+            const traits = normaliseTraitsEntry(entry);
+            traitsByIndex[idx] = traits;
+            if (entry && (entry.token_id || entry.tokenId || entry.id)) {
+              const idKey = String(
+                entry.token_id || entry.tokenId || entry.id
+              );
+              traitsByTokenId[idKey] = traits;
+            }
+          });
+        } else if (data && typeof data === "object") {
+          Object.keys(data).forEach((key) => {
+            const entry = data[key];
+            const traits = normaliseTraitsEntry(entry);
+            const idx = Number(key);
+            if (!Number.isNaN(idx)) {
+              traitsByIndex[idx] = traits;
+            }
+            traitsByTokenId[String(key)] = traits;
+          });
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to load traits_index.json", err);
+        traitsByTokenId = {};
+        traitsByIndex = {};
+      });
+
+    return traitsIndexPromise;
+  }
+
+  async function getTraitsFromIndexOrId(index, tokenId) {
+    await loadTraitsIndex();
+
+    if (tokenId != null && tokenId !== "" && traitsByTokenId) {
+      const byId = traitsByTokenId[String(tokenId)];
+      if (Array.isArray(byId) && byId.length > 0) {
+        return byId;
+      }
+    }
+
+    if (
+      typeof index === "number" &&
+      !Number.isNaN(index) &&
+      index >= 0 &&
+      traitsByIndex
+    ) {
+      const byIndex = traitsByIndex[index];
+      if (Array.isArray(byIndex) && byIndex.length > 0) {
+        return byIndex;
+      }
+    }
+
+    return [];
+  }
+
+  // =========================
   // Tabs
   // =========================
 
@@ -349,7 +436,7 @@
       return;
     }
 
-    // Otherwise, show loading state and fetch from /api/nft/:index
+    // Otherwise, show loading state and resolve traits from local index
     bodyEl.innerHTML =
       '<div class="np-traits-empty">Loading traits…</div>';
     tooltip.classList.remove("hidden");
@@ -357,11 +444,6 @@
 
     const indexStr = cardEl.dataset.index;
     const index = parseInt(indexStr, 10);
-    if (Number.isNaN(index) || index < 0 || index >= TOTAL_SUPPLY) {
-      bodyEl.innerHTML =
-        '<div class="np-traits-empty">Traits unavailable.</div>';
-      return;
-    }
 
     // Avoid duplicate fetches
     if (cardEl.dataset.traitsLoading === "1") {
@@ -369,17 +451,43 @@
     }
     cardEl.dataset.traitsLoading = "1";
 
-    fetchJson(`/api/nft/${index}`)
-      .then((nft) => {
-        const freshTraits = getTokenTraits(nft) || [];
+    getTraitsFromIndexOrId(
+      Number.isNaN(index) ? null : index,
+      tokenId || null
+    )
+      .then((fromIndex) => {
+        // If we got traits from the local index, use them.
+        if (Array.isArray(fromIndex) && fromIndex.length > 0) {
+          return fromIndex;
+        }
+
+        // Fallback: fetch from `/api/nft/:index` if index is valid
+        if (
+          typeof index === "number" &&
+          !Number.isNaN(index) &&
+          index >= 0 &&
+          index < TOTAL_SUPPLY
+        ) {
+          return fetchJson(`/api/nft/${index}`).then((nft) =>
+            getTokenTraits(nft) || []
+          );
+        }
+
+        return [];
+      })
+      .then((finalTraits) => {
         cardEl.dataset.traits = encodeURIComponent(
-          JSON.stringify(freshTraits)
+          JSON.stringify(finalTraits || [])
         );
         delete cardEl.dataset.traitsLoading;
 
-        // Only update if tooltip is still visible for this card
         if (!tooltip.classList.contains("hidden")) {
-          bodyEl.innerHTML = formatTraitsForTooltip(freshTraits);
+          if (finalTraits && finalTraits.length > 0) {
+            bodyEl.innerHTML = formatTraitsForTooltip(finalTraits);
+          } else {
+            bodyEl.innerHTML =
+              '<div class="np-traits-empty">Traits unavailable.</div>';
+          }
           positionTooltip(cardEl.getBoundingClientRect());
         }
       })

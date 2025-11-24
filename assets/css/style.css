@@ -199,6 +199,7 @@ header {
   background: radial-gradient(circle at top left, #050509, #020206);
   border: 1px solid var(--np-border-soft);
   margin: 0 auto 1.75rem;
+  flex-wrap: wrap; /* allow wrapping for smaller screens */
 }
 
 .np-tab {
@@ -232,7 +233,7 @@ header {
 
 .np-collection-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr)); /* 5 columns fixed */
+  grid-template-columns: repeat(5, minmax(0, 1fr)); /* 5 columns fixed on desktop */
   gap: 1.4rem;
   margin-top: 0.75rem;
 }
@@ -832,7 +833,33 @@ header {
   font-size: 0.7rem;
   color: var(--np-text-muted);
 }
+/* Scrollable panels for Recent Sales / Listed No-Punks */
+#recent-sales-list,
+#listed-tokens-list {
+  border-radius: 14px;
+  border: 1px solid var(--np-border-soft);
+  background: radial-gradient(circle at top left, #020617, #020012);
+  padding: 0.5rem 0.4rem;
+  max-height: 16rem; /* ~256px, similar to Tailwind max-h-64 */
+  overflow-y: auto;
+}
 
+/* Sleek scrollbar styling */
+#recent-sales-list::-webkit-scrollbar,
+#listed-tokens-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+#recent-sales-list::-webkit-scrollbar-thumb,
+#listed-tokens-list::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.55);
+  border-radius: 999px;
+}
+
+#recent-sales-list::-webkit-scrollbar-track,
+#listed-tokens-list::-webkit-scrollbar-track {
+  background: transparent;
+}
 /* ---------------------------------------------
    Footer
 ---------------------------------------------- */
@@ -850,6 +877,40 @@ footer span {
    Responsive tweaks
 ---------------------------------------------- */
 
+/* Large tablets: slightly fewer columns so cards stay readable */
+@media (max-width: 1024px) {
+  .np-main {
+    padding-inline: 1.5rem;
+  }
+
+  .np-collection-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* Tablets / small laptops */
+@media (max-width: 768px) {
+  .np-main {
+    padding-inline: 1.25rem;
+  }
+
+  .np-section {
+    padding-inline: 1.4rem;
+    padding-block: 1.5rem 2rem;
+  }
+
+  .np-collection-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1.1rem;
+  }
+
+  .np-playing-card {
+    width: 19rem;
+    height: 30rem;
+  }
+}
+
+/* Phones */
 @media (max-width: 640px) {
   .np-main {
     padding-inline: 1rem;
@@ -857,6 +918,11 @@ footer span {
 
   .np-section {
     padding-inline: 1.2rem;
+  }
+
+  .np-collection-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
   }
 
   .np-showcase-grid {
@@ -868,10 +934,8 @@ footer span {
     height: 30rem;
   }
 }
-.np-tabs {
-  flex-wrap: wrap;
-}
 
+/* Extra small phones: make tabs stack nicely */
 @media (max-width: 480px) {
   .np-tab {
     flex: 1 1 45%;

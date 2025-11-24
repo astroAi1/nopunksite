@@ -1,4 +1,3 @@
-
 // server.js
 // NoPunks site server
 // - Serves static files (if needed)
@@ -11,10 +10,24 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
-const cors = require('cors');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// -----------------------------
+// CORS – allow Netlify domain to call this API
+// -----------------------------
+// This is the bit you were missing. It lets https://nopunks.xyz
+// read responses from https://nopunksite.onrender.com.
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*'); // if you want, later tighten to your domains
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Accept, Content-Type');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  next();
+});
 
 // -----------------------------
 // CONFIG
@@ -126,18 +139,9 @@ function indexToTokenId(index) {
 const nftCache = new Map();
 
 // -----------------------------
-// MIDDLEWARE
+// STATIC FILES
 // -----------------------------
-// CORS so nopunks.xyz (Netlify) and nopunksite.onrender.com can both call this API
-app.use(
-  cors({
-    origin: '*',
-    methods: ['GET'],
-  })
-);
-
 // This lets you serve static files if you hit this server directly.
-// (Your main site is on Netlify/Vercel; this doesn’t hurt.)
 app.use(express.static(path.join(__dirname)));
 
 // -----------------------------
@@ -276,7 +280,6 @@ app.get('/api/nft/:index', async (req, res) => {
 
 // =======================
 // /api/collection
-// (used by website.js for the main grid)
 // =======================
 app.get('/api/collection', async (req, res) => {
   try {
@@ -312,7 +315,7 @@ app.get('/api/collection', async (req, res) => {
 
     res.json({
       tokens,
-      total: NOPUNKS_SUPPLY, // frontend already has fallback; we give the exact supply here
+      total: NOPUNKS_SUPPLY,
     });
   } catch (err) {
     console.error('Collection API error:', err.message || err);
@@ -547,27 +550,11 @@ app.get('/api/stats', async (req, res) => {
     if (totalVolume != null) rawStats.total_volume = totalVolume;
     if (numOwners != null) rawStats.num_owners = numOwners;
 
-    // Match what website.js expects (various key names on top-level)
     res.json({
-      // canonical
       floorPrice,
       totalVolume,
       numOwners,
       stats: rawStats,
-
-      // aliases for the frontend helper
-      floorPriceEth: floorPrice,
-      floor_price_eth: floorPrice,
-      floor_price: floorPrice,
-      floor: floorPrice,
-
-      totalVolumeEth: totalVolume,
-      total_volume_eth: totalVolume,
-      total_volume: totalVolume,
-      volume: totalVolume,
-
-      num_owners: numOwners,
-      owners: numOwners,
     });
   } catch (err) {
     console.error('Stats API error:', err.message || err);
@@ -582,9 +569,9 @@ app.get('/api/stats', async (req, res) => {
 });
 
 // =======================
-// /api/recent-sales + alias /api/sales/recent
+// /api/recent-sales
 // =======================
-async function handleRecentSales(req, res) {
+app.get('/api/recent-sales', async (req, res) => {
   try {
     const url =
       `https://api.opensea.io/api/v2/events/collection/${COLLECTION_SLUG}` +
@@ -625,7 +612,6 @@ async function handleRecentSales(req, res) {
 
       return {
         onChainId: tokenId,
-        token_id: tokenId ? String(tokenId) : null, // for website.js getTokenId(...)
         price,
         unit: symbol,
         time,
@@ -638,10 +624,7 @@ async function handleRecentSales(req, res) {
     console.error('Recent sales API error:', err.message || err);
     res.status(502).json({ sales: [], error: 'Recent sales unavailable' });
   }
-}
-
-app.get('/api/recent-sales', handleRecentSales);
-app.get('/api/sales/recent', handleRecentSales); // alias used by website.js
+});
 
 // =======================
 // /api/listed
@@ -687,7 +670,6 @@ app.get('/api/listed', async (req, res) => {
 
       return {
         onChainId: tokenId,
-        token_id: tokenId ? String(tokenId) : null, // for website.js helper
         price,
         unit: 'ETH',
         source: 'OpenSea',
@@ -695,7 +677,6 @@ app.get('/api/listed', async (req, res) => {
       };
     });
 
-    // Enrich with images if needed
     const listingsWithImages = await Promise.all(
       mapped.map(async (item) => {
         if (!item.onChainId) return item;

@@ -9,8 +9,12 @@
   // =========================
 
   // Backend API base
-  // Empty string = same origin (works for onrender.com and nopunks.xyz)
-  const API_BASE = "https://nopunksite.onrender.com";
+  // On Render (nopunksite.onrender.com) we can use same-origin requests.
+  // On Netlify / nopunks.xyz we call the Render server directly.
+  const API_BASE =
+    window.location.hostname === "nopunksite.onrender.com"
+      ? ""
+      : "https://nopunksite.onrender.com";
 
   const TOTAL_SUPPLY = 10000;
   const PAGE_SIZE = 50;
@@ -87,6 +91,7 @@
     return (
       token.token_id ||
       token.tokenId ||
+      token.onChainId ||
       token.id ||
       token.identifier ||
       ""
@@ -94,11 +99,7 @@
   }
 
   function getTokenName(token, tokenId) {
-    return (
-      token.name ||
-      token.title ||
-      (tokenId ? `NO-PUNK #${tokenId}` : "NO-PUNK")
-    );
+    return token.name || token.title || (tokenId ? `NO-PUNK #${tokenId}` : "NO-PUNK");
   }
 
   function getTokenImageUrl(token) {
@@ -121,7 +122,13 @@
   }
 
   function getTokenTraits(token) {
-    return token.traits || token.attributes || [];
+    if (Array.isArray(token.traits)) return token.traits;
+    if (Array.isArray(token.attributes)) return token.attributes;
+    if (token.metadata) {
+      if (Array.isArray(token.metadata.traits)) return token.metadata.traits;
+      if (Array.isArray(token.metadata.attributes)) return token.metadata.attributes;
+    }
+    return [];
   }
 
   function renderCollection(tokens, page, total) {
@@ -219,6 +226,7 @@
   // =========================
 
   let tooltipEl = null;
+  let scrollListenerAttached = false;
 
   function ensureTooltipEl() {
     if (tooltipEl) return tooltipEl;
@@ -233,7 +241,9 @@
   }
 
   function formatTraitsForTooltip(traits) {
-    if (!Array.isArray(traits)) return "";
+    if (!Array.isArray(traits) || traits.length === 0) {
+      return '<div class="np-traits-empty">No traits found.</div>';
+    }
 
     const rows = traits.slice(0, 6).map((t) => {
       const type = safeText(t.trait_type || t.type || "", "").toUpperCase();
@@ -311,7 +321,10 @@
       card.addEventListener("mouseleave", hideTooltip);
     });
 
-    window.addEventListener("scroll", hideTooltip, { passive: true });
+    if (!scrollListenerAttached) {
+      window.addEventListener("scroll", hideTooltip, { passive: true });
+      scrollListenerAttached = true;
+    }
   }
 
   // =========================
@@ -338,17 +351,14 @@
 
   function createShowcaseCardHtml(item) {
     const tokenId =
-      item.token_id || item.tokenId || item.id || item.identifier || "";
+      item.token_id || item.tokenId || item.id || item.identifier || item.onChainId || "";
     const imageUrl =
       item.image_url ||
       item.image ||
       (item.media && item.media[0] && item.media[0].gateway) ||
       "";
     const permalink =
-      item.permalink ||
-      item.external_url ||
-      item.opensea_url ||
-      "#";
+      item.permalink || item.external_url || item.opensea_url || "#";
 
     const header = getProjectLabel(item);
     const idLabel = tokenId ? `#${tokenId}` : "";

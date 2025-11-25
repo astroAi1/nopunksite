@@ -7,7 +7,13 @@
       name="viewport"
       content="width=device-width, initial-scale=1, viewport-fit=cover"
     />
-    <link rel="stylesheet" href="/assets/css/style.css" />
+    <meta
+      name="description"
+      content="NoPunks • a 10,000 piece minimalist CryptoPunks derivative on Base, sitting inside the wider NoMeta ecosystem."
+    />
+    <!-- CSS (with tiny version bump to help cache-bust) -->
+    <link rel="stylesheet" href="/assets/css/style.css?v=2" />
+    <link rel="icon" type="image/png" href="/icons/opensea.png" />
   </head>
   <body>
     <div class="np-shell">
@@ -39,7 +45,7 @@
               aria-label="NoPunkism on X"
             >
               <img
-                src="/icons/X.jpg"
+                src="/assets/icons/X.jpg"
                 alt="X"
                 style="width: 22px; height: 22px; border-radius: 999px"
               />
@@ -51,7 +57,7 @@
               aria-label="NoPunkism on OpenSea"
             >
               <img
-                src="/icons/opensea.png"
+                src="/assets/icons/opensea.png"
                 alt="OpenSea"
                 style="width: 24px; height: 24px"
               />
@@ -335,10 +341,7 @@
                   Floor (Ξ)
                 </div>
                 <div class="mt-2 flex items-baseline gap-1 text-white/90">
-                  <span
-                    id="floor-price"
-                    class="text-lg font-semibold"
-                  >
+                  <span id="floor-price" class="text-lg font-semibold">
                     --
                   </span>
                   <span class="text-xs text-white/60">Ξ</span>
@@ -355,10 +358,7 @@
                   Volume Traded (Ξ)
                 </div>
                 <div class="mt-2 flex items-baseline gap-1 text-white/90">
-                  <span
-                    id="total-volume"
-                    class="text-lg font-semibold"
-                  >
+                  <span id="total-volume" class="text-lg font-semibold">
                     --
                   </span>
                   <span class="text-xs text-white/60">Ξ</span>
@@ -429,6 +429,13 @@
       </footer>
     </div>
 
-    <script src="/assets/website.js?v=6" defer></script>
+    <!-- JS (version bump so browsers pull the new website.js with the fixed NoMeta/OpenSea click + team / showcase wiring) -->
+    <script src="/assets/website.js?v=7" defer></script>
+
+    <noscript>
+      <div style="color:#fff; text-align:center; padding:1rem 0;">
+        JavaScript is required to browse the NoPunks collection.
+      </div>
+    </noscript>
   </body>
 </html>

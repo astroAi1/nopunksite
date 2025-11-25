@@ -8,13 +8,21 @@
   // CONFIG
   // =========================
 
-  // Backend API base
-  // On Render (nopunksite.onrender.com) we can use same-origin requests.
-  // On Netlify / nopunks.xyz we call the Render server directly.
-  const API_BASE =
-    window.location.hostname === "nopunksite.onrender.com"
-      ? ""
-      : "https://nopunksite.onrender.com";
+  // Backend API base:
+  // - If you're on localhost (any port), use http://localhost:3000 as the API.
+  // - If you're on Render, use same-origin.
+  // - Otherwise (Netlify, file://, etc.), use Render as the API host.
+  const hostname = window.location.hostname;
+  let API_BASE = "";
+
+  if (hostname === "nopunksite.onrender.com") {
+    API_BASE = "";
+  } else if (hostname === "localhost" || hostname === "127.0.0.1") {
+    // Always talk to local Node server on port 3000
+    API_BASE = "http://localhost:3000";
+  } else {
+    API_BASE = "https://nopunksite.onrender.com";
+  }
 
   const TOTAL_SUPPLY = 10000;
   const PAGE_SIZE = 50;
@@ -25,7 +33,7 @@
 
   function apiUrl(path) {
     if (path.startsWith("http")) return path;
-    if (!API_BASE) return path; // same-origin relative requests
+    if (!API_BASE) return path;
     return `${API_BASE}${path}`;
   }
 
@@ -45,7 +53,7 @@
   }
 
   // =========================
-  // Local traits index (ensures NoPunks traits match)
+  // Local traits index
   // =========================
 
   let traitsIndexPromise = null;
@@ -132,6 +140,69 @@
   }
 
   // =========================
+  // TOKEN MAP (index <-> tokenId)
+  // =========================
+
+  let tokenIndexByIdPromise = null;
+  let tokenIndexById = null;
+
+  function loadTokenMap() {
+    if (tokenIndexByIdPromise) return tokenIndexByIdPromise;
+
+    tokenIndexByIdPromise = fetch("/token_map.json")
+      .then((res) => {
+        if (res.ok) return res.json();
+        return fetch("/public/token_map.json").then((res2) => {
+          if (!res2.ok) {
+            throw new Error(
+              `HTTP ${res.status} for token_map.json and ${res2.status} for /public/token_map.json`
+            );
+          }
+          return res2.json();
+        });
+      })
+      .then((data) => {
+        const map = {};
+
+        if (Array.isArray(data)) {
+          data.forEach((tokenId, idx) => {
+            if (tokenId != null) {
+              map[String(tokenId)] = idx;
+            }
+          });
+        } else if (data && typeof data === "object") {
+          Object.keys(data).forEach((indexKey) => {
+            const tokenId = data[indexKey];
+            if (tokenId != null) {
+              const idx = Number(indexKey);
+              if (!Number.isNaN(idx)) {
+                map[String(tokenId)] = idx;
+              }
+            }
+          });
+        }
+
+        tokenIndexById = map;
+      })
+      .catch((err) => {
+        console.error("Failed to load token_map.json", err);
+        tokenIndexById = {};
+      });
+
+    return tokenIndexByIdPromise;
+  }
+
+  function getCollectionIndexForTokenId(tokenId, page, idxOnPage) {
+    if (tokenIndexById && tokenId) {
+      const idx = tokenIndexById[String(tokenId)];
+      if (typeof idx === "number" && !Number.isNaN(idx)) {
+        return idx;
+      }
+    }
+    return (page - 1) * PAGE_SIZE + idxOnPage;
+  }
+
+  // =========================
   // Tabs
   // =========================
 
@@ -157,7 +228,6 @@
     });
   });
 
-  // Start on collection tab
   setActiveTab("collection");
 
   // =========================
@@ -188,18 +258,22 @@
   }
 
   function getTokenName(token, tokenId) {
-    return token.name || token.title || (tokenId ? `NO-PUNK #${tokenId}` : "NO-PUNK");
+    return (
+      token.name || token.title || (tokenId ? `NO-PUNK #${tokenId}` : "NO-PUNK")
+    );
   }
 
   function getTokenImageUrl(token) {
     if (!token) return "";
-    const t = token.nft || token; // handle nested nft objects just in case
+    const t = token.nft || token;
     return (
       t.image_url ||
       t.image ||
       t.image_original_url ||
       t.display_image_url ||
-      (t.media && t.media[0] && (t.media[0].gateway || t.media[0].thumbnail)) ||
+      (t.media &&
+        t.media[0] &&
+        (t.media[0].gateway || t.media[0].thumbnail)) ||
       ""
     );
   }
@@ -211,18 +285,15 @@
     if (t.external_url) return t.external_url;
     if (t.opensea_url) return t.opensea_url;
     if (!tokenId) return "#";
-    // Fallback OpenSea URL for Base
     return `https://opensea.io/assets/base/0x4ed83635e2309a7c067d0f98efca47b920bf79b1/${tokenId}`;
   }
 
   function getTokenTraits(token) {
     if (!token) return [];
 
-    // direct traits/attributes
     if (Array.isArray(token.traits)) return token.traits;
     if (Array.isArray(token.attributes)) return token.attributes;
 
-    // common metadata containers
     const metaSources = [
       token.metadata,
       token.raw_metadata,
@@ -235,7 +306,6 @@
       if (Array.isArray(meta.attributes)) return meta.attributes;
     }
 
-    // nested nft object (some OpenSea responses wrap it)
     if (token.nft && token.nft !== token) {
       return getTokenTraits(token.nft);
     }
@@ -253,19 +323,19 @@
         const name = getTokenName(token, tokenId);
         const imageUrl = getTokenImageUrl(token);
         const permalink = getTokenPermalink(token, tokenId);
-        const traits = getTokenTraits(token);
 
-        // 0–9999 index into the full collection (used for /api/nft/:index)
-        const globalIndex = (page - 1) * PAGE_SIZE + idx;
-
-        const traitsJson = encodeURIComponent(JSON.stringify(traits || []));
+        const collectionIndex = getCollectionIndexForTokenId(
+          tokenId,
+          page,
+          idx
+        );
 
         return `
           <article
             class="np-card"
             data-token-id="${safeText(tokenId)}"
-            data-index="${globalIndex}"
-            data-traits="${traitsJson}"
+            data-index="${collectionIndex}"
+            data-traits=""
           >
             <a class="np-card-link" href="${permalink}" target="_blank" rel="noreferrer">
               <div class="np-card-image-wrap">
@@ -282,7 +352,6 @@
 
     collectionGridEl.innerHTML = html;
 
-    // Summary + pagination UI
     collectionSummaryEl.textContent = `10,000 NoPunks on Base. Showing ${
       (page - 1) * PAGE_SIZE + 1
     }–${Math.min(page * PAGE_SIZE, total || TOTAL_SUPPLY)} via OpenSea (proxied through the server).`;
@@ -306,6 +375,7 @@
       const data = await fetchJson(
         `/api/collection?page=${page}&pageSize=${PAGE_SIZE}`
       );
+      await loadTokenMap();
 
       const tokens =
         data.tokens || data.items || data.assets || data.result || [];
@@ -340,7 +410,7 @@
   });
 
   // =========================
-  // Trait tooltip (liquid glass)
+  // Trait tooltip
   // =========================
 
   let tooltipEl = null;
@@ -350,11 +420,13 @@
     if (tooltipEl) return tooltipEl;
     tooltipEl = document.createElement("div");
     tooltipEl.className = "np-traits-tooltip hidden";
+    tooltipEl.style.pointerEvents = "none";
     tooltipEl.innerHTML = `
       <div class="np-traits-header"></div>
       <div class="np-traits-body"></div>
     `;
     document.body.appendChild(tooltipEl);
+    tooltipEl.addEventListener("mouseleave", hideTooltip);
     return tooltipEl;
   }
 
@@ -379,12 +451,11 @@
 
   function positionTooltip(cardRect) {
     const tooltip = ensureTooltipEl();
+
+    const tooltipRect = tooltip.getBoundingClientRect();
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
 
-    const tooltipRect = tooltip.getBoundingClientRect();
-
-    // Default: to the right of the card
     let top =
       cardRect.top +
       window.scrollY +
@@ -392,12 +463,10 @@
       tooltipRect.height / 2;
     let left = cardRect.right + 16 + window.scrollX;
 
-    // If it would overflow right, flip to left side
     if (left + tooltipRect.width + 16 > viewportWidth + window.scrollX) {
       left = cardRect.left - tooltipRect.width - 16 + window.scrollX;
     }
 
-    // Clamp vertically a bit
     const minTop = window.scrollY + 16;
     const maxTop = window.scrollY + viewportHeight - tooltipRect.height - 16;
     top = Math.max(minTop, Math.min(maxTop, top));
@@ -426,26 +495,23 @@
     const tokenId = cardEl.dataset.tokenId || "";
     headerEl.textContent = tokenId ? `NO-PUNK #${tokenId}` : "NO-PUNK";
 
+    tooltip.classList.remove("hidden");
+
     let traits = parseTraitsFromDataset(cardEl);
 
-    // If we already have traits, render immediately.
     if (traits.length > 0) {
       bodyEl.innerHTML = formatTraitsForTooltip(traits);
-      tooltip.classList.remove("hidden");
       positionTooltip(cardEl.getBoundingClientRect());
       return;
     }
 
-    // Otherwise, show loading state and resolve traits from local index
     bodyEl.innerHTML =
       '<div class="np-traits-empty">Loading traits…</div>';
-    tooltip.classList.remove("hidden");
     positionTooltip(cardEl.getBoundingClientRect());
 
     const indexStr = cardEl.dataset.index;
     const index = parseInt(indexStr, 10);
 
-    // Avoid duplicate fetches
     if (cardEl.dataset.traitsLoading === "1") {
       return;
     }
@@ -456,21 +522,34 @@
       tokenId || null
     )
       .then((fromIndex) => {
-        // If we got traits from the local index, use them.
         if (Array.isArray(fromIndex) && fromIndex.length > 0) {
           return fromIndex;
         }
 
-        // Fallback: fetch from `/api/nft/:index` if index is valid
         if (
           typeof index === "number" &&
           !Number.isNaN(index) &&
           index >= 0 &&
           index < TOTAL_SUPPLY
         ) {
-          return fetchJson(`/api/nft/${index}`).then((nft) =>
-            getTokenTraits(nft) || []
-          );
+          return fetchJson(`/api/nft/${index}`).then((nft) => {
+            const remoteTokenId =
+              nft.token_id ||
+              nft.tokenId ||
+              nft.identifier ||
+              nft.onChainId ||
+              null;
+
+            return getTraitsFromIndexOrId(
+              Number.isNaN(index) ? null : index,
+              tokenId || remoteTokenId
+            ).then((fromLocal) => {
+              if (Array.isArray(fromLocal) && fromLocal.length > 0) {
+                return fromLocal;
+              }
+              return getTokenTraits(nft) || [];
+            });
+          });
         }
 
         return [];
@@ -507,11 +586,28 @@
   }
 
   function attachCardTooltipHandlers() {
-    const cards = collectionGridEl.querySelectorAll(".np-card");
+    // Use event delegation so that all cards on the page (and future ones)
+    // get hover behaviour without needing per-card listeners.
+    if (collectionGridEl.dataset.tooltipDelegationBound === "1") {
+      return;
+    }
+    collectionGridEl.dataset.tooltipDelegationBound = "1";
 
-    cards.forEach((card) => {
-      card.addEventListener("mouseenter", () => showTooltipForCard(card));
-      card.addEventListener("mouseleave", hideTooltip);
+    collectionGridEl.addEventListener("mouseover", (event) => {
+      const card = event.target.closest(".np-card");
+      if (!card || !collectionGridEl.contains(card)) return;
+      showTooltipForCard(card);
+    });
+
+    collectionGridEl.addEventListener("mouseout", (event) => {
+      const card = event.target.closest(".np-card");
+      if (!card) return;
+
+      const related = event.relatedTarget;
+      // If the pointer is still inside the same card, do nothing.
+      if (related && card.contains(related)) return;
+
+      hideTooltip();
     });
 
     if (!scrollListenerAttached) {
@@ -530,11 +626,9 @@
   function getProjectLabel(item) {
     if (!item) return "NOPUNKS • NOMETA";
 
-    // Prefer explicit label from the API if present
     if (item.projectLabel) return item.projectLabel;
     if (item.project_header) return item.project_header;
 
-    // Our server sends `key` and `label` for showcase entries
     const key = (item.key || "").toLowerCase();
     if (key.includes("pnuk")) return "NOPNUK • NOMETA";
     if (key.includes("pixelpepen")) return "NO-PIXELPEPEN • NOMETA";
@@ -542,7 +636,6 @@
       return "NO-TINYDINOS • NOMETA";
 
     if (item.label) {
-      // Generic label -> UPPERCASE • NOMETA, e.g. "NoPunks" -> "NOPUNKS • NOMETA"
       return `${safeText(item.label, "").toUpperCase()} • NOMETA`;
     }
 
@@ -555,6 +648,57 @@
     return "NOPUNKS • NOMETA";
   }
 
+  function getShowcaseCollectionUrl(item) {
+    if (!item) return "#";
+
+    // Prefer explicit collection URL if provided by the API
+    if (item.collection_url) return item.collection_url;
+
+    // Try a generic collection slug if present
+    if (item.collection_slug) {
+      return `https://opensea.io/collection/${item.collection_slug}`;
+    }
+
+    // Fallback mappings based on project key / name
+    const key = (
+      item.key ||
+      item.project ||
+      item.collection ||
+      ""
+    ).toLowerCase();
+
+    // Explicit mapping for the main NoPunks collection so it never uses a local URL
+    if (
+      key.includes("nopunkism") ||
+      key.includes("nopunks") ||
+      (item.contract &&
+        (item.contract.toLowerCase() === "0x4ed83635e2309a7c067d0f98efca47b920bf79b1" ||
+          item.contract.toLowerCase().includes("4ed83635e2309a7c067d0f98efca47b920bf79b1"))) ||
+      (item.contract_address &&
+        item.contract_address.toLowerCase() === "0x4ed83635e2309a7c067d0f98efca47b920bf79b1")
+    ) {
+      return "https://opensea.io/collection/nopunkism";
+    }
+
+    if (key.includes("pnuk")) {
+      return "https://opensea.io/collection/no-pnuks";
+    }
+    if (key.includes("pixelpepen")) {
+      return "https://opensea.io/collection/no-pixelpepen";
+    }
+    if (key.includes("tiny") || key.includes("dino")) {
+      return "https://opensea.io/collection/no-tinydinopunks";
+    }
+
+    // Final fallback: whatever NFT-level permalink we have
+    return (
+      item.permalink ||
+      item.external_url ||
+      item.opensea_url ||
+      "#"
+    );
+  }
+
   function createShowcaseCardHtml(item) {
     const tokenId =
       item.token_id ||
@@ -564,8 +708,7 @@
       item.onChainId ||
       "";
     const imageUrl = getTokenImageUrl(item);
-    const permalink =
-      item.permalink || item.external_url || item.opensea_url || "#";
+    const permalink = getShowcaseCollectionUrl(item);
 
     const header = getProjectLabel(item);
     const idLabel = tokenId ? `#${tokenId}` : "";
@@ -644,6 +787,22 @@
   // Sales & stats
   // =========================
 
+  // Helper: dedupe array of items by tokenId, keeping first N unique
+  function uniqueByTokenId(items, limit) {
+    if (!Array.isArray(items)) return [];
+    const seen = new Set();
+    const out = [];
+    for (const item of items) {
+      const id = getTokenId(item);
+      if (!id) continue;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push(item);
+      if (limit && out.length >= limit) break;
+    }
+    return out;
+  }
+
   const floorPriceEl = document.getElementById("floor-price");
   const totalVolumeEl = document.getElementById("total-volume");
   const numOwnersEl = document.getElementById("num-owners");
@@ -674,12 +833,19 @@
       sale.total_price_eth ||
       sale.price ||
       null;
+
+    // Now wired to server.js "buyer"
     const buyer =
       sale.buyer ||
       sale.to_address ||
       (sale.taker && sale.taker.address) ||
       "";
     const timeAgo = sale.timeAgo || sale.relative_time || "";
+    const hasBuyer = !!buyer;
+    const buyerLabel = hasBuyer ? formatShortAddress(buyer) : "";
+    const metaText = hasBuyer
+      ? `Sold to ${buyerLabel} ${safeText(timeAgo)}`
+      : `Sold ${safeText(timeAgo)}`;
 
     return `
       <a class="np-sale-row" href="${permalink}" target="_blank" rel="noreferrer">
@@ -689,9 +855,7 @@
         <div class="np-sale-main">
           <div>
             <div class="np-sale-token">NO-PUNK #${safeText(tokenId)}</div>
-            <div class="np-sale-meta">
-              Sold to ${formatShortAddress(buyer)} ${safeText(timeAgo)}
-            </div>
+            <div class="np-sale-meta">${metaText}</div>
           </div>
           <div class="np-sale-price">${formatEth(price)} Ξ</div>
         </div>
@@ -709,11 +873,18 @@
       listing.current_price_eth ||
       listing.price ||
       null;
+
+    // Now wired to server.js "seller"
     const seller =
       listing.seller ||
       listing.from_address ||
       (listing.maker && listing.maker.address) ||
       "";
+    const hasSeller = !!seller;
+    const sellerLabel = hasSeller ? formatShortAddress(seller) : "";
+    const metaText = hasSeller
+      ? `Listed by ${sellerLabel}`
+      : "Listed";
 
     return `
       <a class="np-listing-row" href="${permalink}" target="_blank" rel="noreferrer">
@@ -723,9 +894,7 @@
         <div class="np-listing-main">
           <div>
             <div class="np-listing-token">NO-PUNK #${safeText(tokenId)}</div>
-            <div class="np-listing-meta">
-              Listed by ${formatShortAddress(seller)}
-            </div>
+            <div class="np-listing-meta">${metaText}</div>
           </div>
           <div class="np-listing-price">${formatEth(price)} Ξ</div>
         </div>
@@ -752,7 +921,6 @@
         })
       ]);
 
-      // Stats
       const floor =
         stats.floorPrice ??
         stats.floorPriceEth ??
@@ -779,15 +947,15 @@
       const owners =
         stats.numOwners || stats.num_owners || stats.owners || "--";
 
-      floorPriceEl.textContent = `${formatEth(floor)} Ξ`;
-      totalVolumeEl.textContent = `${formatEth(volume)} Ξ`;
+      // IMPORTANT: no Ξ symbols here; HTML label can contain the unit.
+      floorPriceEl.textContent = formatEth(floor);
+      totalVolumeEl.textContent = formatEth(volume);
       numOwnersEl.textContent = safeText(owners, "--");
 
-      // Recent sales
       const sales = recent.sales || recent.items || recent.events || [];
       if (Array.isArray(sales) && sales.length > 0) {
-        recentSalesListEl.innerHTML = sales
-          .slice(0, 10)
+        const uniqueSales = uniqueByTokenId(sales, 10);
+        recentSalesListEl.innerHTML = uniqueSales
           .map(createSaleRowHtml)
           .join("");
       } else {
@@ -795,12 +963,11 @@
           '<div class="text-[11px] text-white/50">No recent sales cached.</div>';
       }
 
-      // Listed tokens
       const listings =
         listed.listings || listed.items || listed.events || [];
       if (Array.isArray(listings) && listings.length > 0) {
-        listedTokensListEl.innerHTML = listings
-          .slice(0, 10)
+        const uniqueListings = uniqueByTokenId(listings, 10);
+        listedTokensListEl.innerHTML = uniqueListings
           .map(createListingRowHtml)
           .join("");
       } else {

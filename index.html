@@ -12,7 +12,7 @@
   <body>
     <div class="np-shell">
       <!-- HEADER -->
-      <header>
+      <header class="np-header">
         <div class="np-header-inner">
           <div class="np-header-kicker">NOPUNKS • NOMETA</div>
 
@@ -31,9 +31,7 @@
           </p>
 
           <!-- Social icons -->
-          <div
-            class="mt-2 flex items-center justify-center gap-3 text-xs text-white/60"
-          >
+          <div class="np-header-social">
             <a
               href="https://x.com/NoPunkism"
               target="_blank"
@@ -41,7 +39,7 @@
               aria-label="NoPunkism on X"
             >
               <img
-                src="/public/icons/X.jpg"
+                src="/icons/X.jpg"
                 alt="X"
                 style="width: 22px; height: 22px; border-radius: 999px"
               />
@@ -53,7 +51,7 @@
               aria-label="NoPunkism on OpenSea"
             >
               <img
-                src="/public/icons/opensea.png"
+                src="/icons/opensea.png"
                 alt="OpenSea"
                 style="width: 24px; height: 24px"
               />
@@ -75,16 +73,13 @@
               Collection
             </button>
             <button type="button" class="np-tab" data-tab="showcase">
-              Showcase
+              NoMeta
             </button>
             <button type="button" class="np-tab" data-tab="about">
               About
             </button>
             <button type="button" class="np-tab" data-tab="team">
               Team
-            </button>
-            <button type="button" class="np-tab" data-tab="nometa">
-              No-Meta
             </button>
             <button type="button" class="np-tab" data-tab="sales">
               Sales
@@ -149,7 +144,7 @@
           ></div>
         </section>
 
-        <!-- SHOWCASE TAB -->
+        <!-- SHOWCASE / NOMETA TAB -->
         <section
           id="tab-showcase"
           data-tab-section="showcase"
@@ -160,7 +155,7 @@
               <h2
                 class="text-sm font-semibold uppercase tracking-[0.25em] text-white/80"
               >
-                Showcase
+                NoMeta
               </h2>
             </div>
 
@@ -237,7 +232,7 @@
               <div class="mb-3 flex items-center gap-3">
                 <div class="h-10 w-10 overflow-hidden rounded-sm bg-black">
                   <img
-                    src="/public/team/astro.png"
+                    src="/team/astro.png"
                     alt="Astro-AI"
                     class="h-full w-full object-cover"
                     loading="lazy"
@@ -264,7 +259,7 @@
               <div class="mb-3 flex items-center gap-3">
                 <div class="h-10 w-10 overflow-hidden rounded-sm bg-black">
                   <img
-                    src="/public/team/holu.png"
+                    src="/team/holu.png"
                     alt="Holu"
                     class="h-full w-full object-cover"
                     loading="lazy"
@@ -290,7 +285,7 @@
               <div class="mb-3 flex items-center gap-3">
                 <div class="h-10 w-10 overflow-hidden rounded-sm bg-black">
                   <img
-                    src="/public/team/b888b.png"
+                    src="/team/b888b.png"
                     alt="B888B"
                     class="h-full w-full object-cover"
                     loading="lazy"
@@ -313,105 +308,6 @@
           </div>
         </section>
 
-        <!-- NOMETA TAB -->
-        <section
-          id="tab-nometa"
-          data-tab-section="nometa"
-          class="np-section hidden"
-        >
-          <div class="max-w-6xl mx-auto px-4 lg:px-0 py-10 flex flex-col gap-8">
-            <header class="flex flex-col gap-3">
-              <h2
-                class="text-2xl lg:text-3xl font-black tracking-[0.3em] text-white uppercase"
-              >
-                NO-META
-              </h2>
-              <p class="text-sm text-white/70 max-w-2xl">
-                NoMeta is the wider universe around NoPunks — cross-collection
-                derivatives and side projects that stay loyal to the minimal
-                pixel spirit.
-              </p>
-            </header>
-
-            <div class="np-nometa-grid">
-              <!-- NoPnuk -->
-              <figure class="flex flex-col gap-3">
-                <a
-                  href="https://opensea.io/collection/no-pnuks"
-                  target="_blank"
-                  rel="noreferrer"
-                  class="aspect-square bg-black rounded overflow-hidden flex items-center justify-center"
-                >
-                  <img
-                    src="/public/no-meta/NoPnuk.png.avif"
-                    alt="NoPnuk"
-                    loading="lazy"
-                  />
-                </a>
-                <figcaption
-                  class="text-xs text-white/60 uppercase tracking-[0.25em]"
-                >
-                  No-Pnuk
-                </figcaption>
-                <p class="text-[11px] text-white/60 leading-relaxed">
-                  A warped, glitched cousin of NoPunks — same spirit, different
-                  mutation.
-                </p>
-              </figure>
-
-              <!-- NoPixelpepen -->
-              <figure class="flex flex-col gap-3">
-                <a
-                  href="https://opensea.io/collection/no-pixelpepen"
-                  target="_blank"
-                  rel="noreferrer"
-                  class="aspect-square bg-black rounded overflow-hidden flex items-center justify-center"
-                >
-                  <img
-                    src="/public/no-meta/NoPixelpepen.gif"
-                    alt="NoPixelpepen"
-                    loading="lazy"
-                  />
-                </a>
-                <figcaption
-                  class="text-xs text-white/60 uppercase tracking-[0.25em]"
-                >
-                  No-Pixelpepen
-                </figcaption>
-                <p class="text-[11px] text-white/60 leading-relaxed">
-                  A pixel-pilled riff on Opepen culture, run through the NoMeta
-                  filter.
-                </p>
-              </figure>
-
-              <!-- NoTinyDinos -->
-              <figure class="flex flex-col gap-3">
-                <a
-                  href="https://opensea.io/collection/no-tinydinopunks"
-                  target="_blank"
-                  rel="noreferrer"
-                  class="aspect-square bg-black rounded overflow-hidden flex items-center justify-center"
-                >
-                  <img
-                    src="/public/no-meta/NoTinyDinos.png.avif"
-                    alt="NoTinyDinos"
-                    loading="lazy"
-                  />
-                </a>
-                <figcaption
-                  class="text-xs text-white/60 uppercase tracking-[0.25em]"
-                >
-                  No-TinyDinos
-                </figcaption>
-                <p class="text-[11px] text-white/60 leading-relaxed">
-                  Tiny dinos, lights out — a tribute collection that keeps
-                  everything in shadow.
-                </p>
-              </figure>
-            </div>
-          </div>
-        </section>
-
         <!-- SALES TAB -->
         <section
           id="tab-sales"
@@ -429,6 +325,7 @@
 
             <!-- Stat cards -->
             <div class="grid gap-4 sm:grid-cols-3">
+              <!-- Floor -->
               <div
                 class="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-xs text-white/70"
               >
@@ -437,13 +334,18 @@
                 >
                   Floor (Ξ)
                 </div>
-                <div
-                  id="floor-price"
-                  class="mt-2 text-lg font-semibold text-white/90"
-                >
-                  --
+                <div class="mt-2 flex items-baseline gap-1 text-white/90">
+                  <span
+                    id="floor-price"
+                    class="text-lg font-semibold"
+                  >
+                    --
+                  </span>
+                  <span class="text-xs text-white/60">Ξ</span>
                 </div>
               </div>
+
+              <!-- Volume -->
               <div
                 class="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-xs text-white/70"
               >
@@ -452,13 +354,18 @@
                 >
                   Volume Traded (Ξ)
                 </div>
-                <div
-                  id="total-volume"
-                  class="mt-2 text-lg font-semibold text-white/90"
-                >
-                  --
+                <div class="mt-2 flex items-baseline gap-1 text-white/90">
+                  <span
+                    id="total-volume"
+                    class="text-lg font-semibold"
+                  >
+                    --
+                  </span>
+                  <span class="text-xs text-white/60">Ξ</span>
                 </div>
               </div>
+
+              <!-- Holders -->
               <div
                 class="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-xs text-white/70"
               >
@@ -522,6 +429,6 @@
       </footer>
     </div>
 
-    <script src="/assets/website.js" defer></script>
+    <script src="/assets/website.js?v=6" defer></script>
   </body>
 </html>

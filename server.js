@@ -2,8 +2,9 @@
 // NoPunks site server
 // - Serves static files (if needed)
 // - Proxies OpenSea for NFT metadata + stats + sales + listings
-// - Uses token_map.json to map 0–9999 index -> real token ID
+// - Uses public/token_map.json to map 0–9999 index -> real token ID
 // - Exposes /api/showcase for daily rotating cross-collection picks
+// - Exposes /api/etherscan/transfers for chain-level NoPunks data (via Etherscan/Basescan)
 
 require('dotenv').config();
 
@@ -15,12 +16,10 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // -----------------------------
-// CORS – allow Netlify domain to call this API
+// CORS – allow Netlify / custom domains to call this API
 // -----------------------------
-// This is the bit you were missing. It lets https://nopunks.xyz
-// read responses from https://nopunksite.onrender.com.
 app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*'); // if you want, later tighten to your domains
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Accept, Content-Type');
   if (req.method === 'OPTIONS') {
@@ -32,8 +31,6 @@ app.use((req, res, next) => {
 // -----------------------------
 // CONFIG
 // -----------------------------
-// Prefer OPENSEA_* envs if present (matches your .env),
-// fall back to older names or hard-coded defaults.
 const CHAIN =
   process.env.OPENSEA_CHAIN ||
   process.env.CHAIN ||
@@ -100,13 +97,23 @@ const SHOWCASE_COLLECTIONS = [
   },
 ];
 
-// Use env key if set, otherwise fall back to your provided key
+// OpenSea API key
 const OPENSEA_API_KEY =
   process.env.OPENSEA_API_KEY || '62d4fdc803204dde8192c136b4c344cf';
 
 if (!OPENSEA_API_KEY) {
   console.warn(
     'WARNING: OPENSEA_API_KEY is not set. OpenSea requests will likely fail.'
+  );
+}
+
+// Etherscan/Basescan API key (for on-chain data)
+const ETHERSCAN_API_KEY =
+  process.env.ETHERSCAN_API_KEY || '7ZJAP58FPD21M8W9R6IES3G1XNC7EHCPSA';
+
+if (!ETHERSCAN_API_KEY) {
+  console.warn(
+    'WARNING: ETHERSCAN_API_KEY is not set. Etherscan/Basescan requests will be disabled.'
   );
 }
 
@@ -119,18 +126,135 @@ const fetchFn = global.fetch
 // -----------------------------
 // TOKEN MAP
 // -----------------------------
-const tokenMapPath = path.join(__dirname, 'token_map.json');
+// IMPORTANT: we now use /public/token_map.json
+const tokenMapPath = path.join(__dirname, 'public', 'token_map.json');
 let tokenMap = {};
 try {
   tokenMap = JSON.parse(fs.readFileSync(tokenMapPath, 'utf8'));
 } catch (err) {
-  console.warn('Could not read token_map.json, using identity mapping.', err);
+  console.warn('Could not read public/token_map.json, using identity mapping.', err);
 }
 
 function indexToTokenId(index) {
   const key = String(index);
   const mapped = tokenMap[key];
   return mapped != null ? mapped : index;
+}
+
+// Reverse token map: on-chain tokenId -> 0–9999 collection index
+const reverseTokenMap = {};
+try {
+  Object.keys(tokenMap).forEach((idx) => {
+    const mapped = tokenMap[idx];
+    if (mapped != null) {
+      reverseTokenMap[String(mapped)] = Number(idx);
+    }
+  });
+
+  // If tokenMap is empty or partial, fall back to identity for 0–9999
+  for (let i = 0; i < NOPUNKS_SUPPLY; i++) {
+    const key = String(i);
+    if (reverseTokenMap[key] == null) {
+      reverseTokenMap[key] = i;
+    }
+  }
+} catch (e) {
+  console.warn('Failed to build reverseTokenMap from token_map.json', e);
+}
+
+// -----------------------------
+// TRAITS INDEX – local canonical traits for hover + stats
+// -----------------------------
+const traitsIndexPath = path.join(__dirname, 'public', 'traits', 'traits_index.json');
+let traitsIndex = null;
+let traitsIndexIsArray = false;
+
+try {
+  const raw = JSON.parse(fs.readFileSync(traitsIndexPath, 'utf8'));
+  if (Array.isArray(raw)) {
+    traitsIndex = raw;
+    traitsIndexIsArray = true;
+  } else if (raw && typeof raw === 'object') {
+    traitsIndex = raw;
+    traitsIndexIsArray = false;
+  } else {
+    console.warn('traits_index.json has unexpected format; ignoring.');
+  }
+} catch (err) {
+  console.warn(
+    'Could not read traits_index.json – hover traits will use OpenSea metadata only.',
+    err
+  );
+}
+
+function normaliseTraitsEntry(entry) {
+  if (!entry) return null;
+  if (Array.isArray(entry.traits)) return entry.traits;
+  if (Array.isArray(entry.attributes)) return entry.attributes;
+  if (Array.isArray(entry)) return entry;
+  return null;
+}
+
+function getTraitsForToken(tokenId, index) {
+  if (!traitsIndex) return null;
+
+  const keyStr = tokenId != null ? String(tokenId) : null;
+
+  // Resolve a collection index if we can (for array-based traitsIndex)
+  let resolvedIndex =
+    typeof index === 'number' && index >= 0 ? index : null;
+
+  if (
+    resolvedIndex == null &&
+    keyStr &&
+    traitsIndexIsArray &&
+    reverseTokenMap &&
+    Object.prototype.hasOwnProperty.call(reverseTokenMap, keyStr)
+  ) {
+    resolvedIndex = reverseTokenMap[keyStr];
+  }
+
+  // Object keyed by tokenId
+  if (!traitsIndexIsArray && keyStr) {
+    const direct = traitsIndex[keyStr];
+    const directTraits = normaliseTraitsEntry(direct);
+    if (directTraits) return directTraits;
+  }
+
+  // Array indexed by 0–9999 index
+  if (
+    traitsIndexIsArray &&
+    typeof resolvedIndex === 'number' &&
+    resolvedIndex >= 0 &&
+    resolvedIndex < traitsIndex.length
+  ) {
+    const byIndex = traitsIndex[resolvedIndex];
+    const byIndexTraits = normaliseTraitsEntry(byIndex);
+    if (byIndexTraits) return byIndexTraits;
+  }
+
+  // Fallback: scan for a matching token id inside entries
+  if (keyStr) {
+    const scanSource = traitsIndexIsArray
+      ? traitsIndex
+      : Object.values(traitsIndex);
+    for (const entry of scanSource) {
+      if (!entry || typeof entry !== 'object') continue;
+      const entryId =
+        entry.token_id ??
+        entry.tokenId ??
+        entry.id ??
+        entry.identifier ??
+        entry.onChainId ??
+        null;
+      if (entryId != null && String(entryId) === keyStr) {
+        const traits = normaliseTraitsEntry(entry);
+        if (traits) return traits;
+      }
+    }
+  }
+
+  return null;
 }
 
 // -----------------------------
@@ -141,11 +265,25 @@ const nftCache = new Map();
 // -----------------------------
 // STATIC FILES
 // -----------------------------
-// This lets you serve static files if you hit this server directly.
+// Serve everything from project root
 app.use(express.static(path.join(__dirname)));
 
+// Also explicitly serve /public for anything you’ve parked in there
+app.use('/public', express.static(path.join(__dirname, 'public')));
+
+// Traits index for frontend
+app.use(
+  '/traits',
+  express.static(path.join(__dirname, 'public', 'traits'))
+);
+
+// In case icons / no-meta / team live under /public, wire these paths too:
+app.use('/icons', express.static(path.join(__dirname, 'public', 'icons')));
+app.use('/no-meta', express.static(path.join(__dirname, 'public', 'no-meta')));
+app.use('/team', express.static(path.join(__dirname, 'public', 'team')));
+
 // -----------------------------
-// HELPERS
+// HELPERS – OpenSea
 // -----------------------------
 function normaliseImageUrl(url) {
   if (!url) return '';
@@ -186,6 +324,110 @@ async function fetchJsonFromOpenSea(url, label = 'OpenSea', timeoutMs = 20000) {
     clearTimeout(timeout);
   }
 }
+
+// -----------------------------
+// HELPERS – Etherscan/Basescan
+// -----------------------------
+function getEtherscanBaseUrl() {
+  if (CHAIN.toLowerCase() === 'base') {
+    return 'https://api.basescan.org/api';
+  }
+  if (CHAIN.toLowerCase() === 'ethereum' || CHAIN.toLowerCase() === 'mainnet') {
+    return 'https://api.etherscan.io/api';
+  }
+  return 'https://api.etherscan.io/api';
+}
+
+async function fetchJsonFromEtherscan(params, label = 'Etherscan', timeoutMs = 20000) {
+  if (!ETHERSCAN_API_KEY) {
+    throw new Error('ETHERSCAN_API_KEY not configured');
+  }
+
+  const baseUrl = getEtherscanBaseUrl();
+  const url = `${baseUrl}?${new URLSearchParams({
+    ...params,
+    apikey: ETHERSCAN_API_KEY,
+  }).toString()}`;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetchFn(url, {
+      headers: {
+        accept: 'application/json',
+      },
+      signal: controller.signal,
+    });
+
+    const text = await res.text();
+
+    if (!res.ok) {
+      const shortBody = text.slice(0, 200).replace(/\s+/g, ' ');
+      console.error(`${label} error ${res.status}: ${shortBody}`);
+      throw new Error(`${label} request failed with ${res.status}`);
+    }
+
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch (e) {
+      console.error(`${label} JSON parse error:`, e);
+      throw e;
+    }
+
+    if (json.status && json.status !== '1' && json.message !== 'OK') {
+      console.warn(`${label} non-OK response:`, json.message, json.result);
+    }
+
+    return json;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+// =======================
+// /api/etherscan/transfers
+// =======================
+app.get('/api/etherscan/transfers', async (req, res) => {
+  try {
+    const page = req.query.page || '1';
+    const offset = req.query.limit || '25';
+
+    const data = await fetchJsonFromEtherscan(
+      {
+        module: 'account',
+        action: 'tokennfttx',
+        contractaddress: CONTRACT,
+        page,
+        offset,
+        sort: 'desc',
+      },
+      'Etherscan transfers',
+      20000
+    );
+
+    const txs = Array.isArray(data.result) ? data.result : [];
+
+    const transfers = txs.map((tx) => ({
+      tokenId: tx.tokenID,
+      from: tx.from,
+      to: tx.to,
+      hash: tx.hash,
+      timeStamp: tx.timeStamp,
+      blockNumber: tx.blockNumber,
+      value: tx.value,
+    }));
+
+    res.json({ transfers });
+  } catch (err) {
+    console.error('Etherscan transfers API error:', err.message || err);
+    res.status(502).json({
+      transfers: [],
+      error: 'On-chain transfers unavailable',
+    });
+  }
+});
 
 // -----------------------------
 // SIMPLE OPENSEA REQUEST QUEUE
@@ -248,6 +490,11 @@ app.get('/api/nft/:index', async (req, res) => {
     const cacheKey = `${CONTRACT.toLowerCase()}:${tokenId}`;
     const cached = nftCache.get(cacheKey);
     if (cached) {
+      const canonicalTraits = getTraitsForToken(tokenId, index);
+      if (canonicalTraits && !cached.traits && !cached.attributes) {
+        cached.traits = canonicalTraits;
+        cached.attributes = canonicalTraits;
+      }
       return res.json(cached);
     }
 
@@ -264,11 +511,18 @@ app.get('/api/nft/:index', async (req, res) => {
         ''
     );
 
+    const canonicalTraits = getTraitsForToken(tokenId, index);
+
     const payload = {
       ...nft,
       image_url,
       onChainId: nft.identifier || nft.token_id || tokenId,
     };
+
+    if (canonicalTraits) {
+      payload.traits = canonicalTraits;
+      payload.attributes = canonicalTraits;
+    }
 
     nftCache.set(cacheKey, payload);
     res.json(payload);
@@ -285,12 +539,12 @@ app.get('/api/collection', async (req, res) => {
   try {
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const pageSizeRaw = parseInt(req.query.pageSize, 10) || 50;
-    const pageSize = Math.min(Math.max(pageSizeRaw, 1), 50); // OpenSea limit 50
+    const pageSize = Math.min(Math.max(pageSizeRaw, 1), 50);
     const offset = (page - 1) * pageSize;
 
     const url =
-      `https://api.opensea.io/api/v2/collection/${COLLECTION_SLUG}/nfts` +
-      `?limit=${pageSize}&offset=${offset}&chain=${CHAIN}`;
+      `https://api.opensea.io/api/v2/chain/${CHAIN}/contract/${CONTRACT}/nfts` +
+      `?limit=${pageSize}&offset=${offset}`;
 
     const data = await queueOpenSeaRequest(url, 'Collection page', 25000);
 
@@ -300,7 +554,7 @@ app.get('/api/collection', async (req, res) => {
       ? data.assets
       : [];
 
-    const tokens = nfts.map((nft) => {
+    const tokens = nfts.map((nft, idx) => {
       const image_url = normaliseImageUrl(
         nft.image_url ||
           nft.image_original_url ||
@@ -310,6 +564,26 @@ app.get('/api/collection', async (req, res) => {
             (nft.media[0].thumbnail || nft.media[0].gateway)) ||
           ''
       );
+
+      const tokenId =
+        nft.identifier ||
+        nft.token_id ||
+        (nft.id && nft.id.tokenId) ||
+        null;
+
+      const collectionIndex = offset + idx;
+
+      const canonicalTraits = getTraitsForToken(tokenId, collectionIndex);
+
+      if (canonicalTraits) {
+        return {
+          ...nft,
+          image_url,
+          traits: canonicalTraits,
+          attributes: canonicalTraits,
+        };
+      }
+
       return { ...nft, image_url };
     });
 
@@ -388,6 +662,9 @@ app.get('/api/showcase', async (req, res) => {
         picked = {
           key: cfg.key,
           label: cfg.label,
+          projectLabel: cfg.label,
+          project: cfg.key,
+          collection: cfg.key,
           contract: cfg.contract,
           tokenId: onChainId ? String(onChainId) : '',
           image_url,
@@ -451,6 +728,9 @@ app.get('/api/showcase', async (req, res) => {
           picked = {
             key: cfg.key,
             label: cfg.label,
+            projectLabel: cfg.label,
+            project: cfg.key,
+            collection: cfg.key,
             contract: cfg.contract,
             tokenId: String(onChainId),
             image_url,
@@ -610,12 +890,19 @@ app.get('/api/recent-sales', async (req, res) => {
           ''
       );
 
+      // include buyer so "Sold to" text can show correctly
+      const buyer =
+        (ev.to_account && ev.to_account.address) ||
+        (ev.winner_account && ev.winner_account.address) ||
+        null;
+
       return {
         onChainId: tokenId,
         price,
         unit: symbol,
         time,
         image_url,
+        buyer,
       };
     });
 
@@ -668,12 +955,19 @@ app.get('/api/listed', async (req, res) => {
           ''
       );
 
+      // include seller so "Listed by" text can show correctly
+      const seller =
+        (l.maker && l.maker.address) ||
+        (l.seller && l.seller.address) ||
+        null;
+
       return {
         onChainId: tokenId,
         price,
         unit: 'ETH',
         source: 'OpenSea',
         image_url,
+        seller,
       };
     });
 
@@ -731,17 +1025,7 @@ app.get('/api/listed', async (req, res) => {
       })
     );
 
-    const byToken = new Map();
-    for (const lst of listingsWithImages) {
-      if (!lst.onChainId) continue;
-      const key = String(lst.onChainId);
-      const existing = byToken.get(key);
-      if (!existing || (lst.price != null && lst.price < existing.price)) {
-        byToken.set(key, lst);
-      }
-    }
-
-    const listings = Array.from(byToken.values());
+    const listings = listingsWithImages;
     res.json({ listings });
   } catch (err) {
     console.error('Listings API error:', err.message || err);

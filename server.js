@@ -59,11 +59,22 @@ const NOTINYDINOS_CONTRACT =
   process.env.NOTINYDINOS_CONTRACT ||
   '0x1c08b2d77D143b5A3F11f283beBE3e45c1aEEd27'; // notinydinos 1000
 
+const BUCKED_BLOWN_CONTRACT =
+  process.env.BUCKED_BLOWN_CONTRACT ||
+  '0x13E09Ef7046442B67dd45A4FA4Ca61feB2eB30Aa'; // Bucked Blown 1500
+
 // Exact total supplies
 const NOPUNKS_SUPPLY = 10000;
 const NOPNUK_SUPPLY = 2024;
 const NOPIXELPEPEN_SUPPLY = 3888;
 const NOTINYDINOS_SUPPLY = 1000;
+const BUCKED_BLOWN_SUPPLY = 1500;
+
+// In‑memory pagination cache for the main NoPunks collection (for /api/collection)
+const COLLECTION_PAGE_SIZE = 50; // must match frontend PAGE_SIZE
+let collectionHighestPageLoaded = 0;
+let collectionNextCursorAfterHighest = null; // "next" cursor returned after the highest loaded page
+const collectionPageTokens = new Map(); // page -> [tokens]
 
 // Showcase config – one daily pick from each of these
 const SHOWCASE_COLLECTIONS = [
@@ -93,6 +104,13 @@ const SHOWCASE_COLLECTIONS = [
     label: 'No-TinyDinoPunks',
     contract: NOTINYDINOS_CONTRACT,
     totalSupply: NOTINYDINOS_SUPPLY,
+    useTokenMap: false,
+  },
+  {
+    key: 'bucked-blown',
+    label: 'Bucked Blown',
+    contract: BUCKED_BLOWN_CONTRACT,
+    totalSupply: BUCKED_BLOWN_SUPPLY,
     useTokenMap: false,
   },
 ];
@@ -448,7 +466,7 @@ function processOpenSeaQueue() {
     .catch((err) => reject(err))
     .finally(() => {
       openSeaActive = false;
-      setTimeout(processOpenSeaQueue, 250); // ~4 req/s max
+      setTimeout(processOpenSeaQueue, 500); // ~2 req/s max
     });
 }
 
@@ -532,70 +550,136 @@ app.get('/api/nft/:index', async (req, res) => {
   }
 });
 
+// Helper: fetch and normalise a single page from OpenSea using the collection slug and cursor
+async function fetchCollectionPageFromOpenSea(cursor, pageSize) {
+  const limit = pageSize || COLLECTION_PAGE_SIZE;
+
+  const baseUrl =
+    `https://api.opensea.io/api/v2/collection/${COLLECTION_SLUG}/nfts` +
+    `?limit=${limit}&chain=${CHAIN}`;
+
+  const url = cursor
+    ? `${baseUrl}&next=${encodeURIComponent(cursor)}`
+    : baseUrl;
+
+  const data = await queueOpenSeaRequest(url, 'Collection page', 25000);
+
+  const nfts = Array.isArray(data.nfts)
+    ? data.nfts
+    : Array.isArray(data.assets)
+    ? data.assets
+    : [];
+
+  const cursorNext = data.next || null;
+
+  const tokens = nfts.map((nft) => {
+    const image_url = normaliseImageUrl(
+      nft.image_url ||
+        nft.image_original_url ||
+        nft.display_image_url ||
+        nft.image ||
+        (nft.media &&
+          nft.media[0] &&
+          (nft.media[0].gateway || nft.media[0].thumbnail)) ||
+        ''
+    );
+
+    const tokenId =
+      nft.identifier ||
+      nft.token_id ||
+      (nft.id && nft.id.tokenId) ||
+      null;
+
+    let collectionIndex = null;
+    if (
+      tokenId != null &&
+      Object.prototype.hasOwnProperty.call(reverseTokenMap, String(tokenId))
+    ) {
+      collectionIndex = reverseTokenMap[String(tokenId)];
+    }
+
+    const canonicalTraits = getTraitsForToken(tokenId, collectionIndex);
+
+    const base = {
+      ...nft,
+      image_url,
+      onChainId: tokenId,
+    };
+
+    if (canonicalTraits) {
+      base.traits = canonicalTraits;
+      base.attributes = canonicalTraits;
+    }
+
+    return base;
+  });
+
+  return { tokens, cursorNext };
+}
+
 // =======================
 // /api/collection
 // =======================
+// NOTE: we page via OpenSea's cursor ("next") for the collection slug,
+// but the frontend only sends a numeric `page` (1‑based). This route
+// keeps a simple in‑memory cache so that each page of 50 NoPunks is
+// stable and unique while the server is running.
 app.get('/api/collection', async (req, res) => {
   try {
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
-    const pageSizeRaw = parseInt(req.query.pageSize, 10) || 50;
-    const pageSize = Math.min(Math.max(pageSizeRaw, 1), 50);
-    const offset = (page - 1) * pageSize;
+    const pageSize = COLLECTION_PAGE_SIZE; // keep this in sync with website.js PAGE_SIZE
 
-    const url =
-      `https://api.opensea.io/api/v2/chain/${CHAIN}/contract/${CONTRACT}/nfts` +
-      `?limit=${pageSize}&offset=${offset}`;
+    // If we've already cached this page, return it immediately.
+    if (collectionPageTokens.has(page)) {
+      return res.json({
+        tokens: collectionPageTokens.get(page),
+        total: NOPUNKS_SUPPLY,
+        page,
+        pageSize,
+      });
+    }
 
-    const data = await queueOpenSeaRequest(url, 'Collection page', 25000);
+    // On the very first request, ensure our cursor state is clean.
+    if (collectionHighestPageLoaded === 0) {
+      collectionNextCursorAfterHighest = null;
+    }
 
-    const nfts = Array.isArray(data.nfts)
-      ? data.nfts
-      : Array.isArray(data.assets)
-      ? data.assets
-      : [];
-
-    const tokens = nfts.map((nft, idx) => {
-      const image_url = normaliseImageUrl(
-        nft.image_url ||
-          nft.image_original_url ||
-          nft.display_image_url ||
-          (nft.media &&
-            nft.media[0] &&
-            (nft.media[0].thumbnail || nft.media[0].gateway)) ||
-          ''
+    // We always fetch pages sequentially so OpenSea's `next` cursor
+    // stays valid. For example, if highestPageLoaded === 2 and the
+    // client asks for page 4, we fetch 3 then 4 in order.
+    let cursor = collectionNextCursorAfterHighest;
+    for (let p = collectionHighestPageLoaded + 1; p <= page; p++) {
+      const { tokens, cursorNext } = await fetchCollectionPageFromOpenSea(
+        cursor,
+        pageSize
       );
 
-      const tokenId =
-        nft.identifier ||
-        nft.token_id ||
-        (nft.id && nft.id.tokenId) ||
-        null;
+      collectionPageTokens.set(p, tokens);
+      collectionHighestPageLoaded = p;
+      cursor = cursorNext;
+      collectionNextCursorAfterHighest = cursor;
 
-      const collectionIndex = offset + idx;
-
-      const canonicalTraits = getTraitsForToken(tokenId, collectionIndex);
-
-      if (canonicalTraits) {
-        return {
-          ...nft,
-          image_url,
-          traits: canonicalTraits,
-          attributes: canonicalTraits,
-        };
+      // If OpenSea indicates there are no more pages, stop early.
+      if (!cursor) {
+        break;
       }
+    }
 
-      return { ...nft, image_url };
-    });
+    const tokens = collectionPageTokens.get(page) || [];
 
     res.json({
       tokens,
       total: NOPUNKS_SUPPLY,
+      page,
+      pageSize,
     });
   } catch (err) {
     console.error('Collection API error:', err.message || err);
     res.status(502).json({
       tokens: [],
       total: NOPUNKS_SUPPLY,
+      page: 1,
+      pageSize: COLLECTION_PAGE_SIZE,
       error: 'Collection unavailable',
     });
   }

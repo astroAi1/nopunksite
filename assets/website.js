@@ -243,6 +243,8 @@
 
   let currentPage = 1;
   let isLoadingCollection = false;
+  const collectionTokensByPage = {};
+  const collectionCursorByPage = { 1: null };
 
   function getTokenId(token) {
     if (!token) return "";
@@ -365,16 +367,34 @@
 
   async function loadCollectionPage(page) {
     if (isLoadingCollection) return;
-    isLoadingCollection = true;
     collectionErrorEl.style.display = "none";
 
-    try {
-      collectionGridEl.innerHTML = "";
-      collectionGridEl.setAttribute("aria-busy", "true");
+    // If we already have this page cached, just render it without
+    // hitting the server again (helps avoid OpenSea rate limits).
+    const cached = collectionTokensByPage[page];
+    if (Array.isArray(cached) && cached.length > 0) {
+      currentPage = page;
+      renderCollection(cached, page, TOTAL_SUPPLY);
+      return;
+    }
 
-      const data = await fetchJson(
-        `/api/collection?page=${page}&pageSize=${PAGE_SIZE}`
-      );
+    isLoadingCollection = true;
+    collectionGridEl.innerHTML = "";
+    collectionGridEl.setAttribute("aria-busy", "true");
+
+    try {
+      const params = new URLSearchParams();
+      params.set("page", String(page));
+      params.set("pageSize", String(PAGE_SIZE));
+
+      // For page 1 we omit the cursor; for later pages we pass the
+      // cursor that was returned for that page from the server.
+      const cursor = page === 1 ? null : collectionCursorByPage[page];
+      if (cursor) {
+        params.set("cursor", cursor);
+      }
+
+      const data = await fetchJson(`/api/collection?${params.toString()}`);
       await loadTokenMap();
 
       const tokens =
@@ -386,6 +406,14 @@
       }
 
       currentPage = page;
+      collectionTokensByPage[page] = tokens;
+
+      // Remember the cursor for the *next* page if the server provided one.
+      const cursorNext = data.cursorNext || data.next || data.cursor || null;
+      if (cursorNext) {
+        collectionCursorByPage[page + 1] = cursorNext;
+      }
+
       renderCollection(tokens, page, total);
     } catch (err) {
       console.error("Collection load error:", err);
@@ -630,6 +658,8 @@
     if (item.project_header) return item.project_header;
 
     const key = (item.key || "").toLowerCase();
+    if (key.includes("bucked") || key.includes("blown"))
+      return "BUCKED BLOWN • NOMETA";
     if (key.includes("pnuk")) return "NOPNUK • NOMETA";
     if (key.includes("pixelpepen")) return "NO-PIXELPEPEN • NOMETA";
     if (key.includes("tiny") || key.includes("dino"))
@@ -640,6 +670,8 @@
     }
 
     const slug = (item.project || item.collection || "").toLowerCase();
+    if (slug.includes("bucked") || slug.includes("blown"))
+      return "BUCKED BLOWN • NOMETA";
     if (slug.includes("pnuk")) return "NOPNUK • NOMETA";
     if (slug.includes("pixelpepen")) return "NO-PIXELPEPEN • NOMETA";
     if (slug.includes("tiny") || slug.includes("dino"))
@@ -661,6 +693,10 @@
 
     // 1. Explicit NoMeta side collections FIRST so they never get
     //    caught by any generic NoPunks logic below.
+    if (combined.includes("bucked") || combined.includes("blown")) {
+      return "https://opensea.io/collection/bucked-blown";
+    }
+
     if (combined.includes("pnuk")) {
       return "https://opensea.io/collection/no-pnuks";
     }
@@ -683,13 +719,9 @@
     if (
       slug === "nopunkism" ||
       combined.includes("nopunkism") ||
-      combined.includes("nopunks") ||
       (item.contract &&
-        (item.contract.toLowerCase() ===
-          "0x4ed83635e2309a7c067d0f98efca47b920bf79b1" ||
-          item.contract
-            .toLowerCase()
-            .includes("4ed83635e2309a7c067d0f98efca47b920bf79b1"))) ||
+        item.contract.toLowerCase() ===
+          "0x4ed83635e2309a7c067d0f98efca47b920bf79b1") ||
       (item.contract_address &&
         item.contract_address.toLowerCase() ===
           "0x4ed83635e2309a7c067d0f98efca47b920bf79b1")
@@ -790,7 +822,7 @@
 
       showcaseGridEl.innerHTML = items.map(createShowcaseCardHtml).join("");
       showcaseStatusEl.textContent =
-        "Once a day, four pieces from across the NoMeta universe.";
+        "Each day, new pieces from across the NoMeta universe.";
     } catch (err) {
       console.error("Showcase load error:", err);
       showcaseStatusEl.textContent =

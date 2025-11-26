@@ -973,3 +973,8 @@ small {
 .bg-black {
   background-color: #000000;
 }
+
+/* Hide corner circles on NoMeta showcase cards */
+.np-playing-card-corner {
+  display: none;
+}

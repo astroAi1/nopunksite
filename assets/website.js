@@ -651,46 +651,62 @@
   function getShowcaseCollectionUrl(item) {
     if (!item) return "#";
 
-    // Prefer explicit collection URL if provided by the API
-    if (item.collection_url) return item.collection_url;
+    // Pull out a few different identity hints
+    const rawSlug = item.collection_slug || "";
+    const rawKey = item.key || item.project || item.collection || rawSlug || "";
+    const rawLabel = item.projectLabel || item.project_header || item.label || "";
 
-    // Try a generic collection slug if present
-    if (item.collection_slug) {
-      return `https://opensea.io/collection/${item.collection_slug}`;
+    const slug = rawSlug.toLowerCase();
+    const combined = `${rawKey} ${rawLabel} ${slug}`.toLowerCase();
+
+    // 1. Explicit NoMeta side collections FIRST so they never get
+    //    caught by any generic NoPunks logic below.
+    if (combined.includes("pnuk")) {
+      return "https://opensea.io/collection/no-pnuks";
     }
 
-    // Fallback mappings based on project key / name
-    const key = (
-      item.key ||
-      item.project ||
-      item.collection ||
-      ""
-    ).toLowerCase();
+    if (combined.includes("pixelpepen")) {
+      return "https://opensea.io/collection/no-pixelpepen";
+    }
 
-    // Explicit mapping for the main NoPunks collection so it never uses a local URL
+    // e.g. "notinydinopunks", "no-tinydinopunks", "tiny dino" etc.
     if (
-      key.includes("nopunkism") ||
-      key.includes("nopunks") ||
+      combined.includes("tiny") ||
+      combined.includes("dino") ||
+      combined.includes("notinydino")
+    ) {
+      return "https://opensea.io/collection/no-tinydinopunks";
+    }
+
+    // 2. Explicit mapping for the main NoPunks collection.
+    //    We keep this AFTER the side collections so they don't get overridden.
+    if (
+      slug === "nopunkism" ||
+      combined.includes("nopunkism") ||
+      combined.includes("nopunks") ||
       (item.contract &&
-        (item.contract.toLowerCase() === "0x4ed83635e2309a7c067d0f98efca47b920bf79b1" ||
-          item.contract.toLowerCase().includes("4ed83635e2309a7c067d0f98efca47b920bf79b1"))) ||
+        (item.contract.toLowerCase() ===
+          "0x4ed83635e2309a7c067d0f98efca47b920bf79b1" ||
+          item.contract
+            .toLowerCase()
+            .includes("4ed83635e2309a7c067d0f98efca47b920bf79b1"))) ||
       (item.contract_address &&
-        item.contract_address.toLowerCase() === "0x4ed83635e2309a7c067d0f98efca47b920bf79b1")
+        item.contract_address.toLowerCase() ===
+          "0x4ed83635e2309a7c067d0f98efca47b920bf79b1")
     ) {
       return "https://opensea.io/collection/nopunkism";
     }
 
-    if (key.includes("pnuk")) {
-      return "https://opensea.io/collection/no-pnuks";
-    }
-    if (key.includes("pixelpepen")) {
-      return "https://opensea.io/collection/no-pixelpepen";
-    }
-    if (key.includes("tiny") || key.includes("dino")) {
-      return "https://opensea.io/collection/no-tinydinopunks";
+    // 3. Prefer explicit collection URL if provided by the API
+    if (item.collection_url) return item.collection_url;
+
+    // 4. If we have a collection_slug and we haven't matched a side-collection
+    //    or the main NoPunks collection above, fall back to that.
+    if (slug) {
+      return `https://opensea.io/collection/${slug}`;
     }
 
-    // Final fallback: whatever NFT-level permalink we have
+    // 5. Final fallback: whatever NFT-level permalink / external URL we have
     return (
       item.permalink ||
       item.external_url ||

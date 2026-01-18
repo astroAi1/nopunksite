@@ -39,12 +39,12 @@ const CHAIN =
 const CONTRACT =
   process.env.OPENSEA_CONTRACT ||
   process.env.CONTRACT ||
-  '0x4ed83635e2309a7c067d0f98efca47b920bf79b1'; // NoPunks contract
+  '0xa62f65d503068684e7228df98090f94322b8ed54'; // NoPunks contract (v2 - fully onchain)
 
 const COLLECTION_SLUG =
   process.env.OPENSEA_COLLECTION_SLUG ||
   process.env.COLLECTION_SLUG ||
-  'nopunkism';
+  'nopunkismv2';
 
 // Side collections
 const NOPNUK_CONTRACT =
@@ -79,7 +79,7 @@ const collectionPageTokens = new Map(); // page -> [tokens]
 // Showcase config – one daily pick from each of these
 const SHOWCASE_COLLECTIONS = [
   {
-    key: 'nopunkism',
+    key: 'nopunkismv2',
     label: 'NoPunks',
     contract: CONTRACT,
     totalSupply: NOPUNKS_SUPPLY,

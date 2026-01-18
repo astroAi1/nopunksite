@@ -18,9 +18,9 @@ const PORT = process.env.PORT || 3000;
 
 // OpenSea config
 // Slug from your URL: https://opensea.io/collection/nopunkism
-const OPENSEA_COLLECTION_SLUG = 'nopunkism';
+const OPENSEA_COLLECTION_SLUG = 'nopunkismv2';
 // Base mainnet contract
-const CONTRACT = '0x4ed83635e2309a7c067d0f98efca47b920bf79b1';
+const CONTRACT = '0xa62f65d503068684e7228df98090f94322b8ed54'; // NoPunks v2
 // Chain for NFT metadata endpoint
 const CHAIN = 'base';
 

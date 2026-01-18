@@ -287,7 +287,7 @@
     if (t.external_url) return t.external_url;
     if (t.opensea_url) return t.opensea_url;
     if (!tokenId) return "#";
-    return `https://opensea.io/assets/base/0x4ed83635e2309a7c067d0f98efca47b920bf79b1/${tokenId}`;
+    return `https://opensea.io/assets/base/0xa62f65d503068684e7228df98090f94322b8ed54/${tokenId}`;
   }
 
   function getTokenTraits(token) {
@@ -717,16 +717,16 @@
     // 2. Explicit mapping for the main NoPunks collection.
     //    We keep this AFTER the side collections so they don't get overridden.
     if (
-      slug === "nopunkism" ||
-      combined.includes("nopunkism") ||
+      slug === "nopunkismv2" ||
+      combined.includes("nopunkismv2") ||
       (item.contract &&
         item.contract.toLowerCase() ===
-          "0x4ed83635e2309a7c067d0f98efca47b920bf79b1") ||
+          "0xa62f65d503068684e7228df98090f94322b8ed54") ||
       (item.contract_address &&
         item.contract_address.toLowerCase() ===
-          "0x4ed83635e2309a7c067d0f98efca47b920bf79b1")
+          "0xa62f65d503068684e7228df98090f94322b8ed54")
     ) {
-      return "https://opensea.io/collection/nopunkism";
+      return "https://opensea.io/collection/nopunkismv2";
     }
 
     // 3. Prefer explicit collection URL if provided by the API

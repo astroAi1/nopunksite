@@ -1,0 +1,41 @@
+{
+  "name": "NO-PUNKS",
+  "short_name": "NoPunks",
+  "description": "10,000 minimalist NFT derivatives on Base. Lights out. Traits stay. Play No-PingPong, enter free raffles, bid on auctions.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/icons/52.png",
+      "sizes": "52x52",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/52.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/52.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["games", "entertainment"],
+  "screenshots": [
+    {
+      "src": "/icons/52.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "form_factor": "narrow"
+    }
+  ],
+  "related_applications": [],
+  "prefer_related_applications": false
+}

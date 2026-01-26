@@ -126,6 +126,83 @@
       </section>
     </main>
 
+    <script src="./multiplayer.js"></script>
+    <script src="./wager-ui.js"></script>
     <script src="./grind.js"></script>
+
+    <style>
+      /* Wager UI Styles */
+      #wager-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 800px;
+        height: 400px;
+        z-index: 100;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.85);
+      }
+
+      #wager-container.hidden { display: none !important; }
+
+      .wager-screen {
+        background: #000;
+        border: 2px solid #fff;
+        padding: 2rem;
+        text-align: center;
+        min-width: 300px;
+        max-width: 400px;
+      }
+
+      .wager-screen.hidden { display: none; }
+      .wager-screen h2 { margin: 0 0 1.5rem 0; font-size: 1.5rem; color: #fff; }
+
+      .wager-btn {
+        display: block;
+        width: 100%;
+        padding: 1rem;
+        margin: 0.5rem 0;
+        background: #000;
+        border: 2px solid #fff;
+        color: #fff;
+        font-family: inherit;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .wager-btn:hover:not(:disabled) { background: #fff; color: #000; }
+      .wager-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .wager-btn.primary { background: #0052ff; border-color: #0052ff; }
+      .wager-btn.primary:hover:not(:disabled) { background: #3373ff; border-color: #3373ff; color: #fff; }
+      .wager-btn.large { padding: 1.5rem; font-size: 1.2rem; }
+
+      .stake-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1.5rem; }
+      .stake-btn { padding: 1rem; background: #000; border: 2px solid #888; color: #fff; font-family: inherit; cursor: pointer; transition: all 0.2s; }
+      .stake-btn:hover { border-color: #fff; }
+      .stake-btn.selected { border-color: #0052ff; background: rgba(0, 82, 255, 0.2); }
+      .stake-amount { display: block; font-size: 1.5rem; font-weight: bold; }
+      .stake-eth { display: block; font-size: 0.75rem; color: #888; margin-top: 0.25rem; }
+
+      .lobby-status { padding: 2rem; }
+      .spinner { width: 40px; height: 40px; border: 3px solid #333; border-top-color: #0052ff; border-radius: 50%; margin: 0 auto 1rem; animation: spin 1s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      #lobby-message { color: #888; margin: 0; }
+
+      .wager-overlay { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 50; }
+      .pot-display { background: rgba(0, 0, 0, 0.9); border: 2px solid #0052ff; padding: 0.5rem 1.5rem; font-size: 1.2rem; }
+      .pot-display span:first-child { color: #888; margin-right: 0.5rem; }
+      #pot-amount { color: #0052ff; font-weight: bold; }
+
+      #result-title.win { color: #00ff00; }
+      #result-title.lose { color: #ff0000; }
+      #result-payout { margin: 1.5rem 0; font-size: 1.5rem; }
+      #payout-amount { color: #00ff00; font-weight: bold; }
+      .wager-btn.claimed { background: #00ff00; border-color: #00ff00; color: #000; }
+
+      .bottom-left, .game-area { position: relative; }
+    </style>
   </body>
 </html>

@@ -1,0 +1,25 @@
+{
+  "accountAssociation": {
+    "header": "",
+    "payload": "",
+    "signature": ""
+  },
+  "miniapp": {
+    "version": "1",
+    "name": "No-PingPong",
+    "homeUrl": "https://nopunks.xyz/no-pingpong",
+    "iconUrl": "https://nopunks.xyz/assets/no-pingpong-icon.png",
+    "splashImageUrl": "https://nopunks.xyz/assets/no-pingpong-splash.png",
+    "splashBackgroundColor": "#000000",
+    "subtitle": "Play to the finals",
+    "description": "Free NoPunks ping-pong tournaments with NFT prizes for the winners.",
+    "primaryCategory": "games",
+    "tags": ["nopunks", "pong", "base", "miniapp"],
+    "heroImageUrl": "https://nopunks.xyz/assets/no-pingpong-hero.png",
+    "tagline": "Free tournaments. Onchain prizes.",
+    "ogTitle": "No-PingPong",
+    "ogDescription": "Free NoPunks ping-pong tournaments with NFT prizes.",
+    "ogImageUrl": "https://nopunks.xyz/assets/no-pingpong-hero.png",
+    "noindex": true
+  }
+}

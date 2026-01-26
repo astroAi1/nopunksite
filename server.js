@@ -39,12 +39,12 @@ const CHAIN =
 const CONTRACT =
   process.env.OPENSEA_CONTRACT ||
   process.env.CONTRACT ||
-  '0x4ed83635e2309a7c067d0f98efca47b920bf79b1'; // NoPunks contract
+  '0xa62f65d503068684e7228df98090F94322b8ed54'; // NoPunks V2 contract
 
 const COLLECTION_SLUG =
   process.env.OPENSEA_COLLECTION_SLUG ||
   process.env.COLLECTION_SLUG ||
-  'nopunkism';
+  'nopunkismv2';
 
 // Side collections
 const NOPNUK_CONTRACT =
@@ -79,8 +79,8 @@ const collectionPageTokens = new Map(); // page -> [tokens]
 // Showcase config – one daily pick from each of these
 const SHOWCASE_COLLECTIONS = [
   {
-    key: 'nopunkism',
-    label: 'NoPunks',
+    key: 'nopunkismv2',
+    label: 'No-Punks',
     contract: CONTRACT,
     totalSupply: NOPUNKS_SUPPLY,
     useTokenMap: true,
@@ -299,6 +299,7 @@ app.use(
 app.use('/icons', express.static(path.join(__dirname, 'public', 'icons')));
 app.use('/no-meta', express.static(path.join(__dirname, 'public', 'no-meta')));
 app.use('/team', express.static(path.join(__dirname, 'public', 'team')));
+app.use('/marketplace', express.static(path.join(__dirname, 'public', 'marketplace')));
 
 // -----------------------------
 // HELPERS – OpenSea
@@ -1002,10 +1003,25 @@ app.get('/api/recent-sales', async (req, res) => {
 // =======================
 app.get('/api/listed', async (req, res) => {
   try {
-    const url = `https://api.opensea.io/api/v2/listings/collection/${COLLECTION_SLUG}/all?limit=40&chain=${CHAIN}`;
-    const data = await queueOpenSeaRequest(url, 'Listings');
+    // Paginate through all listings
+    let allListings = [];
+    let nextCursor = null;
+    const maxPages = 10; // Safety limit
+    let page = 0;
 
-    const rawListings = data.listings || [];
+    do {
+      const url = nextCursor
+        ? `https://api.opensea.io/api/v2/listings/collection/${COLLECTION_SLUG}/all?limit=50&chain=${CHAIN}&next=${nextCursor}`
+        : `https://api.opensea.io/api/v2/listings/collection/${COLLECTION_SLUG}/all?limit=50&chain=${CHAIN}`;
+
+      const data = await queueOpenSeaRequest(url, `Listings page ${page + 1}`);
+      const listings = data.listings || [];
+      allListings = allListings.concat(listings);
+      nextCursor = data.next || null;
+      page++;
+    } while (nextCursor && page < maxPages);
+
+    const rawListings = allListings;
 
     const mapped = rawListings.map((l) => {
       const nft = l.nft || {};
@@ -1055,8 +1071,31 @@ app.get('/api/listed', async (req, res) => {
       };
     });
 
+    // Deduplicate listings by tokenId, keeping only the lowest-priced listing for each
+    const deduped = [];
+    const seenTokenIds = new Map(); // tokenId -> index in deduped array
+
+    for (const listing of mapped) {
+      if (!listing.onChainId) continue;
+
+      const tokenId = String(listing.onChainId);
+      const existingIndex = seenTokenIds.get(tokenId);
+
+      if (existingIndex === undefined) {
+        // First time seeing this tokenId
+        seenTokenIds.set(tokenId, deduped.length);
+        deduped.push(listing);
+      } else {
+        // Already have a listing for this tokenId - keep the lower price
+        const existing = deduped[existingIndex];
+        if (listing.price != null && (existing.price == null || listing.price < existing.price)) {
+          deduped[existingIndex] = listing;
+        }
+      }
+    }
+
     const listingsWithImages = await Promise.all(
-      mapped.map(async (item) => {
+      deduped.map(async (item) => {
         if (!item.onChainId) return item;
 
         const cacheKey = `${CONTRACT.toLowerCase()}:${item.onChainId}`;
@@ -1118,11 +1157,358 @@ app.get('/api/listed', async (req, res) => {
 });
 
 // =======================
+// MARKETPLACE CONFIG
+// =======================
+
+// Import ethers for contract interaction
+let ethers;
+try {
+  ethers = require('ethers');
+} catch (e) {
+  console.warn('ethers not installed - marketplace API will be limited');
+}
+
+// Marketplace contract address (set after deployment)
+const MARKETPLACE_CONTRACT = process.env.MARKETPLACE_CONTRACT || '';
+
+// Base RPC URL for read operations
+const BASE_RPC_URL = process.env.BASE_RPC_URL || 'https://mainnet.base.org';
+
+// Marketplace ABI (minimal for read operations)
+const MARKETPLACE_ABI = [
+  'function raffleCount() view returns (uint256)',
+  'function auctionCount() view returns (uint256)',
+  'function getActiveRaffles() view returns (uint256[])',
+  'function getActiveAuctions() view returns (uint256[])',
+  'function getRaffleDetails(uint256 raffleId) view returns (uint256 tokenId, address nftContract, uint256 endTime, uint256 entryCount, bool drawn, bool cancelled, address winner)',
+  'function getAuctionDetails(uint256 auctionId) view returns (uint256 tokenId, address nftContract, uint256 endTime, uint256 reservePrice, uint256 minBidIncrement, address highestBidder, uint256 highestBid, bool finalized, bool cancelled)',
+  'function getRaffleEntryCount(uint256 raffleId) view returns (uint256)',
+  'function hasEnteredRaffle(uint256 raffleId, address entrant) view returns (bool)',
+  'function getPendingReturns(uint256 auctionId, address bidder) view returns (uint256)',
+  'event RaffleCreated(uint256 indexed raffleId, uint256 indexed tokenId, uint256 endTime)',
+  'event RaffleEntered(uint256 indexed raffleId, address indexed entrant, uint256 totalEntries)',
+  'event RaffleWinnerSelected(uint256 indexed raffleId, address indexed winner, uint256 indexed tokenId)',
+  'event AuctionCreated(uint256 indexed auctionId, uint256 indexed tokenId, uint256 endTime, uint256 reservePrice, uint256 minBidIncrement)',
+  'event BidPlaced(uint256 indexed auctionId, address indexed bidder, uint256 amount)',
+  'event AuctionFinalized(uint256 indexed auctionId, address indexed winner, uint256 amount)',
+];
+
+// Create provider and contract instance
+let marketplaceProvider = null;
+let marketplaceContract = null;
+
+if (ethers && MARKETPLACE_CONTRACT) {
+  try {
+    marketplaceProvider = new ethers.providers.JsonRpcProvider(BASE_RPC_URL);
+    marketplaceContract = new ethers.Contract(MARKETPLACE_CONTRACT, MARKETPLACE_ABI, marketplaceProvider);
+    console.log(`Marketplace contract initialized at ${MARKETPLACE_CONTRACT}`);
+  } catch (e) {
+    console.error('Failed to initialize marketplace contract:', e.message);
+  }
+}
+
+// =======================
+// /api/marketplace/raffles
+// =======================
+app.get('/api/marketplace/raffles', async (req, res) => {
+  try {
+    // If contract not configured, return empty list
+    if (!marketplaceContract) {
+      return res.json({
+        raffles: [],
+        total: 0,
+        message: 'Marketplace contract not configured',
+      });
+    }
+
+    // Get active raffle IDs from contract
+    const activeRaffleIds = await marketplaceContract.getActiveRaffles();
+
+    // Fetch details for each active raffle
+    const raffles = await Promise.all(
+      activeRaffleIds.map(async (raffleId) => {
+        try {
+          const [tokenId, nftContract, endTime, entryCount, drawn, cancelled, winner] =
+            await marketplaceContract.getRaffleDetails(raffleId);
+
+          // Get NFT image from cache or OpenSea
+          let image_url = '';
+          const tokenIdNum = tokenId.toNumber();
+          const cacheKey = `${CONTRACT.toLowerCase()}:${tokenIdNum}`;
+          const cached = nftCache.get(cacheKey);
+
+          if (cached && cached.image_url) {
+            image_url = cached.image_url;
+          } else {
+            // Try to get from local icons
+            image_url = `/icons/${tokenIdNum}.png`;
+          }
+
+          return {
+            id: raffleId.toNumber(),
+            tokenId: tokenIdNum,
+            nftContract,
+            endTime: endTime.toNumber(),
+            entryCount: entryCount.toNumber(),
+            drawn,
+            cancelled,
+            winner: winner !== '0x0000000000000000000000000000000000000000' ? winner : null,
+            image_url,
+            timeRemaining: Math.max(0, endTime.toNumber() - Math.floor(Date.now() / 1000)),
+          };
+        } catch (e) {
+          console.error(`Failed to fetch raffle ${raffleId}:`, e.message);
+          return null;
+        }
+      })
+    );
+
+    // Filter out failed fetches
+    const validRaffles = raffles.filter(r => r !== null);
+
+    res.json({
+      raffles: validRaffles,
+      total: validRaffles.length,
+    });
+  } catch (err) {
+    console.error('Marketplace raffles API error:', err.message || err);
+    res.status(502).json({
+      raffles: [],
+      total: 0,
+      error: 'Failed to fetch raffles',
+    });
+  }
+});
+
+// =======================
+// /api/marketplace/auctions
+// =======================
+app.get('/api/marketplace/auctions', async (req, res) => {
+  try {
+    // If contract not configured, return empty list
+    if (!marketplaceContract) {
+      return res.json({
+        auctions: [],
+        total: 0,
+        message: 'Marketplace contract not configured',
+      });
+    }
+
+    // Get active auction IDs from contract
+    const activeAuctionIds = await marketplaceContract.getActiveAuctions();
+
+    // Fetch details for each active auction
+    const auctions = await Promise.all(
+      activeAuctionIds.map(async (auctionId) => {
+        try {
+          const [tokenId, nftContract, endTime, reservePrice, minBidIncrement, highestBidder, highestBid, finalized, cancelled] =
+            await marketplaceContract.getAuctionDetails(auctionId);
+
+          // Get NFT image from cache or local
+          let image_url = '';
+          const tokenIdNum = tokenId.toNumber();
+          const cacheKey = `${CONTRACT.toLowerCase()}:${tokenIdNum}`;
+          const cached = nftCache.get(cacheKey);
+
+          if (cached && cached.image_url) {
+            image_url = cached.image_url;
+          } else {
+            image_url = `/icons/${tokenIdNum}.png`;
+          }
+
+          return {
+            id: auctionId.toNumber(),
+            tokenId: tokenIdNum,
+            nftContract,
+            endTime: endTime.toNumber(),
+            reservePrice: ethers.utils.formatEther(reservePrice),
+            minBidIncrement: ethers.utils.formatEther(minBidIncrement),
+            highestBidder: highestBidder !== '0x0000000000000000000000000000000000000000' ? highestBidder : null,
+            highestBid: ethers.utils.formatEther(highestBid),
+            finalized,
+            cancelled,
+            image_url,
+            timeRemaining: Math.max(0, endTime.toNumber() - Math.floor(Date.now() / 1000)),
+          };
+        } catch (e) {
+          console.error(`Failed to fetch auction ${auctionId}:`, e.message);
+          return null;
+        }
+      })
+    );
+
+    // Filter out failed fetches
+    const validAuctions = auctions.filter(a => a !== null);
+
+    res.json({
+      auctions: validAuctions,
+      total: validAuctions.length,
+    });
+  } catch (err) {
+    console.error('Marketplace auctions API error:', err.message || err);
+    res.status(502).json({
+      auctions: [],
+      total: 0,
+      error: 'Failed to fetch auctions',
+    });
+  }
+});
+
+// =======================
+// /api/marketplace/history
+// =======================
+app.get('/api/marketplace/history', async (req, res) => {
+  try {
+    // If contract not configured, return empty history
+    if (!marketplaceContract || !marketplaceProvider) {
+      return res.json({
+        raffleHistory: [],
+        auctionHistory: [],
+        message: 'Marketplace contract not configured',
+      });
+    }
+
+    // Query past events (last 10000 blocks ~ 1 day on Base)
+    const currentBlock = await marketplaceProvider.getBlockNumber();
+    const fromBlock = Math.max(0, currentBlock - 10000);
+
+    // Get raffle winner events
+    const raffleWinnerFilter = marketplaceContract.filters.RaffleWinnerSelected();
+    const raffleWinnerEvents = await marketplaceContract.queryFilter(raffleWinnerFilter, fromBlock, currentBlock);
+
+    const raffleHistory = raffleWinnerEvents.map(event => ({
+      type: 'raffle',
+      raffleId: event.args.raffleId.toNumber(),
+      winner: event.args.winner,
+      tokenId: event.args.tokenId.toNumber(),
+      blockNumber: event.blockNumber,
+      transactionHash: event.transactionHash,
+    }));
+
+    // Get auction finalized events
+    const auctionFinalizedFilter = marketplaceContract.filters.AuctionFinalized();
+    const auctionFinalizedEvents = await marketplaceContract.queryFilter(auctionFinalizedFilter, fromBlock, currentBlock);
+
+    const auctionHistory = auctionFinalizedEvents.map(event => ({
+      type: 'auction',
+      auctionId: event.args.auctionId.toNumber(),
+      winner: event.args.winner,
+      amount: ethers.utils.formatEther(event.args.amount),
+      blockNumber: event.blockNumber,
+      transactionHash: event.transactionHash,
+    }));
+
+    res.json({
+      raffleHistory,
+      auctionHistory,
+      fromBlock,
+      toBlock: currentBlock,
+    });
+  } catch (err) {
+    console.error('Marketplace history API error:', err.message || err);
+    res.status(502).json({
+      raffleHistory: [],
+      auctionHistory: [],
+      error: 'Failed to fetch history',
+    });
+  }
+});
+
+// =======================
+// /api/marketplace/raffle/:id
+// =======================
+app.get('/api/marketplace/raffle/:id', async (req, res) => {
+  try {
+    const raffleId = parseInt(req.params.id, 10);
+    if (Number.isNaN(raffleId) || raffleId < 0) {
+      return res.status(400).json({ error: 'Invalid raffle ID' });
+    }
+
+    if (!marketplaceContract) {
+      return res.status(503).json({ error: 'Marketplace contract not configured' });
+    }
+
+    const [tokenId, nftContract, endTime, entryCount, drawn, cancelled, winner] =
+      await marketplaceContract.getRaffleDetails(raffleId);
+
+    const tokenIdNum = tokenId.toNumber();
+    let image_url = `/icons/${tokenIdNum}.png`;
+    const cacheKey = `${CONTRACT.toLowerCase()}:${tokenIdNum}`;
+    const cached = nftCache.get(cacheKey);
+    if (cached && cached.image_url) {
+      image_url = cached.image_url;
+    }
+
+    res.json({
+      id: raffleId,
+      tokenId: tokenIdNum,
+      nftContract,
+      endTime: endTime.toNumber(),
+      entryCount: entryCount.toNumber(),
+      drawn,
+      cancelled,
+      winner: winner !== '0x0000000000000000000000000000000000000000' ? winner : null,
+      image_url,
+      timeRemaining: Math.max(0, endTime.toNumber() - Math.floor(Date.now() / 1000)),
+    });
+  } catch (err) {
+    console.error('Raffle detail API error:', err.message || err);
+    res.status(500).json({ error: 'Failed to fetch raffle details' });
+  }
+});
+
+// =======================
+// /api/marketplace/auction/:id
+// =======================
+app.get('/api/marketplace/auction/:id', async (req, res) => {
+  try {
+    const auctionId = parseInt(req.params.id, 10);
+    if (Number.isNaN(auctionId) || auctionId < 0) {
+      return res.status(400).json({ error: 'Invalid auction ID' });
+    }
+
+    if (!marketplaceContract) {
+      return res.status(503).json({ error: 'Marketplace contract not configured' });
+    }
+
+    const [tokenId, nftContract, endTime, reservePrice, minBidIncrement, highestBidder, highestBid, finalized, cancelled] =
+      await marketplaceContract.getAuctionDetails(auctionId);
+
+    const tokenIdNum = tokenId.toNumber();
+    let image_url = `/icons/${tokenIdNum}.png`;
+    const cacheKey = `${CONTRACT.toLowerCase()}:${tokenIdNum}`;
+    const cached = nftCache.get(cacheKey);
+    if (cached && cached.image_url) {
+      image_url = cached.image_url;
+    }
+
+    res.json({
+      id: auctionId,
+      tokenId: tokenIdNum,
+      nftContract,
+      endTime: endTime.toNumber(),
+      reservePrice: ethers.utils.formatEther(reservePrice),
+      minBidIncrement: ethers.utils.formatEther(minBidIncrement),
+      highestBidder: highestBidder !== '0x0000000000000000000000000000000000000000' ? highestBidder : null,
+      highestBid: ethers.utils.formatEther(highestBid),
+      finalized,
+      cancelled,
+      image_url,
+      timeRemaining: Math.max(0, endTime.toNumber() - Math.floor(Date.now() / 1000)),
+    });
+  } catch (err) {
+    console.error('Auction detail API error:', err.message || err);
+    res.status(500).json({ error: 'Failed to fetch auction details' });
+  }
+});
+
+// =======================
 // START SERVER
 // =======================
 app.listen(PORT, () => {
   console.log(
     `NoPunks server running at http://localhost:${PORT}\n` +
-      `Collection slug: ${COLLECTION_SLUG} | Chain: ${CHAIN} | Contract: ${CONTRACT}`
+      `Collection slug: ${COLLECTION_SLUG} | Chain: ${CHAIN} | Contract: ${CONTRACT}` +
+      (MARKETPLACE_CONTRACT ? `\nMarketplace: ${MARKETPLACE_CONTRACT}` : '')
   );
 });

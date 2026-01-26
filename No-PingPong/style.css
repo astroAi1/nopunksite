@@ -1,17 +1,17 @@
 @font-face {
-    font-family: "PublicPixel";
-    src: url("./PublicPixel-rv0pA.ttf") format("truetype");
+    font-family: "RasterForge";
+    src: url("./RasterForgeRegular-JpBgm.ttf") format("truetype");
     font-weight: normal;
     font-style: normal;
     font-display: swap;
   }
-  
+
   *,
   *::before,
   *::after {
     box-sizing: border-box;
   }
-  
+
   html,
   body {
     margin: 0;
@@ -19,37 +19,49 @@
     height: 100%;
     width: 100%;
   }
-  
+
   body {
     background: #000;
-    color: #f5f5f5;
-    font-family: "PublicPixel", system-ui, -apple-system, BlinkMacSystemFont,
-      sans-serif;
+    color: #ffffff;
+    font-family: "RasterForge", "Courier New", monospace;
     min-height: 100vh;
     position: relative;
   }
+
+  :root {
+    --panel-border: 2px solid #ffffff;
+    --panel-bg: rgba(0, 0, 0, 0.9);
+    --panel-shadow: 0 0 12px rgba(255, 255, 255, 0.08);
+    --panel-radius: 6px;
+  }
   
-  /* Background image + dark overlay */
-  
+  /* CRT Scanlines - subtle */
   body::before {
     content: "";
     position: fixed;
     inset: 0;
-    background: url("./Gbh4rY5aUAAtNS7.jpeg") center/cover no-repeat;
-    opacity: 0.35; /* visible background */
-    z-index: -2;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.08),
+      rgba(0, 0, 0, 0.08) 1px,
+      transparent 1px,
+      transparent 2px
+    );
+    pointer-events: none;
+    z-index: 1000;
   }
-  
+
   body::after {
     content: "";
     position: fixed;
     inset: 0;
     background: radial-gradient(
-      circle at top,
-      rgba(0, 0, 0, 0.15),
-      rgba(0, 0, 0, 0.8)
+      circle at center,
+      transparent 0%,
+      rgba(0, 0, 0, 0.3) 100%
     );
-    z-index: -1;
+    pointer-events: none;
+    z-index: 999;
   }
   
   .wrapper {
@@ -57,10 +69,10 @@
     max-width: 1150px;
     margin: 24px auto;
     padding: 18px 22px;
-    border-radius: 22px;
-    background: rgba(0, 0, 0, 0.7);
-    box-shadow: 0 26px 80px rgba(0, 0, 0, 0.9);
-    backdrop-filter: blur(14px);
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.85);
+    box-shadow: 0 0 20px rgba(255, 255, 255, 0.1), 0 26px 80px rgba(0, 0, 0, 0.9);
+    border: 2px solid #ffffff;
   }
   
   /* Header */
@@ -78,18 +90,19 @@
   
   .title-block h1 {
     margin: 0;
-    font-size: 24px;
-    letter-spacing: 0.14em;
+    font-size: 32px;
+    letter-spacing: 0.2em;
     text-transform: uppercase;
-    color: #0052ff; /* Base blue */
+    color: #ffffff;
   }
-  
+
   .subtitle {
     margin: 4px 0 0;
-    font-size: 9px;
-    color: #bfbfbf;
+    font-size: 10px;
+    color: #aaaaaa;
+    letter-spacing: 0.1em;
   }
-  
+
   .subtitle span {
     color: #ffffff;
   }
@@ -101,38 +114,72 @@
     align-items: center;
     gap: 10px;
   }
-  
-  .wallet-btn {
-    padding: 6px 12px;
-    border-radius: 999px;
-    border: 1px solid #0052ff;
-    background: #050505;
-    color: #0052ff;
-    font-size: 9px;
+
+  .wallet .legacy-wallet {
+    min-height: 40px;
+  }
+
+  .wallet-kit {
+    display: flex;
+    align-items: center;
+  }
+
+  .wallet-kit button {
+    padding: 8px 16px;
+    border-radius: 4px;
+    border: 2px solid #ffffff;
+    background: #000;
+    color: #ffffff;
+    font-size: 10px;
     cursor: pointer;
     text-transform: uppercase;
-    letter-spacing: 0.14em;
+    letter-spacing: 0.15em;
+    font-family: "RasterForge", "Courier New", monospace;
+  }
+
+  .wallet-kit button:hover {
+    background: #1a1a1a;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+  }
+
+  .legacy-wallet {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
   
+  .wallet-btn {
+    padding: 8px 16px;
+    border-radius: 4px;
+    border: 2px solid #ffffff;
+    background: #000;
+    color: #ffffff;
+    font-size: 10px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    font-family: "RasterForge", "Courier New", monospace;
+  }
+
   .wallet-btn:hover {
-    border-color: #ffffff;
-    background: #0b0b0b;
+    background: #1a1a1a;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
   }
-  
+
   .wallet-meta {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 4px;
   }
-  
+
   .wallet-address {
-    font-size: 9px;
-    color: #9ad4ff;
+    font-size: 10px;
+    color: #ffffff;
   }
-  
+
   .wallet-network {
-    font-size: 8px;
-    color: #888;
+    font-size: 9px;
+    color: #aaaaaa;
   }
   
   /* Controls (top row) */
@@ -147,40 +194,82 @@
   }
   
   .player-control {
-    background: #050505;
-    border-radius: 14px;
-    padding: 10px 12px;
-    border: 1px solid #0052ff; /* Base blue outline */
+    background: var(--panel-bg);
+    border-radius: var(--panel-radius);
+    padding: 12px 14px;
+    border: var(--panel-border);
     min-width: 220px;
     flex: 0 0 260px;
+    box-shadow: var(--panel-shadow);
   }
-  
+
   .player-control h2 {
-    margin: 0 0 6px;
-    font-size: 10px;
+    margin: 0 0 8px;
+    font-size: 12px;
     text-transform: uppercase;
-    letter-spacing: 0.14em;
-    color: #0052ff;
+    letter-spacing: 0.15em;
+    color: #ffffff;
   }
   
-  .player-control label {
+  .nft-selector {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .select-nft-btn {
+    width: 100%;
+    padding: 6px 10px;
+    font-size: 8px;
+    margin-bottom: 4px;
+  }
+
+  .select-nft-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .nft-dropdown {
+    width: 100%;
+    padding: 6px 8px;
+    background: #000;
+    border: 2px solid #ffffff;
+    color: #ffffff;
+    border-radius: 4px;
+    font-family: "RasterForge", "Courier New", monospace;
+    font-size: 9px;
+    cursor: pointer;
+    margin-bottom: 6px;
+  }
+
+  .nft-dropdown:focus {
+    outline: none;
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.2);
+  }
+
+  .manual-input-label {
     display: block;
     font-size: 8px;
-    margin-bottom: 6px;
-    color: #d0d0d0;
+    margin-top: 6px;
+    color: #888888;
   }
-  
+
   .player-control input[type="number"] {
     width: 100%;
     margin-top: 4px;
-    padding: 3px 5px;
+    padding: 4px 6px;
     background: #000;
-    border: 1px solid #0052ff;
+    border: 1px solid #888888;
     color: #ffffff;
     border-radius: 4px;
-    font-family: "PublicPixel", system-ui, -apple-system, BlinkMacSystemFont,
-      sans-serif;
+    font-family: "RasterForge", "Courier New", monospace;
     font-size: 9px;
+  }
+
+  .player-control input[type="number"]:focus {
+    outline: none;
+    border-color: #ffffff;
+    box-shadow: 0 0 6px rgba(255, 255, 255, 0.2);
   }
   
   .player-control canvas {
@@ -188,8 +277,9 @@
     margin-top: 6px;
     image-rendering: pixelated;
     background: #000;
-    border-radius: 8px;
-    border: 1px solid #0052ff;
+    border-radius: 4px;
+    border: 2px solid #ffffff;
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.15);
   }
   
   .buttons {
@@ -200,20 +290,27 @@
   }
   
   button {
-    padding: 7px 12px;
-    border-radius: 999px;
-    border: 1px solid #0052ff;
-    background: #050505;
-    color: #0052ff;
-    font-size: 9px;
+    padding: 10px 14px;
+    min-height: 40px;
+    border-radius: 4px;
+    border: 2px solid #ffffff;
+    background: #000;
+    color: #ffffff;
+    font-size: 10px;
     cursor: pointer;
     text-transform: uppercase;
-    letter-spacing: 0.14em;
+    letter-spacing: 0.15em;
+    transition: all 0.2s ease;
+    font-family: "RasterForge", "Courier New", monospace;
   }
-  
-  button:hover {
-    border-color: #ffffff;
-    background: #0b0b0b;
+
+  button:hover:not(:disabled) {
+    background: #1a1a1a;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+  }
+
+  button:active:not(:disabled) {
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
   }
   
   /* Bottom row: game + side panels */
@@ -250,55 +347,80 @@
     margin: 0 auto;
     background: #000;
     image-rendering: pixelated;
-    border-radius: 18px;
-    border: 2px solid #0052ff; /* Base blue frame */
-    box-shadow: 0 0 40px rgba(0, 0, 0, 0.9);
+    border-radius: 4px;
+    border: 3px solid #ffffff;
+    box-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
   }
-  
+
   .score {
     position: absolute;
-    top: 6px;
+    top: 8px;
     left: 50%;
     transform: translateX(-50%);
     display: flex;
     align-items: baseline;
-    gap: 4px;
-    color: #0052ff;
+    gap: 6px;
+    color: #ffffff;
+    text-shadow: 0 0 6px rgba(255, 255, 255, 0.3);
   }
-  
+
   .score span {
-    font-size: 18px;
+    font-size: 24px;
+    font-family: "RasterForge", "Courier New", monospace;
+  }
+
+  .score-meta {
+    position: absolute;
+    top: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #bbbbbb;
+  }
+
+  .score-meta .meta-divider {
+    color: #666666;
+  }
+
+  .score-meta .meta-label {
+    color: #888888;
   }
   
   /* Leaderboard */
   
   .leaderboard {
-    background: #050505;
-    border-radius: 14px;
-    border: 1px solid #0052ff;
-    padding: 8px 10px 10px;
+    background: var(--panel-bg);
+    border-radius: var(--panel-radius);
+    border: var(--panel-border);
+    padding: 10px 12px;
+    box-shadow: var(--panel-shadow);
   }
-  
+
   .leaderboard-header {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
     gap: 10px;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
   }
-  
+
   .leaderboard-header h2 {
     margin: 0;
-    font-size: 10px;
-    letter-spacing: 0.16em;
+    font-size: 11px;
+    letter-spacing: 0.18em;
     text-transform: uppercase;
-    color: #0052ff;
+    color: #ffffff;
   }
-  
+
   .leaderboard-header p {
     margin: 0;
     font-size: 8px;
-    color: #aaa;
+    color: #888888;
   }
   
   .leaderboard table {
@@ -314,55 +436,56 @@
   }
   
   .leaderboard th {
-    font-size: 7px;
+    font-size: 8px;
     text-transform: uppercase;
-    letter-spacing: 0.14em;
-    color: #9ad4ff;
-    border-bottom: 1px solid #0052ff;
+    letter-spacing: 0.15em;
+    color: #ffffff;
+    border-bottom: 1px solid #ffffff;
   }
-  
+
   .leaderboard tbody tr:nth-child(even) {
     background: rgba(255, 255, 255, 0.02);
   }
-  
+
   .leaderboard tbody tr.highlight {
-    background: rgba(0, 82, 255, 0.18);
+    background: rgba(255, 255, 255, 0.08);
   }
-  
+
   .leaderboard .placeholder td {
     text-align: center;
-    color: #666;
+    color: #888888;
   }
   
   /* Players Online */
   
   .online {
-    background: #050505;
-    border-radius: 14px;
-    border: 1px solid #0052ff;
-    padding: 8px 10px 10px;
+    background: var(--panel-bg);
+    border-radius: var(--panel-radius);
+    border: var(--panel-border);
+    padding: 10px 12px;
+    box-shadow: var(--panel-shadow);
   }
-  
+
   .online-header {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
     gap: 10px;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
   }
-  
+
   .online-header h2 {
     margin: 0;
-    font-size: 10px;
-    letter-spacing: 0.16em;
+    font-size: 11px;
+    letter-spacing: 0.18em;
     text-transform: uppercase;
-    color: #0052ff;
+    color: #ffffff;
   }
-  
+
   .online-header p {
     margin: 0;
     font-size: 8px;
-    color: #aaa;
+    color: #888888;
   }
   
   .online table {
@@ -378,23 +501,196 @@
   }
   
   .online th {
-    font-size: 7px;
+    font-size: 8px;
     text-transform: uppercase;
-    letter-spacing: 0.14em;
-    color: #9ad4ff;
-    border-bottom: 1px solid #0052ff;
+    letter-spacing: 0.15em;
+    color: #ffffff;
+    border-bottom: 1px solid #ffffff;
   }
-  
+
   .online tbody tr:nth-child(even) {
     background: rgba(255, 255, 255, 0.02);
   }
-  
+
   .online .placeholder td {
     text-align: center;
-    color: #666;
+    color: #888888;
   }
-  
+
   .online button {
-    padding: 3px 8px;
+    padding: 4px 10px;
     font-size: 8px;
+  }
+
+  /* Tournament */
+
+  .tournament {
+    background: var(--panel-bg);
+    border-radius: var(--panel-radius);
+    border: var(--panel-border);
+    padding: 10px 12px;
+    box-shadow: var(--panel-shadow);
+  }
+
+  .tournament-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+
+  .tournament-header h2 {
+    margin: 0;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #ffffff;
+  }
+
+  .tournament-header p {
+    margin: 0;
+    font-size: 8px;
+    color: #888888;
+  }
+
+  .tournament-controls {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .tournament-label {
+    font-size: 8px;
+    color: #888888;
+    letter-spacing: 0.12em;
+  }
+
+  .tournament-label select {
+    width: 100%;
+    margin-top: 4px;
+    padding: 6px 8px;
+    background: #000;
+    border: 2px solid #ffffff;
+    color: #ffffff;
+    border-radius: 4px;
+    font-family: "RasterForge", "Courier New", monospace;
+    font-size: 9px;
+  }
+
+  .tournament-prize {
+    border: 1px solid #ffffff;
+    border-radius: 4px;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .prize-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+
+  .prize-header h3 {
+    margin: 0;
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+
+  .prize-header button {
+    padding: 4px 10px;
+    font-size: 8px;
+  }
+
+  .prize-summary {
+    font-size: 8px;
+    color: #aaaaaa;
+    line-height: 1.4;
+  }
+
+  .tournament-bracket {
+    border: 1px solid #ffffff;
+    border-radius: 4px;
+    padding: 8px;
+    display: grid;
+    gap: 8px;
+    max-height: 220px;
+    overflow: auto;
+  }
+
+  @media (max-width: 1024px) {
+    .header-top {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .controls {
+      flex-wrap: wrap;
+      justify-content: flex-start;
+    }
+
+    .buttons {
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .bottom-row {
+      flex-direction: column;
+    }
+
+    .bottom-right {
+      width: 100%;
+    }
+  }
+
+  .tournament-round {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+    padding-bottom: 6px;
+  }
+
+  .tournament-round:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+
+  .tournament-round h4 {
+    margin: 0 0 6px;
+    font-size: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: #ffffff;
+  }
+
+  .tournament-match {
+    display: flex;
+    justify-content: space-between;
+    gap: 6px;
+    font-size: 8px;
+    padding: 4px 0;
+    color: #cccccc;
+  }
+
+  .tournament-match span {
+    display: inline-block;
+  }
+
+  .match-active {
+    color: #ffffff;
+  }
+
+  .match-winner {
+    color: #ffffff;
+    text-shadow: 0 0 6px rgba(255, 255, 255, 0.35);
+  }
+
+  .tournament-status {
+    margin-top: 8px;
+    font-size: 8px;
+    color: #ffffff;
+    line-height: 1.4;
   }

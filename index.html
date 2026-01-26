@@ -2,471 +2,2085 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>NoPunks • NoMeta</title>
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1, viewport-fit=cover"
-    />
-    <meta
-      name="description"
-      content="NoPunks • a 10,000 piece minimalist CryptoPunks derivative on Base, sitting inside the wider NoMeta ecosystem."
-    />
+    <title>NO-PUNKS • Lights Out. Traits Stay.</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="description" content="No-Punks • 10,000 minimalist derivatives on Base. Fully onchain. Lights out. Traits stay." />
 
-    <!-- Open Graph / social sharing -->
+    <!-- Open Graph -->
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="NoPunks • NoMeta" />
-    <meta
-      property="og:description"
-      content="NoPunks • a 10,000 piece minimalist CryptoPunks derivative on Base, sitting inside the wider NoMeta ecosystem."
-    />
+    <meta property="og:title" content="NO-PUNKS • Lights Out. Traits Stay." />
+    <meta property="og:description" content="10,000 minimalist derivatives on Base. Fully onchain." />
     <meta property="og:url" content="https://nopunks.xyz" />
-    <meta
-      property="og:image"
-      content="https://nopunks.xyz/icons/52.png"
-    />
+    <meta property="og:image" content="https://nopunks.xyz/icons/52.png?v=2" />
 
-    <!-- Twitter card -->
+    <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="NoPunks • NoMeta" />
-    <meta
-      name="twitter:description"
-      content="NoPunks • a 10,000 piece minimalist CryptoPunks derivative on Base, sitting inside the wider NoMeta ecosystem."
-    />
-    <meta
-      name="twitter:image"
-      content="https://nopunks.xyz/icons/52.png"
-    />
+    <meta name="twitter:title" content="NO-PUNKS • Lights Out. Traits Stay." />
+    <meta name="twitter:description" content="10,000 minimalist derivatives on Base. Fully onchain." />
+    <meta name="twitter:image" content="https://nopunks.xyz/icons/52.png?v=2" />
 
-    <!-- Favicons / app icons (all pointing at the NoPunk image in public/icons/52.png) -->
+    <!-- Favicon -->
     <link rel="icon" type="image/png" sizes="32x32" href="/icons/52.png" />
-    <link rel="icon" type="image/png" sizes="192x192" href="/icons/52.png" />
     <link rel="apple-touch-icon" href="/icons/52.png" />
-    <link rel="shortcut icon" type="image/png" href="/icons/52.png" />
 
-    <!-- CSS (with tiny version bump to help cache-bust) -->
-    <link rel="stylesheet" href="/assets/css/style.css?v=2" />
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+    <!-- Farcaster Frame / Base Miniapp -->
+    <meta name="fc:frame" content="vNext" />
+    <meta name="fc:frame:image" content="https://nopunks.xyz/icons/52.png" />
+    <meta name="fc:frame:image:aspect_ratio" content="1:1" />
+    <meta name="fc:frame:button:1" content="View Collection" />
+    <meta name="fc:frame:button:1:action" content="link" />
+    <meta name="fc:frame:button:1:target" content="https://opensea.io/collection/nopunkismv2" />
+
+    <!-- Fonts - Distinctive choices -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Darker+Grotesque:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+    <!-- OnchainKit Styles -->
+    <link rel="stylesheet" href="https://unpkg.com/@coinbase/onchainkit@latest/styles.css" />
+
+    <style>
+      /* ========================================
+         NO-PUNKS REDESIGN - BRUTAL MINIMAL
+         Lights Out. Traits Stay.
+         ======================================== */
+
+      :root {
+        --void: #000000;
+        --abyss: #030303;
+        --shadow: #080808;
+        --smoke: #111111;
+        --ash: #1a1a1a;
+        --ghost: #2a2a2a;
+        --mist: #666666;
+        --fog: #999999;
+        --light: #cccccc;
+        --white: #f0f0f0;
+        --pure: #ffffff;
+
+        --accent: #ffffff;
+        --accent-dim: #444444;
+
+        --font-display: 'Darker Grotesque', sans-serif;
+        --font-mono: 'JetBrains Mono', monospace;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        font-family: var(--font-mono);
+        background: var(--void);
+        color: var(--white);
+        min-height: 100vh;
+        -webkit-font-smoothing: antialiased;
+        overflow-x: hidden;
+      }
+
+      /* Noise texture overlay */
+      body::before {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+        opacity: 0.03;
+        pointer-events: none;
+        z-index: 9999;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      img {
+        display: block;
+        max-width: 100%;
+      }
+
+      ::selection {
+        background: var(--accent);
+        color: var(--void);
+      }
+
+      /* ========================================
+         HEADER - Floating minimal bar
+         ======================================== */
+
+      .header {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 1000;
+        padding: 1.5rem 2rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        mix-blend-mode: difference;
+      }
+
+      .logo {
+        font-family: var(--font-display);
+        font-size: 1.5rem;
+        font-weight: 900;
+        letter-spacing: -0.02em;
+        color: var(--pure);
+      }
+
+      .nav {
+        display: flex;
+        gap: 2rem;
+      }
+
+      .nav a {
+        font-size: 0.7rem;
+        font-weight: 500;
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+        color: var(--fog);
+        transition: color 0.3s ease;
+        position: relative;
+      }
+
+      .nav a::after {
+        content: '';
+        position: absolute;
+        bottom: -4px;
+        left: 0;
+        width: 0;
+        height: 1px;
+        background: var(--pure);
+        transition: width 0.3s ease;
+      }
+
+      .nav a:hover {
+        color: var(--pure);
+      }
+
+      .nav a:hover::after {
+        width: 100%;
+      }
+
+      .wallet-container {
+        display: flex;
+        align-items: center;
+        margin-left: 1rem;
+      }
+
+      /* OnchainKit wallet button overrides */
+      .wallet-container [data-testid="ockConnectWallet_Container"] button {
+        background: var(--pure) !important;
+        color: var(--void) !important;
+        font-family: var(--font-mono) !important;
+        font-size: 0.65rem !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.1em !important;
+        text-transform: uppercase !important;
+        border-radius: 0 !important;
+        padding: 0.6rem 1.2rem !important;
+      }
+
+      .wallet-container [data-testid="ockConnectWallet_Container"] button:hover {
+        background: var(--light) !important;
+      }
+
+      @media (max-width: 768px) {
+        .header {
+          padding: 1rem;
+        }
+        .nav {
+          gap: 1rem;
+        }
+        .nav a {
+          font-size: 0.6rem;
+        }
+      }
+
+      /* ========================================
+         HERO - Dramatic entrance
+         ======================================== */
+
+      .hero {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .hero-bg {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background:
+          radial-gradient(ellipse 80% 50% at 50% 50%, var(--shadow) 0%, transparent 70%),
+          linear-gradient(180deg, var(--void) 0%, var(--abyss) 100%);
+      }
+
+      .hero-grid {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-image:
+          linear-gradient(var(--ghost) 1px, transparent 1px),
+          linear-gradient(90deg, var(--ghost) 1px, transparent 1px);
+        background-size: 60px 60px;
+        opacity: 0.15;
+        mask-image: radial-gradient(ellipse 60% 60% at 50% 50%, black 0%, transparent 70%);
+      }
+
+      .hero-content {
+        position: relative;
+        z-index: 10;
+        text-align: center;
+        padding: 2rem;
+      }
+
+      .hero-punks-showcase {
+        display: flex;
+        justify-content: center;
+        align-items: flex-end;
+        gap: 1.5rem;
+        margin-bottom: 3rem;
+        position: relative;
+      }
+
+      .hero-punk-wrap {
+        position: relative;
+      }
+
+      .hero-punk {
+        width: 140px;
+        height: 140px;
+        image-rendering: pixelated;
+        cursor: pointer;
+        transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        filter: drop-shadow(0 0 40px rgba(255,255,255,0.08));
+        border: 1px solid var(--ghost);
+      }
+
+      .hero-punk-wrap.center .hero-punk {
+        width: 180px;
+        height: 180px;
+        filter: drop-shadow(0 0 60px rgba(255,255,255,0.12));
+      }
+
+      .hero-punk:hover {
+        transform: scale(1.08);
+        border-color: var(--mist);
+      }
+
+      .hero-punk-glow {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 400px;
+        height: 300px;
+        background: radial-gradient(ellipse, rgba(255,255,255,0.04) 0%, transparent 70%);
+        pointer-events: none;
+      }
+
+      @media (max-width: 600px) {
+        .hero-punks-showcase {
+          gap: 0.75rem;
+        }
+        .hero-punk {
+          width: 90px;
+          height: 90px;
+        }
+        .hero-punk-wrap.center .hero-punk {
+          width: 120px;
+          height: 120px;
+        }
+      }
+
+      .hero-title {
+        font-family: var(--font-display);
+        font-size: clamp(4rem, 15vw, 12rem);
+        font-weight: 900;
+        letter-spacing: -0.04em;
+        line-height: 0.85;
+        color: var(--pure);
+        margin-bottom: 1.5rem;
+      }
+
+      .hero-tagline {
+        font-family: var(--font-mono);
+        font-size: 0.8rem;
+        font-weight: 500;
+        letter-spacing: 0.4em;
+        text-transform: uppercase;
+        color: var(--mist);
+        margin-bottom: 1rem;
+      }
+
+      .hero-sub {
+        font-size: 0.75rem;
+        color: var(--fog);
+        max-width: 400px;
+        margin: 0 auto;
+        line-height: 1.8;
+        letter-spacing: 0.02em;
+      }
+
+      .hero-scroll {
+        position: absolute;
+        bottom: 3rem;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+        color: var(--mist);
+        font-size: 0.6rem;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        animation: pulse 2s ease-in-out infinite;
+      }
+
+      .hero-scroll::after {
+        content: '';
+        width: 1px;
+        height: 40px;
+        background: linear-gradient(to bottom, var(--mist), transparent);
+      }
+
+      @keyframes pulse {
+        0%, 100% { opacity: 0.5; }
+        50% { opacity: 1; }
+      }
+
+      /* ========================================
+         STATS - Brutalist horizontal strip
+         ======================================== */
+
+      .stats-strip {
+        background: var(--abyss);
+        border-top: 1px solid var(--ghost);
+        border-bottom: 1px solid var(--ghost);
+        padding: 0;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+      }
+
+      .stat {
+        padding: 2rem 1rem;
+        text-align: center;
+        border-right: 1px solid var(--ghost);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .stat:last-child {
+        border-right: none;
+      }
+
+      .stat::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(180deg, transparent 0%, var(--shadow) 100%);
+        opacity: 0;
+        transition: opacity 0.3s ease;
+      }
+
+      .stat:hover::before {
+        opacity: 1;
+      }
+
+      .stat-value {
+        font-family: var(--font-display);
+        font-size: 2rem;
+        font-weight: 800;
+        color: var(--pure);
+        margin-bottom: 0.25rem;
+        position: relative;
+      }
+
+      .stat-value .unit {
+        font-size: 1rem;
+        color: var(--fog);
+        font-weight: 500;
+      }
+
+      .stat-label {
+        font-size: 0.55rem;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--mist);
+        position: relative;
+      }
+
+      @media (max-width: 640px) {
+        .stats-strip {
+          grid-template-columns: 1fr;
+        }
+        .stat {
+          border-right: none;
+          border-bottom: 1px solid var(--ghost);
+        }
+        .stat:last-child {
+          border-bottom: none;
+        }
+      }
+
+      /* ========================================
+         SECTIONS - Consistent styling
+         ======================================== */
+
+      .section {
+        padding: 6rem 2rem;
+        position: relative;
+      }
+
+      .section-dark {
+        background: var(--abyss);
+      }
+
+      .section-header {
+        text-align: center;
+        margin-bottom: 4rem;
+      }
+
+      .section-title {
+        font-family: var(--font-display);
+        font-size: clamp(2.5rem, 8vw, 5rem);
+        font-weight: 900;
+        letter-spacing: -0.03em;
+        color: var(--pure);
+        margin-bottom: 0.5rem;
+      }
+
+      .section-subtitle {
+        font-size: 0.7rem;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--mist);
+      }
+
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
+      }
+
+      /* ========================================
+         LOOKUP - Dramatic search
+         ======================================== */
+
+      .lookup-box {
+        max-width: 500px;
+        margin: 0 auto 4rem;
+      }
+
+      .lookup-input-wrap {
+        display: flex;
+        gap: 0;
+        background: var(--shadow);
+        border: 1px solid var(--ghost);
+        overflow: hidden;
+      }
+
+      .lookup-input {
+        flex: 1;
+        background: transparent;
+        border: none;
+        color: var(--pure);
+        font-family: var(--font-mono);
+        font-size: 1rem;
+        padding: 1.25rem 1.5rem;
+        letter-spacing: 0.05em;
+      }
+
+      .lookup-input:focus {
+        outline: none;
+      }
+
+      .lookup-input::placeholder {
+        color: var(--mist);
+      }
+
+      .lookup-btn {
+        background: var(--pure);
+        color: var(--void);
+        border: none;
+        padding: 1.25rem 2rem;
+        font-family: var(--font-mono);
+        font-size: 0.7rem;
+        font-weight: 600;
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+        cursor: pointer;
+        transition: all 0.3s ease;
+      }
+
+      .lookup-btn:hover {
+        background: var(--accent);
+        color: var(--pure);
+      }
+
+      .lookup-result {
+        display: none;
+        margin-top: 3rem;
+        padding: 2rem;
+        background: var(--shadow);
+        border: 1px solid var(--ghost);
+      }
+
+      .lookup-result.active {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 3rem;
+      }
+
+      .lookup-punk-img {
+        width: 120px;
+        height: 120px;
+        image-rendering: pixelated;
+      }
+
+      .lookup-punk-info {
+        text-align: left;
+      }
+
+      .lookup-punk-id {
+        font-family: var(--font-display);
+        font-size: 2rem;
+        font-weight: 800;
+        margin-bottom: 0.5rem;
+      }
+
+      .lookup-punk-traits {
+        font-size: 0.7rem;
+        color: var(--fog);
+        line-height: 2;
+      }
+
+      .lookup-opensea {
+        display: inline-block;
+        margin-top: 1rem;
+        font-size: 0.65rem;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--mist);
+        border-bottom: 1px solid var(--ghost);
+        padding-bottom: 2px;
+        transition: all 0.3s ease;
+      }
+
+      .lookup-opensea:hover {
+        color: var(--pure);
+        border-color: var(--pure);
+      }
+
+      /* ========================================
+         ACTIVITY - Sales & Listings (Enhanced)
+         ======================================== */
+
+      .activity-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 2rem;
+      }
+
+      @media (max-width: 900px) {
+        .activity-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .activity-column {
+        background: linear-gradient(180deg, rgba(20,20,20,0.8) 0%, rgba(10,10,10,0.9) 100%);
+        border: 1px solid var(--ghost);
+        padding: 1.5rem;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .activity-column::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, var(--mist), transparent);
+      }
+
+      .activity-column-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 1.5rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid var(--ghost);
+      }
+
+      .activity-column-title {
+        font-size: 0.7rem;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--pure);
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .activity-live-dot {
+        width: 8px;
+        height: 8px;
+        background: #00ff88;
+        border-radius: 50%;
+        animation: pulse-live 2s ease-in-out infinite;
+        box-shadow: 0 0 8px #00ff88;
+      }
+
+      @keyframes pulse-live {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.5; transform: scale(0.8); }
+      }
+
+      @keyframes fadeSlideIn {
+        from {
+          opacity: 0;
+          transform: translateX(-10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(0);
+        }
+      }
+
+      .activity-count {
+        font-size: 0.6rem;
+        color: var(--mist);
+        background: rgba(255,255,255,0.05);
+        padding: 0.25rem 0.5rem;
+        border-radius: 2px;
+      }
+
+      .activity-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+
+      .activity-row {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 1rem;
+        background: rgba(0,0,0,0.4);
+        border: 1px solid rgba(255,255,255,0.05);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .activity-row::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.03), transparent);
+        transition: left 0.5s ease;
+      }
+
+      .activity-row:hover {
+        border-color: rgba(255,255,255,0.2);
+        transform: translateX(6px);
+        background: rgba(20,20,20,0.8);
+      }
+
+      .activity-row:hover::after {
+        left: 100%;
+      }
+
+      .activity-img {
+        width: 56px;
+        height: 56px;
+        image-rendering: pixelated;
+        flex-shrink: 0;
+        border: 2px solid var(--ghost);
+        transition: border-color 0.3s ease;
+      }
+
+      .activity-row:hover .activity-img {
+        border-color: var(--mist);
+      }
+
+      .activity-info {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .activity-id {
+        font-family: var(--font-display);
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: var(--pure);
+      }
+
+      .activity-meta {
+        font-size: 0.65rem;
+        color: var(--mist);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        margin-top: 0.35rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .activity-meta-tag {
+        background: rgba(255,255,255,0.08);
+        padding: 0.15rem 0.4rem;
+        font-size: 0.55rem;
+      }
+
+      .activity-meta-tag.sold {
+        background: rgba(0, 255, 136, 0.15);
+        color: #00ff88;
+      }
+
+      .activity-meta-tag.listed {
+        background: rgba(0, 136, 255, 0.15);
+        color: #0088ff;
+      }
+
+      .activity-price {
+        text-align: right;
+      }
+
+      .activity-price-value {
+        font-family: var(--font-display);
+        font-size: 1.3rem;
+        font-weight: 700;
+        color: var(--pure);
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 0.25rem;
+      }
+
+      .activity-price-eth {
+        font-size: 0.9rem;
+        opacity: 0.7;
+      }
+
+      .activity-price-usd {
+        font-size: 0.6rem;
+        color: var(--mist);
+        margin-top: 0.25rem;
+      }
+
+      .activity-empty {
+        color: var(--mist);
+        font-size: 0.75rem;
+        padding: 2rem;
+        text-align: center;
+        background: rgba(0,0,0,0.3);
+        border: 1px dashed var(--ghost);
+      }
+
+      /* ========================================
+         FEATURED - Curated grid
+         ======================================== */
+
+      .featured-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 1rem;
+      }
+
+      @media (max-width: 900px) {
+        .featured-grid {
+          grid-template-columns: repeat(3, 1fr);
+        }
+      }
+
+      @media (max-width: 480px) {
+        .featured-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+
+      .featured-punk {
+        aspect-ratio: 1;
+        background: var(--shadow);
+        border: 1px solid var(--ghost);
+        padding: 0.75rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .featured-punk::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(135deg, var(--accent) 0%, transparent 50%);
+        opacity: 0;
+        transition: opacity 0.3s ease;
+      }
+
+      .featured-punk:hover {
+        border-color: var(--accent);
+        transform: scale(1.02);
+      }
+
+      .featured-punk:hover::before {
+        opacity: 0.1;
+      }
+
+      .featured-punk img {
+        width: 100%;
+        height: 100%;
+        image-rendering: pixelated;
+        object-fit: contain;
+        position: relative;
+        z-index: 1;
+      }
+
+      /* ========================================
+         ABOUT - Story section
+         ======================================== */
+
+      .about-content {
+        max-width: 800px;
+        margin: 0 auto;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 4rem;
+      }
+
+      @media (max-width: 768px) {
+        .about-content {
+          grid-template-columns: 1fr;
+          gap: 2rem;
+        }
+      }
+
+      .about-text {
+        font-size: 0.9rem;
+        line-height: 2;
+        color: var(--light);
+      }
+
+      .about-text strong {
+        color: var(--pure);
+        font-weight: 600;
+      }
+
+      .about-notes {
+        padding: 2rem;
+        background: var(--shadow);
+        border-left: 3px solid var(--accent);
+      }
+
+      .about-notes-title {
+        font-size: 0.6rem;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--mist);
+        margin-bottom: 1.5rem;
+      }
+
+      .about-notes ul {
+        list-style: none;
+        font-size: 0.75rem;
+        color: var(--fog);
+        line-height: 2.2;
+      }
+
+      .about-notes li::before {
+        content: "→";
+        margin-right: 0.75rem;
+        color: var(--accent);
+      }
+
+      /* ========================================
+         TEAM - Minimal cards
+         ======================================== */
+
+      .team-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 2rem;
+        max-width: 700px;
+        margin: 0 auto;
+      }
+
+      @media (max-width: 600px) {
+        .team-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .team-member {
+        padding: 2.5rem;
+        background: var(--shadow);
+        border: 1px solid var(--ghost);
+        text-align: center;
+        transition: all 0.3s ease;
+      }
+
+      .team-member:hover {
+        border-color: var(--mist);
+      }
+
+      .team-member-img {
+        width: 100px;
+        height: 100px;
+        margin: 0 auto 1.5rem;
+        image-rendering: pixelated;
+        border: 2px solid var(--ghost);
+      }
+
+      .team-member-name {
+        font-family: var(--font-display);
+        font-size: 1.5rem;
+        font-weight: 800;
+        margin-bottom: 0.25rem;
+      }
+
+      .team-member-role {
+        font-size: 0.55rem;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--mist);
+        margin-bottom: 1rem;
+      }
+
+      .team-member-bio {
+        font-size: 0.75rem;
+        color: var(--fog);
+        line-height: 1.8;
+      }
+
+      /* ========================================
+         NOMETA - Ecosystem showcase
+         ======================================== */
+
+      .nometa-grid {
+        display: flex;
+        justify-content: center;
+        gap: 2rem;
+        flex-wrap: wrap;
+      }
+
+      .nometa-item {
+        text-align: center;
+        padding: 2rem;
+        background: var(--shadow);
+        border: 1px solid var(--ghost);
+        transition: all 0.3s ease;
+        min-width: 150px;
+      }
+
+      .nometa-item:hover {
+        border-color: var(--mist);
+        transform: translateY(-4px);
+      }
+
+      .nometa-item img {
+        width: 80px;
+        height: 80px;
+        margin: 0 auto 1rem;
+        image-rendering: pixelated;
+      }
+
+      .nometa-item-name {
+        font-size: 0.7rem;
+        letter-spacing: 0.1em;
+        color: var(--fog);
+      }
+
+      /* ========================================
+         NOIR DE NOIR - Special collection
+         ======================================== */
+
+      .noir-section {
+        background: var(--void);
+        border-top: 1px solid var(--ghost);
+        border-bottom: 1px solid var(--ghost);
+      }
+
+      .noir-grid {
+        display: flex;
+        justify-content: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        max-width: 800px;
+        margin: 0 auto;
+      }
+
+      .noir-punk {
+        width: 40px;
+        height: 40px;
+        image-rendering: pixelated;
+        border: 1px solid var(--ghost);
+        cursor: pointer;
+        transition: all 0.3s ease;
+        opacity: 0.7;
+      }
+
+      .noir-punk:hover {
+        opacity: 1;
+        border-color: var(--pure);
+        transform: scale(1.2);
+        z-index: 10;
+        position: relative;
+      }
+
+      /* ========================================
+         COLLECTION BROWSER
+         ======================================== */
+
+      .collection-grid {
+        display: grid;
+        grid-template-columns: repeat(10, 1fr);
+        gap: 0.5rem;
+      }
+
+      @media (max-width: 1200px) {
+        .collection-grid {
+          grid-template-columns: repeat(8, 1fr);
+        }
+      }
+
+      @media (max-width: 900px) {
+        .collection-grid {
+          grid-template-columns: repeat(5, 1fr);
+        }
+      }
+
+      @media (max-width: 480px) {
+        .collection-grid {
+          grid-template-columns: repeat(4, 1fr);
+        }
+      }
+
+      .collection-punk {
+        aspect-ratio: 1;
+        background: var(--shadow);
+        border: 1px solid transparent;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        overflow: hidden;
+      }
+
+      .collection-punk:hover {
+        border-color: var(--accent);
+        transform: scale(1.05);
+        z-index: 10;
+        position: relative;
+      }
+
+      .collection-punk img {
+        width: 100%;
+        height: 100%;
+        image-rendering: pixelated;
+        object-fit: contain;
+      }
+
+      .collection-controls {
+        text-align: center;
+        margin-top: 3rem;
+      }
+
+      .collection-count {
+        font-size: 0.65rem;
+        letter-spacing: 0.15em;
+        color: var(--mist);
+        margin-bottom: 1.5rem;
+      }
+
+      .load-more-btn {
+        background: transparent;
+        color: var(--pure);
+        border: 1px solid var(--ghost);
+        padding: 1rem 3rem;
+        font-family: var(--font-mono);
+        font-size: 0.65rem;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        cursor: pointer;
+        transition: all 0.3s ease;
+      }
+
+      .load-more-btn:hover {
+        border-color: var(--pure);
+        background: var(--pure);
+        color: var(--void);
+      }
+
+      /* ========================================
+         FOOTER
+         ======================================== */
+
+      .footer {
+        padding: 4rem 2rem;
+        text-align: center;
+        border-top: 1px solid var(--ghost);
+      }
+
+      .footer-brand {
+        font-family: var(--font-display);
+        font-size: 2rem;
+        font-weight: 900;
+        margin-bottom: 1rem;
+      }
+
+      .footer-tagline {
+        font-size: 0.65rem;
+        letter-spacing: 0.3em;
+        text-transform: uppercase;
+        color: var(--mist);
+        margin-bottom: 2rem;
+      }
+
+      .footer-links {
+        display: flex;
+        justify-content: center;
+        gap: 2rem;
+      }
+
+      .footer-links a {
+        font-size: 0.6rem;
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+        color: var(--fog);
+        transition: color 0.3s ease;
+      }
+
+      .footer-links a:hover {
+        color: var(--pure);
+      }
+
+      .footer-meta {
+        margin-top: 3rem;
+        font-size: 0.55rem;
+        color: var(--mist);
+        letter-spacing: 0.1em;
+      }
+
+      /* ========================================
+         ANIMATIONS
+         ======================================== */
+
+      @keyframes fadeUp {
+        from {
+          opacity: 0;
+          transform: translateY(20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .animate-fade-up {
+        animation: fadeUp 0.8s ease forwards;
+      }
+
+      .delay-1 { animation-delay: 0.1s; }
+      .delay-2 { animation-delay: 0.2s; }
+      .delay-3 { animation-delay: 0.3s; }
+      .delay-4 { animation-delay: 0.4s; }
+
+      /* ========================================
+         TRAITS TOOLTIP
+         ======================================== */
+
+      .traits-tooltip {
+        position: absolute;
+        z-index: 9000;
+        min-width: 200px;
+        max-width: 260px;
+        padding: 1rem;
+        background: rgba(0, 0, 0, 0.98);
+        border: 1px solid var(--ghost);
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.15s ease;
+      }
+
+      .traits-tooltip.visible {
+        opacity: 1;
+      }
+
+      .traits-tooltip-header {
+        font-family: var(--font-display);
+        font-size: 1rem;
+        font-weight: 800;
+        margin-bottom: 0.75rem;
+        color: var(--pure);
+      }
+
+      .traits-tooltip-body {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+      }
+
+      .traits-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        font-size: 0.7rem;
+      }
+
+      .traits-type {
+        font-weight: 600;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--mist);
+      }
+
+      .traits-value {
+        color: var(--light);
+        text-align: right;
+      }
+
+      .traits-empty {
+        font-size: 0.7rem;
+        color: var(--mist);
+      }
+
+      /* Hoverable punk cards */
+      .punk-card {
+        position: relative;
+        cursor: pointer;
+      }
+    </style>
   </head>
   <body>
-    <div class="np-shell">
-      <!-- HEADER -->
-      <header class="np-header">
-        <div class="np-header-inner">
-          <div class="np-header-kicker">NOPUNKS • NOMETA</div>
 
-          <div class="np-title-block">
-            <h1 class="np-title">NO-PUNKS</h1>
-            <div class="np-title-mark">
-              <span class="np-title-triangle np-title-triangle--left"></span>
-              <span class="np-title-circle"></span>
-              <span class="np-title-triangle np-title-triangle--right"></span>
-            </div>
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">NO-PUNKS</div>
+      <nav class="nav">
+        <a href="#collection">Collection</a>
+        <a href="#about">About</a>
+        <a href="https://opensea.io/collection/nopunkismv2" target="_blank">OpenSea</a>
+        <a href="https://x.com/NoPunkism" target="_blank">X</a>
+        <div id="wallet-container" class="wallet-container"></div>
+      </nav>
+    </header>
+
+    <!-- Hero -->
+    <section class="hero">
+      <div class="hero-bg"></div>
+      <div class="hero-grid"></div>
+      <div class="hero-content">
+        <div class="hero-punk-glow"></div>
+        <div class="hero-punks-showcase">
+          <div class="hero-punk-wrap">
+            <img id="hero-punk-left" class="hero-punk" src="/3100.png" alt="No-Punk" onclick="randomHeroPunks()" />
           </div>
-
-          <p class="np-header-tagline">
-            Base is for believers • NoPunks is for minimalists • 10,000 piece
-            minimalist derivative of CryptoPunks on Base.
-          </p>
-
-          <!-- Social icons (files in public/icons) -->
-          <div class="np-header-social">
-            <a
-              href="https://x.com/NoPunkism"
-              target="_blank"
-              rel="noreferrer"
-              aria-label="NoPunkism on X"
-            >
-              <img
-                src="/icons/X.jpg"
-                alt="X"
-                style="width: 22px; height: 22px; border-radius: 999px"
-              />
-            </a>
-            <a
-              href="https://opensea.io/collection/nopunkism"
-              target="_blank"
-              rel="noreferrer"
-              aria-label="NoPunkism on OpenSea"
-            >
-              <img
-                src="/icons/opensea.png"
-                alt="OpenSea"
-                style="width: 24px; height: 24px"
-              />
-            </a>
+          <div class="hero-punk-wrap center">
+            <img id="hero-punk-center" class="hero-punk" src="/52.png" alt="No-Punk" onclick="randomHeroPunks()" />
+          </div>
+          <div class="hero-punk-wrap">
+            <img id="hero-punk-right" class="hero-punk" src="/7804.png" alt="No-Punk" onclick="randomHeroPunks()" />
           </div>
         </div>
-      </header>
+        <h1 class="hero-title">NO-PUNKS</h1>
+        <p class="hero-tagline">Lights Out. Traits Stay.</p>
+        <p class="hero-sub">
+          10,000 minimalist derivatives on Base.<br>
+          Palette reduced. Silhouettes preserved. Fully onchain.
+        </p>
+      </div>
+      <div class="hero-scroll">Scroll</div>
+    </section>
 
-      <!-- MAIN -->
-      <main class="np-main">
-        <!-- TABS -->
-        <section class="mb-6 flex justify-center">
-          <div class="np-tabs">
-            <button
-              type="button"
-              class="np-tab np-tab--active"
-              data-tab="collection"
-            >
-              Collection
-            </button>
-            <button type="button" class="np-tab" data-tab="showcase">
-              NoMeta
-            </button>
-            <button type="button" class="np-tab" data-tab="about">
-              About
-            </button>
-            <button type="button" class="np-tab" data-tab="team">
-              Team
-            </button>
-            <button type="button" class="np-tab" data-tab="sales">
-              Sales
-            </button>
-          </div>
-        </section>
-
-        <!-- COLLECTION TAB -->
-        <section
-          id="tab-collection"
-          data-tab-section="collection"
-          class="np-section"
-        >
-          <div class="mb-4 flex items-center justify-between gap-4">
-            <div>
-              <h2
-                class="text-sm font-semibold uppercase tracking-[0.25em] text-white/80"
-              >
-                Collection
-              </h2>
-              <p
-                id="collection-summary"
-                class="mt-2 text-xs text-white/60 leading-relaxed"
-              >
-                NoMeta loading...
-              </p>
-            </div>
-
-            <div
-              class="flex items-center gap-2 text-[11px] text-white/70 flex-shrink-0"
-            >
-              <button
-                id="prev-page"
-                type="button"
-                class="rounded-full border border-white/10 bg-white/5 px-2 py-1 disabled:opacity-40 hover:bg-white/[0.06]"
-                disabled
-              >
-                Prev
-              </button>
-              <span id="page-info" class="tabular-nums">Page 1 / ?</span>
-              <button
-                id="next-page"
-                type="button"
-                class="rounded-full border border-white/10 bg-white/5 px-2 py-1 disabled:opacity-40 hover:bg-white/[0.06]"
-                disabled
-              >
-                Next
-              </button>
-            </div>
-          </div>
-
-          <div
-            id="collection-grid"
-            class="mt-4 np-collection-grid"
-            aria-live="polite"
-          ></div>
-
-          <div
-            id="collection-error"
-            class="mt-4 text-xs text-red-400"
-            style="display: none"
-          ></div>
-        </section>
-
-        <!-- SHOWCASE / NOMETA TAB -->
-        <section
-          id="tab-showcase"
-          data-tab-section="showcase"
-          class="np-section hidden"
-        >
-          <div class="space-y-6">
-            <div>
-              <h2
-                class="text-sm font-semibold uppercase tracking-[0.25em] text-white/80"
-              >
-                NoMeta
-              </h2>
-            </div>
-
-            <div
-              id="showcase-grid"
-              class="np-showcase-grid"
-              aria-live="polite"
-            ></div>
-
-            <p id="showcase-status" class="text-[11px] text-white/50">
-              NoMeta loading...
-            </p>
-          </div>
-        </section>
-
-        <!-- ABOUT TAB -->
-        <section
-          id="tab-about"
-          data-tab-section="about"
-          class="np-section hidden"
-        >
-          <div class="grid gap-6 md:grid-cols-[2fr,1.3fr]">
-            <div class="space-y-3 text-sm text-white/70">
-              <p>
-                NoPunks is a simplified iteration of the CryptoPunks collection
-                by colour palette reduction. The reduced palette and stripped
-                detail push the characters toward abstraction while keeping the
-                original silhouettes intact.
-              </p>
-              <p>
-                Every piece is built on a strict 24×24 grid, then upscaled for
-                display. Traits stay; noise goes. It’s all about seeing how
-                little information you need before your brain still says “punk”.
-              </p>
-              <p>
-                Launched on Base in 2024 and evolving under the broader
-                <span class="font-semibold">NoMeta</span> umbrella, the project
-                keeps experimenting with derivatives, glitches, and new formats
-                while staying loyal to the original pixel discipline.
-              </p>
-            </div>
-
-            <div
-              class="space-y-3 rounded-lg border border-white/10 bg-white/[0.03] p-4 text-xs text-white/70"
-            >
-              <div
-                class="text-[10px] uppercase tracking-[0.25em] text-white/40"
-              >
-                Project Notes
-              </div>
-              <ul class="list-disc space-y-1 pl-4">
-                <li>1:1 mapping to original CryptoPunks IDs.</li>
-                <li>Traits preserved, palettes compressed.</li>
-                <li>Strict black backgrounds, #040404 outlines.</li>
-                <li>Built for long-term collectors, not quick-flip meta.</li>
-              </ul>
-            </div>
-          </div>
-        </section>
-
-        <!-- TEAM TAB -->
-        <section
-          id="tab-team"
-          data-tab-section="team"
-          class="np-section hidden"
-        >
-          <p class="mb-4 text-xs text-white/60">
-            People shaping the pixels and the surrounding chaos.
-          </p>
-
-          <div class="np-team-grid">
-            <!-- Astro-AI -->
-            <article class="np-team-card">
-              <div class="mb-3 flex items-center gap-3">
-                <div class="h-10 w-10 overflow-hidden rounded-sm bg-black">
-                  <img
-                    src="/team/Astro.png"
-                    alt="Astro-AI"
-                    class="h-full w-full object-cover"
-                    loading="lazy"
-                  />
-                </div>
-                <div>
-                  <div
-                    class="text-[10px] uppercase tracking-[0.25em] text-white/40"
-                  >
-                    NoPunks / NoMeta • Generative
-                  </div>
-                  <div class="mt-0.5 text-sm font-semibold">Astro-AI</div>
-                </div>
-              </div>
-              <p>
-                Astro-AI started NoPunks on Base as a minimalist, no-meta
-                derivative of CryptoPunks, and keeps pushing the art, glitch
-                experiments, and on-chain tooling forward.
-              </p>
-            </article>
-
-            <!-- Holu -->
-            <article class="np-team-card">
-              <div class="mb-3 flex items-center gap-3">
-                <div class="h-10 w-10 overflow-hidden rounded-sm bg-black">
-                  <img
-                    src="/team/Holu.png"
-                    alt="Holu"
-                    class="h-full w-full object-cover"
-                    loading="lazy"
-                  />
-                </div>
-                <div>
-                  <div
-                    class="text-[10px] uppercase tracking-[0.25em] text-white/40"
-                  >
-                    Co-Founder
-                  </div>
-                  <div class="mt-0.5 text-sm font-semibold">Holu</div>
-                </div>
-              </div>
-              <p>
-                Original collaborator on NoPunks, helping define the palette,
-                structure and early direction.
-              </p>
-            </article>
-
-            <!-- B888B -->
-            <article class="np-team-card">
-              <div class="mb-3 flex items-center gap-3">
-                <div class="h-10 w-10 overflow-hidden rounded-sm bg-black">
-                  <img
-                    src="/team/B888B.png"
-                    alt="B888B"
-                    class="h-full w-full object-cover"
-                    loading="lazy"
-                  />
-                </div>
-                <div>
-                  <div
-                    class="text-[10px] uppercase tracking-[0.25em] text-white/40"
-                  >
-                    Collector / Strategy
-                  </div>
-                  <div class="mt-0.5 text-sm font-semibold">B888B</div>
-                </div>
-              </div>
-              <p>
-                Long-term collector and strategist, helping shape signal,
-                feedback loops, and direction across drops and experiments.
-              </p>
-            </article>
-          </div>
-        </section>
-
-        <!-- SALES TAB -->
-        <section
-          id="tab-sales"
-          data-tab-section="sales"
-          class="np-section hidden"
-        >
-          <div class="space-y-6">
-            <div>
-              <h2
-                class="text-sm font-semibold uppercase tracking-[0.25em] text-white/80"
-              >
-                Sales &amp; Market
-              </h2>
-            </div>
-
-            <!-- Stat cards -->
-            <div class="grid gap-4 sm:grid-cols-3">
-              <!-- Floor -->
-              <div
-                class="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-xs text-white/70"
-              >
-                <div
-                  class="text-[10px] uppercase tracking-[0.25em] text-white/40"
-                >
-                  Floor (Ξ)
-                </div>
-                <div class="mt-2 flex items-baseline gap-1 text-white/90">
-                  <span id="floor-price" class="text-lg font-semibold">
-                    --
-                  </span>
-                  <span class="text-xs text-white/60">Ξ</span>
-                </div>
-              </div>
-
-              <!-- Volume -->
-              <div
-                class="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-xs text-white/70"
-              >
-                <div
-                  class="text-[10px] uppercase tracking-[0.25em] text-white/40"
-                >
-                  Volume Traded (Ξ)
-                </div>
-                <div class="mt-2 flex items-baseline gap-1 text-white/90">
-                  <span id="total-volume" class="text-lg font-semibold">
-                    --
-                  </span>
-                  <span class="text-xs text-white/60">Ξ</span>
-                </div>
-              </div>
-
-              <!-- Holders -->
-              <div
-                class="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-xs text-white/70"
-              >
-                <div
-                  class="text-[10px] uppercase tracking-[0.25em] text-white/40"
-                >
-                  Unique Holders
-                </div>
-                <div
-                  id="num-owners"
-                  class="mt-2 text-lg font-semibold text-white/90"
-                >
-                  --
-                </div>
-              </div>
-            </div>
-
-            <p id="sales-status" class="text-[11px] text-white/50">
-              NoMeta loading...
-            </p>
-
-            <!-- Recent sales list -->
-            <div class="space-y-3">
-              <h3
-                class="text-[11px] uppercase tracking-[0.25em] text-white/50"
-              >
-                Recent Sales
-              </h3>
-              <div
-                id="recent-sales-list"
-                class="space-y-2 text-xs text-white/70"
-              ></div>
-            </div>
-
-            <!-- Listed tokens -->
-            <div class="space-y-3">
-              <h3
-                class="text-[11px] uppercase tracking-[0.25em] text-white/50"
-              >
-                Listed No-Punks
-              </h3>
-              <div
-                id="listed-tokens-list"
-                class="space-y-2 text-xs text-white/70"
-              ></div>
-            </div>
-          </div>
-        </section>
-      </main>
-
-      <!-- FOOTER -->
-      <footer class="border-t border-white/10 bg-black/80">
-        <div
-          class="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-4 text-[10px] text-white/40 sm:flex-row sm:items-center sm:justify-between"
-        >
-          <span>NoPunks • A NoMeta project • Built on Base</span>
-          <span class="uppercase tracking-[0.25em]">
-            Lights Out • Traits Stay
-          </span>
-        </div>
-      </footer>
+    <!-- Stats -->
+    <div class="stats-strip">
+      <div class="stat">
+        <div class="stat-value"><span id="floor-price">--</span> <span class="unit">Ξ</span></div>
+        <div class="stat-label">Floor</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value"><span id="total-volume">--</span> <span class="unit">Ξ</span></div>
+        <div class="stat-label">Volume</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" id="num-owners">--</div>
+        <div class="stat-label">Holders</div>
+      </div>
     </div>
 
-    <!-- JS (version bump so browsers pull the new website.js with the fixed NoMeta/OpenSea click + team / showcase wiring) -->
-    <script src="/assets/website.js?v=7" defer></script>
+    <!-- Lookup & Activity -->
+    <section class="section">
+      <div class="container">
+        <div class="section-header">
+          <h2 class="section-title">Explore</h2>
+          <p class="section-subtitle">Find your punk</p>
+        </div>
 
-    <noscript>
-      <div style="color:#fff; text-align:center; padding:1rem 0;">
-        JavaScript is required to browse the NoPunks collection.
+        <div class="lookup-box">
+          <div class="lookup-input-wrap">
+            <input type="number" id="lookup-input" class="lookup-input" placeholder="Enter ID (0-9999)" min="0" max="9999" />
+            <button class="lookup-btn" onclick="lookupPunk()">Find</button>
+          </div>
+          <div id="lookup-result" class="lookup-result">
+            <img id="lookup-img" class="lookup-punk-img" src="" alt="" />
+            <div class="lookup-punk-info">
+              <div id="lookup-id" class="lookup-punk-id"></div>
+              <div id="lookup-traits" class="lookup-punk-traits"></div>
+              <a id="lookup-opensea" class="lookup-opensea" href="#" target="_blank">View on OpenSea →</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="activity-grid">
+          <div class="activity-column">
+            <div class="activity-column-header">
+              <div class="activity-column-title">
+                <span class="activity-live-dot"></span>
+                Recent Sales
+              </div>
+              <div class="activity-count" id="sales-count">Loading...</div>
+            </div>
+            <div id="recent-sales" class="activity-list"></div>
+          </div>
+          <div class="activity-column">
+            <div class="activity-column-header">
+              <div class="activity-column-title">
+                Currently Listed
+              </div>
+              <div class="activity-count" id="listings-count">Loading...</div>
+            </div>
+            <div id="listed-punks" class="activity-list"></div>
+          </div>
+        </div>
       </div>
-    </noscript>
+    </section>
+
+    <!-- Featured -->
+    <section class="section section-dark">
+      <div class="container">
+        <div class="section-header">
+          <h2 class="section-title">Featured</h2>
+          <p class="section-subtitle">Curated selection</p>
+        </div>
+        <div id="featured-grid" class="featured-grid"></div>
+      </div>
+    </section>
+
+    <!-- Collection -->
+    <section id="collection" class="section">
+      <div class="container">
+        <div class="section-header">
+          <h2 class="section-title">Collection</h2>
+          <p class="section-subtitle">Browse all 10,000</p>
+        </div>
+        <div id="collection-grid" class="collection-grid"></div>
+        <div class="collection-controls">
+          <div class="collection-count"><span id="collection-count">0</span> / 10,000 loaded</div>
+          <button id="load-more-btn" class="load-more-btn" onclick="loadMoreCollection()">Load More</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- About -->
+    <section id="about" class="section section-dark">
+      <div class="container">
+        <div class="section-header">
+          <h2 class="section-title">About</h2>
+          <p class="section-subtitle">The story</p>
+        </div>
+        <div class="about-content">
+          <div>
+            <p class="about-text">
+              <strong>No-Punks</strong> is a simplified iteration of the CryptoPunks collection by colour palette reduction. The reduced palette and stripped detail push the characters toward abstraction while keeping the original silhouettes intact.
+            </p>
+            <p class="about-text" style="margin-top: 1.5rem;">
+              Every piece is built on a strict 24×24 grid, then upscaled for display. Traits stay; noise goes. It's all about seeing how little information you need before your brain still says "punk".
+            </p>
+            <p class="about-text" style="margin-top: 1.5rem;">
+              Launched on Base in 2024 and evolving under the broader <strong>NoMeta</strong> umbrella, the project keeps experimenting with derivatives, glitches, and new formats while staying loyal to the original pixel discipline.
+            </p>
+          </div>
+          <div class="about-notes">
+            <div class="about-notes-title">Project Notes</div>
+            <ul>
+              <li>1:1 mapping to original CryptoPunks IDs</li>
+              <li>Traits preserved, palettes compressed</li>
+              <li>Strict black backgrounds, #040404 outlines</li>
+              <li>Built for long-term collectors</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Team -->
+    <section id="team" class="section">
+      <div class="container">
+        <div class="section-header">
+          <h2 class="section-title">Team</h2>
+          <p class="section-subtitle">Shaping the pixels</p>
+        </div>
+        <div class="team-grid">
+          <div class="team-member">
+            <img class="team-member-img" src="/public/team/Astro.png" alt="Astro-AI" onerror="this.src='/52.png'" />
+            <div class="team-member-name">Astro-AI</div>
+            <div class="team-member-role">NoPunks / NoMeta • Generative</div>
+            <p class="team-member-bio">Started NoPunks on Base as a minimalist, no-meta derivative. Keeps pushing the art, glitch experiments, and on-chain tooling forward.</p>
+          </div>
+          <div class="team-member">
+            <img class="team-member-img" src="/public/team/Holu.png" alt="Holu" onerror="this.src='/52.png'" />
+            <div class="team-member-name">Holu</div>
+            <div class="team-member-role">Co-Founder</div>
+            <p class="team-member-bio">Original collaborator on NoPunks, helping define the palette, structure and early direction.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- NoMeta -->
+    <section class="section section-dark">
+      <div class="container">
+        <div class="section-header">
+          <h2 class="section-title">NoMeta</h2>
+          <p class="section-subtitle">The ecosystem</p>
+        </div>
+        <div id="nometa-showcase" class="nometa-grid"></div>
+      </div>
+    </section>
+
+    <!-- Noir de Noir -->
+    <section class="section noir-section">
+      <div class="container">
+        <div class="section-header">
+          <h2 class="section-title">Noir de Noir</h2>
+          <p class="section-subtitle">24 punks. Black from black. Almost invisible.</p>
+        </div>
+        <div id="noir-grid" class="noir-grid"></div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="footer-brand">NO-PUNKS</div>
+      <div class="footer-tagline">Lights Out. Traits Stay.</div>
+      <div class="footer-links">
+        <a href="https://opensea.io/collection/nopunkismv2" target="_blank">OpenSea</a>
+        <a href="https://x.com/NoPunkism" target="_blank">X / Twitter</a>
+        <a href="#about">About</a>
+        <a href="#team">Team</a>
+      </div>
+      <div class="footer-meta">No-Punks • A NoMeta Project • Built on Base</div>
+    </footer>
+
+    <script>
+      // ========================================
+      // NO-PUNKS - JavaScript
+      // V2 Contract: 0xa62f65d503068684e7228df98090F94322b8ed54
+      // ========================================
+
+      const API_BASE = '/api';
+      const CONTRACT = '0xa62f65d503068684e7228df98090F94322b8ed54';
+      const OPENSEA_BASE = 'https://opensea.io/assets/base';
+
+      // Noir de Noir - correct IDs
+      const NOIR_DE_NOIR = [338, 615, 676, 871, 1006, 1403, 2743, 2752, 2801, 3054, 3065, 3665, 4873, 4991, 5058, 5152, 5706, 6006, 6980, 7117, 7254, 8185, 8623, 8739];
+
+      // Generate random featured punk IDs
+      function getRandomPunkIds(count) {
+        const ids = [];
+        while (ids.length < count) {
+          const id = Math.floor(Math.random() * 10000);
+          if (!ids.includes(id)) ids.push(id);
+        }
+        return ids;
+      }
+
+      // Get punk image URL - try OpenSea CDN first, fallback to local
+      function getPunkImageUrl(tokenId, openseaUrl) {
+        if (openseaUrl && openseaUrl.includes('seadn.io')) {
+          return openseaUrl;
+        }
+        return `/${tokenId}.png`;
+      }
+
+      // ========================================
+      // Initialize
+      // ========================================
+
+      document.addEventListener('DOMContentLoaded', () => {
+        loadStats();
+        loadRecentSales();
+        loadListedPunks();
+        loadFeaturedPunks();
+        loadNoirDeNoir();
+        loadNoMetaShowcase();
+        loadMoreCollection();
+        randomHeroPunks();
+
+        // Enter key for lookup
+        document.getElementById('lookup-input').addEventListener('keypress', (e) => {
+          if (e.key === 'Enter') lookupPunk();
+        });
+      });
+
+      // ========================================
+      // Stats
+      // ========================================
+
+      async function loadStats() {
+        try {
+          const res = await fetch(`${API_BASE}/stats`);
+          if (!res.ok) throw new Error('Stats fetch failed');
+          const data = await res.json();
+
+          document.getElementById('floor-price').textContent = data.floorPrice?.toFixed(5) || '--';
+          document.getElementById('total-volume').textContent = data.totalVolume?.toFixed(1) || '--';
+          document.getElementById('num-owners').textContent = data.numOwners || '--';
+        } catch (err) {
+          console.error('Stats error:', err);
+        }
+      }
+
+      // ========================================
+      // Recent Sales
+      // ========================================
+
+      function timeAgo(timestamp) {
+        const seconds = Math.floor(Date.now() / 1000 - timestamp);
+        if (seconds < 60) return 'Just now';
+        if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
+        if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ago';
+        return Math.floor(seconds / 86400) + 'd ago';
+      }
+
+      async function loadRecentSales() {
+        const container = document.getElementById('recent-sales');
+        const countEl = document.getElementById('sales-count');
+
+        try {
+          const res = await fetch(`${API_BASE}/recent-sales`);
+          if (!res.ok) throw new Error('Sales fetch failed');
+          const data = await res.json();
+
+          const sales = data.sales || [];
+          countEl.textContent = `${sales.length} recent`;
+          container.innerHTML = '';
+
+          sales.slice(0, 5).forEach((sale, index) => {
+            const tokenId = sale.onChainId || '?';
+            const price = sale.price?.toFixed(4) || '?';
+            const imgUrl = getPunkImageUrl(tokenId, sale.image_url);
+            const time = sale.time ? timeAgo(sale.time) : '';
+
+            container.innerHTML += `
+              <a href="${OPENSEA_BASE}/${CONTRACT}/${tokenId}" target="_blank" class="activity-row punk-card" data-token-id="${tokenId}" style="animation: fadeSlideIn 0.3s ease ${index * 0.1}s both;">
+                <img class="activity-img" src="${imgUrl}" alt="No-Punk #${tokenId}" onerror="this.src='/52.png'" />
+                <div class="activity-info">
+                  <div class="activity-id">#${tokenId}</div>
+                  <div class="activity-meta">
+                    <span class="activity-meta-tag sold">SOLD</span>
+                    ${time}
+                  </div>
+                </div>
+                <div class="activity-price">
+                  <div class="activity-price-value">${price}<span class="activity-price-eth">Ξ</span></div>
+                </div>
+              </a>
+            `;
+          });
+
+          attachTooltipHandlers(container);
+
+          if (!sales.length) {
+            container.innerHTML = '<div class="activity-empty">No recent sales</div>';
+          }
+        } catch (err) {
+          console.error('Sales error:', err);
+          countEl.textContent = 'Error';
+          container.innerHTML = '<div class="activity-empty">Unable to load sales</div>';
+        }
+      }
+
+      // ========================================
+      // Listed Punks
+      // ========================================
+
+      async function loadListedPunks() {
+        const container = document.getElementById('listed-punks');
+        const countEl = document.getElementById('listings-count');
+
+        try {
+          const res = await fetch(`${API_BASE}/listed`);
+          if (!res.ok) throw new Error('Listings fetch failed');
+          const data = await res.json();
+
+          const listings = data.listings || [];
+          countEl.textContent = `${listings.length} available`;
+          container.innerHTML = '';
+
+          listings.slice(0, 8).forEach((listing, index) => {
+            const tokenId = listing.onChainId || '?';
+            const price = listing.price?.toFixed(4) || '?';
+            const imgUrl = getPunkImageUrl(tokenId, listing.image_url);
+
+            container.innerHTML += `
+              <a href="${OPENSEA_BASE}/${CONTRACT}/${tokenId}" target="_blank" class="activity-row punk-card" data-token-id="${tokenId}" style="animation: fadeSlideIn 0.3s ease ${index * 0.1}s both;">
+                <img class="activity-img" src="${imgUrl}" alt="No-Punk #${tokenId}" onerror="this.src='/52.png'" />
+                <div class="activity-info">
+                  <div class="activity-id">#${tokenId}</div>
+                  <div class="activity-meta">
+                    <span class="activity-meta-tag listed">FOR SALE</span>
+                  </div>
+                </div>
+                <div class="activity-price">
+                  <div class="activity-price-value">${price}<span class="activity-price-eth">Ξ</span></div>
+                </div>
+              </a>
+            `;
+          });
+
+          attachTooltipHandlers(container);
+
+          if (!listings.length) {
+            container.innerHTML = '<div class="activity-empty">No current listings</div>';
+          }
+        } catch (err) {
+          console.error('Listings error:', err);
+          countEl.textContent = 'Error';
+          container.innerHTML = '<div class="activity-empty">Unable to load listings</div>';
+        }
+      }
+
+      // ========================================
+      // Featured Punks
+      // ========================================
+
+      function loadFeaturedPunks() {
+        const container = document.getElementById('featured-grid');
+        container.innerHTML = '';
+
+        const featuredIds = getRandomPunkIds(10);
+        featuredIds.forEach(id => {
+          container.innerHTML += `
+            <a href="${OPENSEA_BASE}/${CONTRACT}/${id}" target="_blank" class="featured-punk punk-card" data-token-id="${id}">
+              <img src="/${id}.png" alt="No-Punk #${id}" onerror="this.src='/52.png'" />
+            </a>
+          `;
+        });
+
+        attachTooltipHandlers(container);
+      }
+
+      // ========================================
+      // Noir de Noir
+      // ========================================
+
+      function loadNoirDeNoir() {
+        const container = document.getElementById('noir-grid');
+        container.innerHTML = '';
+
+        NOIR_DE_NOIR.forEach(id => {
+          container.innerHTML += `
+            <a href="${OPENSEA_BASE}/${CONTRACT}/${id}" target="_blank" class="punk-card" data-token-id="${id}">
+              <img class="noir-punk" src="/${id}.png" alt="Noir #${id}" onerror="this.style.display='none'" />
+            </a>
+          `;
+        });
+
+        attachTooltipHandlers(container);
+      }
+
+      // ========================================
+      // NoMeta Showcase
+      // ========================================
+
+      async function loadNoMetaShowcase() {
+        const container = document.getElementById('nometa-showcase');
+
+        try {
+          const res = await fetch(`${API_BASE}/showcase`);
+          if (!res.ok) throw new Error('Showcase fetch failed');
+          const data = await res.json();
+
+          container.innerHTML = '';
+
+          (data.showcase || []).forEach(item => {
+            const imgUrl = item.image_url || '/52.png';
+            const label = item.label || item.key || 'Unknown';
+
+            container.innerHTML += `
+              <div class="nometa-item">
+                <img src="${imgUrl}" alt="${label}" onerror="this.src='/52.png'" />
+                <div class="nometa-item-name">${label}</div>
+              </div>
+            `;
+          });
+
+          if (!data.showcase?.length) {
+            loadNoMetaFallback(container);
+          }
+        } catch (err) {
+          console.error('Showcase error:', err);
+          loadNoMetaFallback(container);
+        }
+      }
+
+      function loadNoMetaFallback(container) {
+        container.innerHTML = `
+          <div class="nometa-item">
+            <img src="/public/no-meta/NoPnuk.png.avif" alt="No-Pnuks" onerror="this.src='/52.png'" />
+            <div class="nometa-item-name">No-Pnuks</div>
+          </div>
+          <div class="nometa-item">
+            <img src="/public/no-meta/NoPixelpepen.gif" alt="No-Pixelpepen" onerror="this.src='/52.png'" />
+            <div class="nometa-item-name">No-Pixelpepen</div>
+          </div>
+          <div class="nometa-item">
+            <img src="/public/no-meta/NoTinyDinos.png.avif" alt="No-TinyDinos" onerror="this.src='/52.png'" />
+            <div class="nometa-item-name">No-TinyDinos</div>
+          </div>
+        `;
+      }
+
+      // ========================================
+      // Collection Browser
+      // ========================================
+
+      let collectionPage = 1;
+      let collectionLoading = false;
+      let collectionTotal = 0;
+
+      async function loadMoreCollection() {
+        if (collectionLoading) return;
+        collectionLoading = true;
+
+        const container = document.getElementById('collection-grid');
+        const btn = document.getElementById('load-more-btn');
+        btn.textContent = 'Loading...';
+
+        try {
+          const res = await fetch(`${API_BASE}/collection?page=${collectionPage}`);
+          if (!res.ok) throw new Error('Collection fetch failed');
+          const data = await res.json();
+
+          (data.tokens || []).forEach(token => {
+            const tokenId = token.onChainId || token.identifier || '?';
+            const imgUrl = getPunkImageUrl(tokenId, token.image_url);
+
+            container.innerHTML += `
+              <a href="${OPENSEA_BASE}/${CONTRACT}/${tokenId}" target="_blank" class="collection-punk punk-card" data-token-id="${tokenId}">
+                <img src="${imgUrl}" alt="#${tokenId}" onerror="this.src='/52.png'" loading="lazy" />
+              </a>
+            `;
+          });
+
+          // Attach tooltip handlers on first load
+          if (collectionPage === 1) {
+            attachTooltipHandlers(container);
+          }
+
+          collectionTotal += (data.tokens || []).length;
+          document.getElementById('collection-count').textContent = collectionTotal;
+
+          collectionPage++;
+
+          if (collectionTotal >= 10000 || (data.tokens || []).length === 0) {
+            btn.style.display = 'none';
+          } else {
+            btn.textContent = 'Load More';
+          }
+        } catch (err) {
+          console.error('Collection error:', err);
+          btn.textContent = 'Load More';
+        }
+
+        collectionLoading = false;
+      }
+
+      // ========================================
+      // Hero & Random
+      // ========================================
+
+      function randomHeroPunks() {
+        const ids = [];
+        while (ids.length < 3) {
+          const id = Math.floor(Math.random() * 10000);
+          if (!ids.includes(id)) ids.push(id);
+        }
+        document.getElementById('hero-punk-left').src = `/${ids[0]}.png`;
+        document.getElementById('hero-punk-center').src = `/${ids[1]}.png`;
+        document.getElementById('hero-punk-right').src = `/${ids[2]}.png`;
+      }
+
+      // ========================================
+      // Punk Lookup
+      // ========================================
+
+      async function lookupPunk() {
+        const input = document.getElementById('lookup-input');
+        const id = parseInt(input.value);
+
+        if (isNaN(id) || id < 0 || id > 9999) {
+          alert('Enter a valid punk ID (0-9999)');
+          return;
+        }
+
+        const resultDiv = document.getElementById('lookup-result');
+        const img = document.getElementById('lookup-img');
+        const idText = document.getElementById('lookup-id');
+        const traitsDiv = document.getElementById('lookup-traits');
+        const openseaLink = document.getElementById('lookup-opensea');
+
+        img.src = `/${id}.png`;
+        idText.textContent = `No-Punk #${id}`;
+        openseaLink.href = `${OPENSEA_BASE}/${CONTRACT}/${id}`;
+        resultDiv.classList.add('active');
+
+        try {
+          const res = await fetch(`/${id}.json`);
+          if (res.ok) {
+            const data = await res.json();
+            const traits = (data.attributes || [])
+              .map(a => `${a.trait_type}: ${a.value}`)
+              .join('<br>');
+            traitsDiv.innerHTML = traits || 'No traits';
+          } else {
+            traitsDiv.innerHTML = 'Traits unavailable';
+          }
+        } catch {
+          traitsDiv.innerHTML = 'Traits unavailable';
+        }
+      }
+
+      // ========================================
+      // TRAITS TOOLTIP SYSTEM
+      // ========================================
+
+      let tooltipEl = null;
+      let traitsCache = {};
+
+      function createTooltip() {
+        if (tooltipEl) return tooltipEl;
+        tooltipEl = document.createElement('div');
+        tooltipEl.className = 'traits-tooltip';
+        tooltipEl.innerHTML = `
+          <div class="traits-tooltip-header"></div>
+          <div class="traits-tooltip-body"></div>
+        `;
+        document.body.appendChild(tooltipEl);
+        return tooltipEl;
+      }
+
+      function formatTraits(traits) {
+        if (!Array.isArray(traits) || traits.length === 0) {
+          return '<div class="traits-empty">No traits found</div>';
+        }
+        return traits.slice(0, 6).map(t => {
+          const type = (t.trait_type || t.type || '').toUpperCase();
+          const value = t.value || '';
+          return `<div class="traits-row"><span class="traits-type">${type}</span><span class="traits-value">${value}</span></div>`;
+        }).join('');
+      }
+
+      function positionTooltip(rect) {
+        const tooltip = createTooltip();
+        const tooltipRect = tooltip.getBoundingClientRect();
+
+        let top = rect.top + window.scrollY + rect.height / 2 - tooltipRect.height / 2;
+        let left = rect.right + 16 + window.scrollX;
+
+        // If tooltip goes off right edge, show on left
+        if (left + tooltipRect.width + 16 > window.innerWidth + window.scrollX) {
+          left = rect.left - tooltipRect.width - 16 + window.scrollX;
+        }
+
+        // Keep within viewport vertically
+        const minTop = window.scrollY + 16;
+        const maxTop = window.scrollY + window.innerHeight - tooltipRect.height - 16;
+        top = Math.max(minTop, Math.min(maxTop, top));
+
+        tooltip.style.top = `${top}px`;
+        tooltip.style.left = `${left}px`;
+      }
+
+      async function showTooltip(card) {
+        const tooltip = createTooltip();
+        const header = tooltip.querySelector('.traits-tooltip-header');
+        const body = tooltip.querySelector('.traits-tooltip-body');
+
+        const tokenId = card.dataset.tokenId;
+        header.textContent = `NO-PUNK #${tokenId}`;
+
+        tooltip.classList.add('visible');
+        positionTooltip(card.getBoundingClientRect());
+
+        // Check cache first
+        if (traitsCache[tokenId]) {
+          body.innerHTML = formatTraits(traitsCache[tokenId]);
+          positionTooltip(card.getBoundingClientRect());
+          return;
+        }
+
+        body.innerHTML = '<div class="traits-empty">Loading...</div>';
+
+        try {
+          // Try local JSON first
+          const res = await fetch(`/${tokenId}.json`);
+          if (res.ok) {
+            const data = await res.json();
+            const traits = data.attributes || [];
+            traitsCache[tokenId] = traits;
+            body.innerHTML = formatTraits(traits);
+          } else {
+            // Fallback to API
+            const apiRes = await fetch(`${API_BASE}/nft/${tokenId}`);
+            if (apiRes.ok) {
+              const nft = await apiRes.json();
+              const traits = nft.traits || nft.attributes || [];
+              traitsCache[tokenId] = traits;
+              body.innerHTML = formatTraits(traits);
+            } else {
+              body.innerHTML = '<div class="traits-empty">Traits unavailable</div>';
+            }
+          }
+        } catch (err) {
+          body.innerHTML = '<div class="traits-empty">Traits unavailable</div>';
+        }
+
+        positionTooltip(card.getBoundingClientRect());
+      }
+
+      function hideTooltip() {
+        if (tooltipEl) {
+          tooltipEl.classList.remove('visible');
+        }
+      }
+
+      // Attach hover handlers to containers
+      function attachTooltipHandlers(container) {
+        container.addEventListener('mouseover', (e) => {
+          const card = e.target.closest('.punk-card');
+          if (card && card.dataset.tokenId) {
+            showTooltip(card);
+          }
+        });
+
+        container.addEventListener('mouseout', (e) => {
+          const card = e.target.closest('.punk-card');
+          if (card) {
+            const related = e.relatedTarget;
+            if (related && card.contains(related)) return;
+            hideTooltip();
+          }
+        });
+      }
+
+      // Hide on scroll
+      window.addEventListener('scroll', hideTooltip, { passive: true });
+    </script>
+
+    <!-- Service Worker Registration -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then(reg => console.log('SW registered:', reg.scope))
+            .catch(err => console.log('SW registration failed:', err));
+        });
+      }
+    </script>
+
+    <!-- OnchainKit Wallet Integration -->
+    <script type="module">
+      (async function() {
+        const rootEl = document.getElementById('wallet-container');
+        if (!rootEl) return;
+
+        try {
+          const ReactMod = await import('https://esm.sh/react@18.2.0');
+          const React = ReactMod.default || ReactMod;
+          const { createRoot } = await import('https://esm.sh/react-dom@18.2.0/client');
+          const { OnchainKitProvider } = await import('https://esm.sh/@coinbase/onchainkit@latest');
+          const walletKit = await import('https://esm.sh/@coinbase/onchainkit@latest/wallet');
+          const { base } = await import('https://esm.sh/wagmi@2.5.16/chains');
+
+          const { Wallet, ConnectWallet, WalletDropdown, WalletDropdownDisconnect } = walletKit;
+
+          function WalletUI() {
+            return React.createElement(
+              Wallet,
+              null,
+              React.createElement(ConnectWallet, { className: 'connect-wallet-btn' }),
+              React.createElement(
+                WalletDropdown,
+                null,
+                React.createElement(WalletDropdownDisconnect, null)
+              )
+            );
+          }
+
+          const root = createRoot(rootEl);
+          root.render(
+            React.createElement(
+              OnchainKitProvider,
+              {
+                apiKey: window.ONCHAINKIT_API_KEY || 'demo',
+                chain: base,
+                config: {
+                  appearance: { mode: 'dark' },
+                  wallet: { display: 'drawer', preference: 'all' },
+                },
+              },
+              React.createElement(WalletUI, null)
+            )
+          );
+
+          console.log('OnchainKit wallet loaded');
+        } catch (err) {
+          console.warn('OnchainKit failed to load:', err);
+        }
+      })();
+    </script>
+
   </body>
 </html>

@@ -584,9 +584,16 @@
         line-height: 2;
       }
 
-      .lookup-opensea {
-        display: inline-block;
+      .lookup-actions {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
         margin-top: 1rem;
+      }
+
+      .lookup-opensea,
+      .lookup-download {
+        display: inline-block;
         font-size: 0.65rem;
         letter-spacing: 0.1em;
         text-transform: uppercase;
@@ -596,7 +603,8 @@
         transition: all 0.3s ease;
       }
 
-      .lookup-opensea:hover {
+      .lookup-opensea:hover,
+      .lookup-download:hover {
         color: var(--pure);
         border-color: var(--pure);
       }
@@ -1358,7 +1366,7 @@
 
         <div class="lookup-box">
           <div class="lookup-input-wrap">
-            <input type="number" id="lookup-input" class="lookup-input" placeholder="Enter ID (0-9999)" min="0" max="9999" />
+            <input type="text" id="lookup-input" class="lookup-input" placeholder="Enter ID or #ID (0-9999)" inputmode="numeric" autocomplete="off" />
             <button class="lookup-btn" onclick="lookupPunk()">Find</button>
           </div>
           <div id="lookup-result" class="lookup-result">
@@ -1366,7 +1374,10 @@
             <div class="lookup-punk-info">
               <div id="lookup-id" class="lookup-punk-id"></div>
               <div id="lookup-traits" class="lookup-punk-traits"></div>
-              <a id="lookup-opensea" class="lookup-opensea" href="#" target="_blank">View on OpenSea →</a>
+              <div class="lookup-actions">
+                <a id="lookup-opensea" class="lookup-opensea" href="#" target="_blank" rel="noopener noreferrer">View on OpenSea →</a>
+                <a id="lookup-download" class="lookup-download" href="#">Download PNG ↓</a>
+              </div>
             </div>
           </div>
         </div>
@@ -1560,6 +1571,28 @@
         // Enter key for lookup
         document.getElementById('lookup-input').addEventListener('keypress', (e) => {
           if (e.key === 'Enter') lookupPunk();
+        });
+
+        // 1024x1024 PNG export for looked-up punk
+        document.getElementById('lookup-download').addEventListener('click', async (e) => {
+          e.preventDefault();
+          const linkEl = e.currentTarget;
+          try {
+            await downloadLookupPunkPng(linkEl);
+          } catch (err) {
+            console.error('1024 download failed:', err);
+            const fallbackSrc = linkEl.dataset.punkSrc;
+            if (!fallbackSrc) {
+              alert('Search for a punk first.');
+              return;
+            }
+            const fallbackLink = document.createElement('a');
+            fallbackLink.href = fallbackSrc;
+            fallbackLink.download = `nopunk-${linkEl.dataset.punkId || 'image'}.png`;
+            document.body.appendChild(fallbackLink);
+            fallbackLink.click();
+            fallbackLink.remove();
+          }
         });
       });
 
@@ -1858,9 +1891,11 @@
 
       async function lookupPunk() {
         const input = document.getElementById('lookup-input');
-        const id = parseInt(input.value);
+        const rawInput = input.value.trim();
+        const normalizedInput = rawInput.startsWith('#') ? rawInput.slice(1) : rawInput;
+        const id = parseInt(normalizedInput, 10);
 
-        if (isNaN(id) || id < 0 || id > 9999) {
+        if (!/^\d+$/.test(normalizedInput) || isNaN(id) || id < 0 || id > 9999) {
           alert('Enter a valid punk ID (0-9999)');
           return;
         }
@@ -1870,10 +1905,15 @@
         const idText = document.getElementById('lookup-id');
         const traitsDiv = document.getElementById('lookup-traits');
         const openseaLink = document.getElementById('lookup-opensea');
+        const downloadLink = document.getElementById('lookup-download');
+        const pngPath = `/${id}.png`;
 
-        img.src = `/${id}.png`;
+        img.src = pngPath;
+        img.alt = `No-Punk #${id}`;
         idText.textContent = `No-Punk #${id}`;
         openseaLink.href = `${OPENSEA_BASE}/${CONTRACT}/${id}`;
+        downloadLink.dataset.punkId = String(id);
+        downloadLink.dataset.punkSrc = pngPath;
         resultDiv.classList.add('active');
 
         try {
@@ -1890,6 +1930,51 @@
         } catch {
           traitsDiv.innerHTML = 'Traits unavailable';
         }
+      }
+
+      async function loadLookupImage(src) {
+        return new Promise((resolve, reject) => {
+          const image = new Image();
+          image.onload = () => resolve(image);
+          image.onerror = () => reject(new Error('Could not load punk image'));
+          image.src = src;
+        });
+      }
+
+      async function downloadLookupPunkPng(linkEl) {
+        const punkId = parseInt(linkEl.dataset.punkId || '', 10);
+        const punkSrc = linkEl.dataset.punkSrc;
+
+        if (!Number.isInteger(punkId) || !punkSrc) {
+          alert('Search for a punk first.');
+          return;
+        }
+
+        const image = await loadLookupImage(punkSrc);
+        const canvas = document.createElement('canvas');
+        canvas.width = 1024;
+        canvas.height = 1024;
+
+        const canvasCtx = canvas.getContext('2d');
+        canvasCtx.imageSmoothingEnabled = false;
+        canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+        canvasCtx.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+        const blob = await new Promise((resolve, reject) => {
+          canvas.toBlob((pngBlob) => {
+            if (pngBlob) resolve(pngBlob);
+            else reject(new Error('Could not export PNG'));
+          }, 'image/png');
+        });
+
+        const blobUrl = URL.createObjectURL(blob);
+        const tempLink = document.createElement('a');
+        tempLink.href = blobUrl;
+        tempLink.download = `nopunk-${punkId}-1024.png`;
+        document.body.appendChild(tempLink);
+        tempLink.click();
+        tempLink.remove();
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
       }
 
       // ========================================

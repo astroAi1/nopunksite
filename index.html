@@ -3712,13 +3712,14 @@
         normalizedIds.sort(compareTokenIds);
         return normalizedIds.map((tokenId) => {
           const safeTokenId = sanitizeTokenId(tokenId, 52);
+          const localFullImage = `/${safeTokenId}.png`;
           const onchainImage = `${ONCHAIN_TOKEN_META_BASE}/${safeTokenId}/image`;
           const indexedImage = getPunkImageUrl(safeTokenId);
           return {
             tokenId,
-            src: onchainImage,
-            srcExport: onchainImage,
-            fallbackSrc: indexedImage,
+            src: localFullImage,
+            srcExport: localFullImage,
+            fallbackSrc: onchainImage || indexedImage,
           };
         });
       }
@@ -3797,9 +3798,7 @@
           `${walletItems.length} held • ${filteredItems.length} match (${filterText}) • ` +
           `${composition.columns} x ${composition.rows} • ${selectedCanvas} x ${selectedCanvas} PNG • ${modeText} • ${sampleText}`;
 
-        const previewLimit = 256;
-        const visibleItems = composition.selectedItems.slice(0, previewLimit);
-        const html = visibleItems
+        const html = composition.selectedItems
           .map((item) => `
             <div class="holder-grid-item">
               <img src="${item.src}" alt="No-Punk #${item.tokenId}" loading="lazy" decoding="async" onerror="${getPunkImageOnErrorAttr(item.tokenId)}" />
@@ -3808,12 +3807,7 @@
           `)
           .join('');
 
-        if (composition.selectedItems.length > previewLimit) {
-          const remaining = composition.selectedItems.length - previewLimit;
-          previewEl.innerHTML = `${html}<div class="activity-empty">+${remaining} more in export</div>`;
-        } else {
-          previewEl.innerHTML = html;
-        }
+        previewEl.innerHTML = html;
 
         updateHolderTraitClearState();
       }

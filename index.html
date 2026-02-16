@@ -1205,6 +1205,9 @@
         border: 1px solid var(--ghost);
         background: linear-gradient(180deg, rgba(10,10,10,0.75), rgba(4,4,4,0.95));
         padding: 0.65rem;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-gutter: stable;
       }
 
       .collection-spacer {
@@ -1220,6 +1223,7 @@
         display: grid;
         grid-template-columns: repeat(var(--collection-columns, 10), minmax(0, 1fr));
         gap: 0.5rem;
+        contain: layout paint;
         will-change: transform;
       }
 
@@ -1234,7 +1238,7 @@
 
       .collection-punk:hover {
         border-color: var(--accent);
-        transform: scale(1.05);
+        transform: translate3d(0, 0, 0);
         z-index: 10;
         position: relative;
       }
@@ -1244,6 +1248,7 @@
         height: 100%;
         image-rendering: pixelated;
         object-fit: contain;
+        backface-visibility: hidden;
       }
 
       .collection-controls {
@@ -1835,13 +1840,13 @@
         <div class="hero-punk-glow"></div>
         <div class="hero-punks-showcase">
           <div class="hero-punk-wrap">
-            <img id="hero-punk-left" class="hero-punk" src="/api/onchain/token/3100/image" alt="No-Punk" onclick="randomHeroPunks()" decoding="async" onerror="this.onerror=null;this.src='/api/onchain/token/52/image'" />
+            <img id="hero-punk-left" class="hero-punk" src="/api/onchain/token/3100/image" alt="No-Punk" onclick="randomHeroPunks()" decoding="async" onerror="this.onerror=null;this.style.opacity='0'" />
           </div>
           <div class="hero-punk-wrap center">
-            <img id="hero-punk-center" class="hero-punk" src="/api/onchain/token/52/image" alt="No-Punk" onclick="randomHeroPunks()" decoding="async" onerror="this.onerror=null;this.src='/api/onchain/token/52/image'" />
+            <img id="hero-punk-center" class="hero-punk" src="/api/onchain/token/52/image" alt="No-Punk" onclick="randomHeroPunks()" decoding="async" onerror="this.onerror=null;this.style.opacity='0'" />
           </div>
           <div class="hero-punk-wrap">
-            <img id="hero-punk-right" class="hero-punk" src="/api/onchain/token/7804/image" alt="No-Punk" onclick="randomHeroPunks()" decoding="async" onerror="this.onerror=null;this.src='/api/onchain/token/52/image'" />
+            <img id="hero-punk-right" class="hero-punk" src="/api/onchain/token/7804/image" alt="No-Punk" onclick="randomHeroPunks()" decoding="async" onerror="this.onerror=null;this.style.opacity='0'" />
           </div>
         </div>
         <h1 class="hero-title">NO-PUNKS</h1>
@@ -2138,13 +2143,13 @@
         </div>
         <div class="team-grid">
           <div class="team-member">
-            <img class="team-member-img" src="/api/onchain/token/784/image" alt="Astro-AI" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='/api/onchain/token/52/image'" />
+            <img class="team-member-img" src="/api/onchain/token/784/image" alt="Astro-AI" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.opacity='0'" />
             <div class="team-member-name">Astro-AI</div>
             <div class="team-member-role">Co-Founder</div>
             <p class="team-member-bio">Started NoPunks on Base as a minimalist, no-meta derivative. Keeps pushing the art, glitch experiments, and on-chain tooling forward.</p>
           </div>
           <div class="team-member">
-            <img class="team-member-img" src="/api/onchain/token/5093/image" alt="Holu" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='/api/onchain/token/52/image'" />
+            <img class="team-member-img" src="/api/onchain/token/5093/image" alt="Holu" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.opacity='0'" />
             <div class="team-member-name">Holu</div>
             <div class="team-member-role">Co-Founder</div>
             <p class="team-member-bio">Original collaborator on NoPunks, helping define the palette, structure and early direction.</p>
@@ -2200,6 +2205,7 @@
         allTokenIds: [],
         filteredTokenIds: [],
         rafId: null,
+        lastRenderKey: '',
       };
 
       const holderLookupState = {
@@ -2250,7 +2256,7 @@
       }
 
       function getPunkImageOnErrorAttr(tokenId) {
-        return `this.onerror=null;this.src='${ONCHAIN_TOKEN_META_BASE}/52/image'`;
+        return "this.onerror=null;this.style.opacity='0'";
       }
 
       // Prefer precomputed onchain image URL from explorer blobs, then runtime fallback.
@@ -2756,7 +2762,7 @@
 
             container.innerHTML += `
               <div class="nometa-item">
-                <img src="${imgUrl}" alt="${label}" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='/api/onchain/token/52/image'" />
+                <img src="${imgUrl}" alt="${label}" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.opacity='0'" />
                 <div class="nometa-item-name">${label}</div>
               </div>
             `;
@@ -2774,15 +2780,15 @@
       function loadNoMetaFallback(container) {
         container.innerHTML = `
           <div class="nometa-item">
-            <img src="${getPunkImageUrl(52)}" alt="No-Pnuks" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='/api/onchain/token/52/image'" />
+            <img src="${getPunkImageUrl(52)}" alt="No-Pnuks" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.opacity='0'" />
             <div class="nometa-item-name">No-Pnuks</div>
           </div>
           <div class="nometa-item">
-            <img src="${getPunkImageUrl(338)}" alt="No-Pixelpepen" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='/api/onchain/token/52/image'" />
+            <img src="${getPunkImageUrl(338)}" alt="No-Pixelpepen" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.opacity='0'" />
             <div class="nometa-item-name">No-Pixelpepen</div>
           </div>
           <div class="nometa-item">
-            <img src="${getPunkImageUrl(615)}" alt="No-TinyDinos" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='/api/onchain/token/52/image'" />
+            <img src="${getPunkImageUrl(615)}" alt="No-TinyDinos" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.opacity='0'" />
             <div class="nometa-item-name">No-TinyDinos</div>
           </div>
         `;
@@ -3081,6 +3087,7 @@
         }
 
         collectionState.filteredTokenIds = [...collectionState.allTokenIds];
+        collectionState.lastRenderKey = '';
       }
 
       function getCollectionColumns(width) {
@@ -3113,6 +3120,7 @@
         const total = tokens.length;
 
         if (!total) {
+          collectionState.lastRenderKey = 'empty';
           spacer.style.height = '120px';
           grid.style.setProperty('--collection-columns', '1');
           grid.style.transform = 'translateY(0px)';
@@ -3138,6 +3146,12 @@
         const startIndex = startRow * columns;
         const endIndex = Math.min(total, endRow * columns);
         const visibleIds = tokens.slice(startIndex, endIndex);
+        const renderKey = `${columns}:${startIndex}:${endIndex}:${total}`;
+
+        if (collectionState.lastRenderKey === renderKey) {
+          return;
+        }
+        collectionState.lastRenderKey = renderKey;
 
         grid.style.transform = `translateY(${startRow * rowHeight}px)`;
         grid.innerHTML = visibleIds
@@ -3243,6 +3257,7 @@
         }
 
         collectionState.filteredTokenIds = ids;
+        collectionState.lastRenderKey = '';
         updateCollectionCount();
 
         if (resetScroll) {
@@ -3284,7 +3299,7 @@
           window.clearTimeout(searchDebounce);
           searchDebounce = window.setTimeout(() => {
             applyCollectionFilters();
-          }, 70);
+          }, 130);
         });
 
         clearBtn.addEventListener('click', () => {

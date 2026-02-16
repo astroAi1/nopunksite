@@ -1835,13 +1835,13 @@
         <div class="hero-punk-glow"></div>
         <div class="hero-punks-showcase">
           <div class="hero-punk-wrap">
-            <img id="hero-punk-left" class="hero-punk" src="/public/data/explorer/images/3100.svg" alt="No-Punk" onclick="randomHeroPunks()" onerror="this.onerror=function(){this.onerror=null;this.src='/api/onchain/token/52/image';};this.src='/api/onchain/token/3100/image'" />
+            <img id="hero-punk-left" class="hero-punk" src="/api/onchain/token/3100/image" alt="No-Punk" onclick="randomHeroPunks()" onerror="this.onerror=null;this.src='/api/onchain/token/52/image'" />
           </div>
           <div class="hero-punk-wrap center">
-            <img id="hero-punk-center" class="hero-punk" src="/public/data/explorer/images/52.svg" alt="No-Punk" onclick="randomHeroPunks()" onerror="this.onerror=null;this.src='/api/onchain/token/52/image'" />
+            <img id="hero-punk-center" class="hero-punk" src="/api/onchain/token/52/image" alt="No-Punk" onclick="randomHeroPunks()" onerror="this.onerror=null;this.src='/api/onchain/token/52/image'" />
           </div>
           <div class="hero-punk-wrap">
-            <img id="hero-punk-right" class="hero-punk" src="/public/data/explorer/images/7804.svg" alt="No-Punk" onclick="randomHeroPunks()" onerror="this.onerror=function(){this.onerror=null;this.src='/api/onchain/token/52/image';};this.src='/api/onchain/token/7804/image'" />
+            <img id="hero-punk-right" class="hero-punk" src="/api/onchain/token/7804/image" alt="No-Punk" onclick="randomHeroPunks()" onerror="this.onerror=null;this.src='/api/onchain/token/52/image'" />
           </div>
         </div>
         <h1 class="hero-title">NO-PUNKS</h1>
@@ -2138,13 +2138,13 @@
         </div>
         <div class="team-grid">
           <div class="team-member">
-            <img class="team-member-img" src="/public/data/explorer/images/784.svg" alt="Astro-AI" onerror="this.onerror=function(){this.onerror=null;this.src='/api/onchain/token/52/image';};this.src='/api/onchain/token/784/image'" />
+            <img class="team-member-img" src="/api/onchain/token/784/image" alt="Astro-AI" onerror="this.onerror=null;this.src='/api/onchain/token/52/image'" />
             <div class="team-member-name">Astro-AI</div>
             <div class="team-member-role">Co-Founder</div>
             <p class="team-member-bio">Started NoPunks on Base as a minimalist, no-meta derivative. Keeps pushing the art, glitch experiments, and on-chain tooling forward.</p>
           </div>
           <div class="team-member">
-            <img class="team-member-img" src="/public/data/explorer/images/5093.svg" alt="Holu" onerror="this.onerror=function(){this.onerror=null;this.src='/api/onchain/token/52/image';};this.src='/api/onchain/token/5093/image'" />
+            <img class="team-member-img" src="/api/onchain/token/5093/image" alt="Holu" onerror="this.onerror=null;this.src='/api/onchain/token/52/image'" />
             <div class="team-member-name">Holu</div>
             <div class="team-member-role">Co-Founder</div>
             <p class="team-member-bio">Original collaborator on NoPunks, helping define the palette, structure and early direction.</p>
@@ -2189,9 +2189,8 @@
       const CONTRACT = '0xa62f65d503068684e7228df98090F94322b8ed54';
       const OPENSEA_BASE = 'https://opensea.io/assets/base';
       const OPENSEA_ITEM_BASE = 'https://opensea.io/item/base';
-      const EXPLORER_TRAIT_INDEX_PATH = '/public/data/explorer/trait_to_token_ids.json';
-      const EXPLORER_TOKEN_BLOB_PATH = '/public/data/explorer/token_trait_blob.json';
-      const EXPLORER_IMAGE_BASE = '/public/data/explorer/images';
+      const EXPLORER_TRAIT_INDEX_PATH = '/explorer-data/trait_to_token_ids.json';
+      const EXPLORER_TOKEN_BLOB_PATH = '/explorer-data/token_trait_blob.json';
       const TOTAL_SUPPLY = 10000;
       const ONCHAIN_TOKEN_META_BASE = `${API_BASE}/onchain/token`;
 
@@ -2256,8 +2255,9 @@
           return `this.onerror=null;this.src='${ONCHAIN_TOKEN_META_BASE}/52/image'`;
         }
         return (
-          `this.onerror=function(){this.onerror=null;this.src='${ONCHAIN_TOKEN_META_BASE}/52/image';};` +
-          `this.src='${ONCHAIN_TOKEN_META_BASE}/${safeId}/image'`
+          `const current=this.currentSrc||this.src||'';` +
+          `if(current.includes('/onchain/token/${safeId}/image')){this.onerror=null;this.src='${ONCHAIN_TOKEN_META_BASE}/52/image';}` +
+          `else{this.onerror=function(){this.onerror=null;this.src='${ONCHAIN_TOKEN_META_BASE}/52/image';};this.src='${ONCHAIN_TOKEN_META_BASE}/${safeId}/image';}`
         );
       }
 
@@ -2275,7 +2275,7 @@
         }
 
         const safeId = sanitizeTokenId(tokenId, 52);
-        return `${EXPLORER_IMAGE_BASE}/${safeId}.svg`;
+        return `${ONCHAIN_TOKEN_META_BASE}/${safeId}/image`;
       }
 
       function extractLookupTraitsHtml(data) {
@@ -2530,6 +2530,20 @@
         } catch (err) {
           console.error('Holder wallet grid init error:', err);
         }
+
+        const collectionWakeTargets = [
+          document.getElementById('collection-filter-type'),
+          document.getElementById('collection-filter-value'),
+          document.getElementById('collection-filter-search'),
+          document.getElementById('collection-filter-clear'),
+        ].filter(Boolean);
+        const wakeCollectionExplorer = () => {
+          initCollectionExplorerOnce().catch(() => {});
+        };
+        collectionWakeTargets.forEach((el) => {
+          el.addEventListener('focus', wakeCollectionExplorer, { once: true });
+          el.addEventListener('pointerdown', wakeCollectionExplorer, { once: true });
+        });
 
         try { loadStats(); } catch (err) { console.error('loadStats init error:', err); }
         try { loadRecentSales(); } catch (err) { console.error('loadRecentSales init error:', err); }
@@ -2826,6 +2840,178 @@
         }
       }
 
+      async function fetchFirstJson(urls, options = {}) {
+        let lastError = null;
+        for (const url of urls) {
+          try {
+            const res = await fetch(url, options);
+            if (!res.ok) continue;
+            return await res.json();
+          } catch (err) {
+            lastError = err;
+          }
+        }
+        if (lastError) throw lastError;
+        throw new Error('No JSON source available');
+      }
+
+      function getExplorerPathCandidates(primaryPath, suffix = '') {
+        const candidates = [];
+        const push = (value) => {
+          if (!value) return;
+          const withSuffix = `${value}${suffix}`;
+          if (!candidates.includes(withSuffix)) {
+            candidates.push(withSuffix);
+          }
+        };
+
+        push(primaryPath);
+        if (primaryPath.startsWith('/public/')) {
+          push(primaryPath.replace('/public/', '/'));
+        }
+        if (primaryPath.startsWith('/explorer-data/')) {
+          push(primaryPath.replace('/explorer-data/', '/public/data/explorer/'));
+        }
+        return candidates;
+      }
+
+      function buildLegacyTypeValues(pairMap, fallbackTypeValues = {}) {
+        const valueSets = new Map();
+        const fallbackKeys = Object.keys(fallbackTypeValues || {});
+
+        fallbackKeys.forEach((traitType) => {
+          const values = Array.isArray(fallbackTypeValues[traitType])
+            ? fallbackTypeValues[traitType]
+            : [];
+          if (!valueSets.has(traitType)) valueSets.set(traitType, new Set());
+          values.forEach((value) => valueSets.get(traitType).add(String(value)));
+        });
+
+        Object.keys(pairMap || {}).forEach((pair) => {
+          const parts = String(pair).split('|');
+          if (parts.length < 2) return;
+          const traitType = String(parts[0] || '').trim();
+          const traitValue = String(parts.slice(1).join('|') || '').trim();
+          if (!traitType || !traitValue) return;
+          if (!valueSets.has(traitType)) valueSets.set(traitType, new Set());
+          valueSets.get(traitType).add(traitValue);
+        });
+
+        const typeValues = {};
+        Array.from(valueSets.keys())
+          .sort((a, b) => a.localeCompare(b))
+          .forEach((traitType) => {
+            typeValues[traitType] = Array.from(valueSets.get(traitType)).sort((a, b) =>
+              a.localeCompare(b)
+            );
+          });
+        return typeValues;
+      }
+
+      function buildTokenTraitsFromPairMap(pairMap, totalSupply) {
+        const byTokenId = new Map();
+        Object.entries(pairMap || {}).forEach(([pair, tokenIds]) => {
+          const parts = String(pair).split('|');
+          if (parts.length < 2) return;
+          const traitType = String(parts[0] || '').trim();
+          const traitValue = String(parts.slice(1).join('|') || '').trim();
+          if (!traitType || !traitValue) return;
+
+          (Array.isArray(tokenIds) ? tokenIds : []).forEach((rawId) => {
+            const tokenId = sanitizeTokenId(rawId, -1);
+            if (tokenId < 0 || tokenId >= totalSupply) return;
+            const key = String(tokenId);
+            if (!byTokenId.has(key)) byTokenId.set(key, []);
+            byTokenId.get(key).push({ trait_type: traitType, value: traitValue });
+          });
+        });
+        return byTokenId;
+      }
+
+      function applyCollectionStateFromBlob(traitData, blobData) {
+        const traitToTokenIds = traitData?.traitToTokenIds || {};
+        const typeValues = traitData?.typeValues || {};
+        const traitTypes = Array.isArray(traitData?.traitTypes) ? traitData.traitTypes : [];
+
+        collectionState.traitIndex = {
+          traitToTokenIds,
+          typeValues,
+          traitTypes,
+        };
+
+        collectionState.tokenById.clear();
+        collectionState.allTokenIds = [];
+
+        (blobData?.tokens || []).forEach((token, index) => {
+          const tokenId = normalizeTokenId(token.id, index);
+          const traits = normalizeTraitPairs(token.t);
+          const searchSeed = String(token.q || '').toLowerCase();
+          const searchText = searchSeed;
+          const searchNormalized = normalizeSearchText(token.z || searchSeed);
+          const localIndex = Number.isFinite(Number(token.i)) ? Number(token.i) : index;
+          const imageUrl = normalizeImageSource(token.im || token.image || token.image_url || '');
+          collectionState.tokenById.set(String(tokenId), {
+            id: tokenId,
+            localIndex,
+            name: token.n || `No-Punk #${tokenId}`,
+            traits,
+            imageUrl,
+            searchText,
+            searchNormalized,
+          });
+          collectionState.allTokenIds.push(tokenId);
+        });
+      }
+
+      async function loadLegacyCollectionIndexes() {
+        const [legacyIndex, fallbackTypeValues] = await Promise.all([
+          fetchFirstJson(['/traits_index.json', '/public/traits_index.json'], { cache: 'force-cache' }),
+          fetchFirstJson(
+            ['/trait_values_by_type.json', '/public/trait_values_by_type.json'],
+            { cache: 'force-cache' }
+          ).catch(() => ({})),
+        ]);
+
+        const pairMap = legacyIndex?.pairMap || {};
+        const quickText = Array.isArray(legacyIndex?.quickText) ? legacyIndex.quickText : [];
+        const hasPairs = Object.keys(pairMap).length > 0;
+        const totalSupply = quickText.length || TOTAL_SUPPLY;
+        if (!hasPairs || totalSupply <= 0) {
+          throw new Error('Legacy trait index unavailable');
+        }
+
+        const typeValues = buildLegacyTypeValues(pairMap, fallbackTypeValues);
+        const traitTypes = Object.keys(typeValues);
+        const tokenTraitsById = buildTokenTraitsFromPairMap(pairMap, totalSupply);
+
+        collectionState.traitIndex = {
+          traitToTokenIds: pairMap,
+          typeValues,
+          traitTypes,
+        };
+
+        collectionState.tokenById.clear();
+        collectionState.allTokenIds = [];
+
+        for (let tokenId = 0; tokenId < totalSupply; tokenId += 1) {
+          const key = String(tokenId);
+          const traits = tokenTraitsById.get(key) || [];
+          const searchSeed = String(
+            quickText[tokenId] || `no-punk #${tokenId} ${tokenId}`
+          ).toLowerCase();
+          collectionState.tokenById.set(key, {
+            id: tokenId,
+            localIndex: tokenId,
+            name: `No-Punk #${tokenId}`,
+            traits,
+            imageUrl: '',
+            searchText: searchSeed,
+            searchNormalized: normalizeSearchText(searchSeed),
+          });
+          collectionState.allTokenIds.push(tokenId);
+        }
+      }
+
       async function loadCollectionIndexes() {
         const statusEl = document.getElementById('collection-status');
         statusEl.textContent = 'Loading explorer indexes...';
@@ -2833,53 +3019,31 @@
         try {
           const version = await getExplorerIndexVersion();
           const suffix = version ? `?v=${version}` : '';
-          const [traitRes, blobRes] = await Promise.all([
-            fetch(`${EXPLORER_TRAIT_INDEX_PATH}${suffix}`, { cache: 'force-cache' }),
-            fetch(`${EXPLORER_TOKEN_BLOB_PATH}${suffix}`, { cache: 'force-cache' }),
+
+          const [traitData, blobData] = await Promise.all([
+            fetchFirstJson(getExplorerPathCandidates(EXPLORER_TRAIT_INDEX_PATH, suffix), {
+              cache: 'force-cache',
+            }),
+            fetchFirstJson(getExplorerPathCandidates(EXPLORER_TOKEN_BLOB_PATH, suffix), {
+              cache: 'force-cache',
+            }),
           ]);
 
-          if (!traitRes.ok || !blobRes.ok) {
+          const hasTraitMap = Object.keys(traitData?.traitToTokenIds || {}).length > 0;
+          const hasTokenBlob = Array.isArray(blobData?.tokens) && blobData.tokens.length > 0;
+          if (!hasTraitMap || !hasTokenBlob) {
             throw new Error('Explorer indexes not found');
           }
 
-          const traitData = await traitRes.json();
-          const blobData = await blobRes.json();
           const onchainTraitCount = Number(traitData?.sources?.onchainTraitCount || 0);
 
-          if (onchainTraitCount <= 0) {
+          if (traitData?.sources && onchainTraitCount <= 0) {
             throw new Error(
               'Explorer index is not onchain-backed. Rebuild with npm run build:indexes:onchain.'
             );
           }
 
-          collectionState.traitIndex = {
-            traitToTokenIds: traitData.traitToTokenIds || {},
-            typeValues: traitData.typeValues || {},
-            traitTypes: Array.isArray(traitData.traitTypes) ? traitData.traitTypes : [],
-          };
-
-          collectionState.tokenById.clear();
-          collectionState.allTokenIds = [];
-
-          (blobData.tokens || []).forEach((token, index) => {
-            const tokenId = normalizeTokenId(token.id, index);
-            const traits = normalizeTraitPairs(token.t);
-            const searchSeed = String(token.q || '').toLowerCase();
-            const searchText = searchSeed;
-            const searchNormalized = normalizeSearchText(token.z || searchSeed);
-            const localIndex = Number.isFinite(Number(token.i)) ? Number(token.i) : index;
-            const imageUrl = normalizeImageSource(token.im || token.image || token.image_url || '');
-            collectionState.tokenById.set(String(tokenId), {
-              id: tokenId,
-              localIndex,
-              name: token.n || `No-Punk #${tokenId}`,
-              traits,
-              imageUrl,
-              searchText,
-              searchNormalized,
-            });
-            collectionState.allTokenIds.push(tokenId);
-          });
+          applyCollectionStateFromBlob(traitData, blobData);
 
           if (!collectionState.allTokenIds.length) {
             throw new Error('Explorer token blob is empty');
@@ -2888,26 +3052,33 @@
           statusEl.textContent = `Indexed ${collectionState.allTokenIds.length.toLocaleString()} tokens`;
         } catch (err) {
           console.error('Collection index load error:', err);
-          const fallbackIds = await loadTokenMapFallback();
-          collectionState.traitIndex = { traitToTokenIds: {}, typeValues: {}, traitTypes: [] };
-          collectionState.tokenById.clear();
-          collectionState.allTokenIds = [];
+          try {
+            await loadLegacyCollectionIndexes();
+            statusEl.textContent =
+              `Indexed ${collectionState.allTokenIds.length.toLocaleString()} tokens (legacy trait snapshot fallback)`;
+          } catch (legacyErr) {
+            console.error('Legacy collection index fallback failed:', legacyErr);
+            const fallbackIds = await loadTokenMapFallback();
+            collectionState.traitIndex = { traitToTokenIds: {}, typeValues: {}, traitTypes: [] };
+            collectionState.tokenById.clear();
+            collectionState.allTokenIds = [];
 
-          fallbackIds.forEach((tokenId, index) => {
-            collectionState.tokenById.set(String(tokenId), {
-              id: tokenId,
-              localIndex: index,
-              name: `No-Punk #${tokenId}`,
-              traits: [],
-              imageUrl: '',
-              searchText: `${tokenId} #${tokenId}`.toLowerCase(),
-              searchNormalized: normalizeSearchText(`${tokenId} #${tokenId}`),
+            fallbackIds.forEach((tokenId, index) => {
+              collectionState.tokenById.set(String(tokenId), {
+                id: tokenId,
+                localIndex: index,
+                name: `No-Punk #${tokenId}`,
+                traits: [],
+                imageUrl: '',
+                searchText: `${tokenId} #${tokenId}`.toLowerCase(),
+                searchNormalized: normalizeSearchText(`${tokenId} #${tokenId}`),
+              });
+              collectionState.allTokenIds.push(tokenId);
             });
-            collectionState.allTokenIds.push(tokenId);
-          });
 
-          statusEl.textContent =
-            'Explorer index missing/onchain traits unavailable. Showing unfiltered onchain token grid.';
+            statusEl.textContent =
+              'Explorer index unavailable. Showing unfiltered token grid.';
+          }
         }
 
         collectionState.filteredTokenIds = [...collectionState.allTokenIds];
@@ -3443,12 +3614,11 @@
         normalizedIds.sort(compareTokenIds);
         return normalizedIds.map((tokenId) => {
           const safeTokenId = sanitizeTokenId(tokenId, 52);
-          const localImage = `${EXPLORER_IMAGE_BASE}/${safeTokenId}.svg`;
           const onchainImage = `${ONCHAIN_TOKEN_META_BASE}/${safeTokenId}/image`;
           return {
             tokenId,
-            src: localImage,
-            srcExport: localImage,
+            src: onchainImage,
+            srcExport: onchainImage,
             fallbackSrc: onchainImage,
           };
         });

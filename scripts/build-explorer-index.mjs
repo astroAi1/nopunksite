@@ -13,6 +13,7 @@ function parseArgs() {
     if (arg === '--root') parsed.rootDir = next;
     if (arg === '--total') parsed.total = Number.parseInt(next, 10);
     if (arg === '--out-dir') parsed.outDir = next;
+    if (arg === '--publish-dir') parsed.publishDir = next;
     if (arg === '--token-map') parsed.tokenMapPath = next;
     if (arg === '--use-token-map') parsed.useTokenMap = true;
     if (arg === '--onchain-traits') parsed.onchainTraitsPath = next;
@@ -23,6 +24,7 @@ function parseArgs() {
     rootDir: parsed.rootDir || '.',
     total: Number.isFinite(parsed.total) ? parsed.total : 10000,
     outDir: parsed.outDir || './public/data/explorer',
+    publishDir: parsed.publishDir || './explorer-data',
     tokenMapPath: parsed.tokenMapPath || './public/token_map.json',
     useTokenMap: Boolean(parsed.useTokenMap),
     onchainTraitsPath: parsed.onchainTraitsPath || './public/data/explorer/onchain_traits.json',
@@ -204,6 +206,7 @@ async function main() {
 
   const rootDir = path.resolve(cwd, cfg.rootDir);
   const outDir = path.resolve(cwd, cfg.outDir);
+  const publishDir = path.resolve(cwd, cfg.publishDir);
   const tokenMapPath = path.resolve(cwd, cfg.tokenMapPath);
   const onchainTraitsPath = path.resolve(cwd, cfg.onchainTraitsPath);
 
@@ -347,19 +350,34 @@ async function main() {
   };
 
   await fs.mkdir(outDir, { recursive: true });
+  await fs.mkdir(publishDir, { recursive: true });
   const traitIndexPath = path.join(outDir, 'trait_to_token_ids.json');
   const tokenBlobPath = path.join(outDir, 'token_trait_blob.json');
+  const publishTraitIndexPath = path.join(publishDir, 'trait_to_token_ids.json');
+  const publishTokenBlobPath = path.join(publishDir, 'token_trait_blob.json');
 
   await fs.writeFile(traitIndexPath, JSON.stringify(traitIndexPayload));
   await fs.writeFile(tokenBlobPath, JSON.stringify(tokenBlobPayload));
+  await fs.writeFile(publishTraitIndexPath, JSON.stringify(traitIndexPayload));
+  await fs.writeFile(publishTokenBlobPath, JSON.stringify(tokenBlobPayload));
 
   const [traitStat, blobStat] = await Promise.all([
     fs.stat(traitIndexPath),
     fs.stat(tokenBlobPath),
   ]);
+  const [publishTraitStat, publishBlobStat] = await Promise.all([
+    fs.stat(publishTraitIndexPath),
+    fs.stat(publishTokenBlobPath),
+  ]);
 
   console.log(`Trait index written: ${traitIndexPath} (${(traitStat.size / 1024).toFixed(1)} KB)`);
   console.log(`Token blob written: ${tokenBlobPath} (${(blobStat.size / 1024).toFixed(1)} KB)`);
+  console.log(
+    `Trait index published: ${publishTraitIndexPath} (${(publishTraitStat.size / 1024).toFixed(1)} KB)`
+  );
+  console.log(
+    `Token blob published: ${publishTokenBlobPath} (${(publishBlobStat.size / 1024).toFixed(1)} KB)`
+  );
 
   if (missingMetadata.length) {
     console.warn(`Missing metadata files: ${missingMetadata.length}`);

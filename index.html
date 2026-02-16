@@ -1531,6 +1531,43 @@
         color: var(--mist);
       }
 
+      .holder-preview-toolbar {
+        margin-top: 0.55rem;
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        flex-wrap: wrap;
+      }
+
+      .holder-preview-toolbar[hidden] {
+        display: none !important;
+      }
+
+      .holder-preview-toolbar .holder-grid-meta {
+        flex: 1 1 260px;
+      }
+
+      .holder-preview-btn {
+        border: 1px solid var(--ghost);
+        background: transparent;
+        color: var(--pure);
+        font-family: var(--font-mono);
+        font-size: 0.52rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        padding: 0.42rem 0.62rem;
+        cursor: pointer;
+      }
+
+      .holder-preview-btn:hover:not(:disabled) {
+        border-color: var(--pure);
+      }
+
+      .holder-preview-btn:disabled {
+        cursor: not-allowed;
+        opacity: 0.42;
+      }
+
       .holder-grid-preview-wrap {
         margin-top: 0.7rem;
         border: 1px solid rgba(255,255,255,0.08);
@@ -1590,6 +1627,10 @@
 
       .holder-grid-preview.compact .holder-grid-id {
         display: none;
+      }
+
+      .holder-grid-preview.compact .holder-grid-item {
+        border-color: rgba(255,255,255,0.09);
       }
 
       .holder-grid-preview.single {
@@ -1697,6 +1738,10 @@
 
         .holder-wallet-actions {
           flex-direction: column;
+          align-items: stretch;
+        }
+
+        .holder-preview-toolbar {
           align-items: stretch;
         }
 
@@ -2113,6 +2158,11 @@
               </button>
               <div id="holder-wallet-grid-meta" class="holder-grid-meta">No wallet loaded</div>
             </div>
+            <div id="holder-preview-toolbar" class="holder-preview-toolbar" hidden>
+              <button id="holder-preview-prev" class="holder-preview-btn" type="button" disabled>Prev</button>
+              <button id="holder-preview-next" class="holder-preview-btn" type="button" disabled>Next</button>
+              <div id="holder-preview-meta" class="holder-grid-meta"></div>
+            </div>
             <div class="holder-grid-preview-wrap">
               <div id="holder-wallet-grid-preview" class="holder-grid-preview">
                 <div class="activity-empty">Search a wallet to preview holdings.</div>
@@ -2252,6 +2302,10 @@
         traitType: '',
         traitValue: '',
         compositionItems: [],
+        previewPage: 1,
+        previewPageCount: 1,
+        previewPageSize: 0,
+        previewContextKey: '',
       };
 
       // Noir de Noir - correct IDs
@@ -2547,6 +2601,7 @@
         const holderGridColumnsSelect = document.getElementById('holder-grid-columns');
         if (holderGridColumnsSelect) {
           holderGridColumnsSelect.addEventListener('change', () => {
+            holderLookupState.previewPage = 1;
             renderHolderWalletGrid(holderLookupState.items, holderLookupState.address);
           });
         }
@@ -2554,6 +2609,7 @@
         const holderGridModeSelect = document.getElementById('holder-grid-mode');
         if (holderGridModeSelect) {
           holderGridModeSelect.addEventListener('change', () => {
+            holderLookupState.previewPage = 1;
             renderHolderWalletGrid(holderLookupState.items, holderLookupState.address);
           });
         }
@@ -2561,6 +2617,7 @@
         const holderGridCanvasSelect = document.getElementById('holder-grid-canvas');
         if (holderGridCanvasSelect) {
           holderGridCanvasSelect.addEventListener('change', () => {
+            holderLookupState.previewPage = 1;
             renderHolderWalletGrid(holderLookupState.items, holderLookupState.address);
           });
         }
@@ -2569,6 +2626,7 @@
         if (holderTraitTypeSelect) {
           holderTraitTypeSelect.addEventListener('change', () => {
             populateHolderTraitValueOptions(holderLookupState.items, { preserveValue: false });
+            holderLookupState.previewPage = 1;
             renderHolderWalletGrid(holderLookupState.items, holderLookupState.address);
           });
         }
@@ -2576,6 +2634,7 @@
         const holderTraitValueSelect = document.getElementById('holder-trait-value');
         if (holderTraitValueSelect) {
           holderTraitValueSelect.addEventListener('change', () => {
+            holderLookupState.previewPage = 1;
             renderHolderWalletGrid(holderLookupState.items, holderLookupState.address);
           });
         }
@@ -2584,6 +2643,7 @@
         if (holderTraitClearBtn) {
           holderTraitClearBtn.addEventListener('click', () => {
             clearHolderTraitFilters();
+            holderLookupState.previewPage = 1;
             renderHolderWalletGrid(holderLookupState.items, holderLookupState.address);
           });
         }
@@ -2593,9 +2653,37 @@
           holderWalletRandomizeBtn.addEventListener('click', () => {
             if (!holderLookupState.items.length) return;
             holderLookupState.randomSeed = Date.now();
+            holderLookupState.previewPage = 1;
             renderHolderWalletGrid(holderLookupState.items, holderLookupState.address);
           });
         }
+
+        const holderPreviewPrevBtn = document.getElementById('holder-preview-prev');
+        if (holderPreviewPrevBtn) {
+          holderPreviewPrevBtn.addEventListener('click', () => {
+            if (holderLookupState.previewPage <= 1) return;
+            holderLookupState.previewPage -= 1;
+            renderHolderWalletGrid(holderLookupState.items, holderLookupState.address);
+          });
+        }
+
+        const holderPreviewNextBtn = document.getElementById('holder-preview-next');
+        if (holderPreviewNextBtn) {
+          holderPreviewNextBtn.addEventListener('click', () => {
+            if (holderLookupState.previewPage >= holderLookupState.previewPageCount) return;
+            holderLookupState.previewPage += 1;
+            renderHolderWalletGrid(holderLookupState.items, holderLookupState.address);
+          });
+        }
+
+        let holderPreviewResizeTimer = null;
+        window.addEventListener('resize', () => {
+          if (!holderLookupState.items.length) return;
+          if (holderPreviewResizeTimer) window.clearTimeout(holderPreviewResizeTimer);
+          holderPreviewResizeTimer = window.setTimeout(() => {
+            renderHolderWalletGrid(holderLookupState.items, holderLookupState.address);
+          }, 120);
+        });
 
         try {
           renderHolderWalletGrid([], '');
@@ -3614,10 +3702,32 @@
         if (!itemCount) return { columns: 0, rows: 0 };
         const normalizedPreferred = Number(preferredGridSize);
         const preferredIsValid = Number.isInteger(normalizedPreferred) && normalizedPreferred > 0;
-        const gridSize = preferredIsValid
-          ? Math.max(1, normalizedPreferred)
-          : Math.max(1, Math.ceil(Math.sqrt(itemCount)));
-        return { columns: gridSize, rows: gridSize };
+        if (preferredIsValid) {
+          const gridSize = Math.max(1, normalizedPreferred);
+          return { columns: gridSize, rows: gridSize };
+        }
+
+        // Auto-fit with minimal empty slots while staying near-square.
+        const sqrt = Math.sqrt(itemCount);
+        const ceilCols = Math.max(1, Math.ceil(sqrt));
+        const floorCols = Math.max(1, Math.floor(sqrt));
+        const candidates = [
+          { columns: ceilCols, rows: Math.ceil(itemCount / ceilCols) },
+          { columns: floorCols, rows: Math.ceil(itemCount / floorCols) },
+          { columns: ceilCols + 1, rows: Math.ceil(itemCount / (ceilCols + 1)) },
+        ];
+
+        candidates.sort((a, b) => {
+          const emptyA = a.columns * a.rows - itemCount;
+          const emptyB = b.columns * b.rows - itemCount;
+          if (emptyA !== emptyB) return emptyA - emptyB;
+          const aspectA = Math.abs(a.columns - a.rows);
+          const aspectB = Math.abs(b.columns - b.rows);
+          if (aspectA !== aspectB) return aspectA - aspectB;
+          return b.columns - a.columns;
+        });
+
+        return candidates[0];
       }
 
       function getAdaptivePreviewColumns(itemCount, preferredColumns = null) {
@@ -3636,6 +3746,14 @@
         if (count <= 144) return 12;
         if (count <= 324) return 16;
         return 20;
+      }
+
+      function getHolderPreviewPageSize() {
+        const isMobile =
+          typeof window !== 'undefined' &&
+          typeof window.matchMedia === 'function' &&
+          window.matchMedia('(max-width: 760px)').matches;
+        return isMobile ? 120 : 320;
       }
 
       function createSeededRandom(seed) {
@@ -3747,9 +3865,9 @@
           const onchainImage = `${ONCHAIN_TOKEN_META_BASE}/${safeTokenId}/image`;
           return {
             tokenId,
-            src: explorerImage,
+            src: localFullImage,
             srcExport: explorerImage,
-            fallbackSrc: onchainImage || localFullImage,
+            fallbackSrc: onchainImage || explorerImage,
           };
         });
       }
@@ -3759,6 +3877,10 @@
         const metaEl = document.getElementById('holder-wallet-grid-meta');
         const exportBtn = document.getElementById('holder-wallet-grid-btn');
         const randomizeBtn = document.getElementById('holder-wallet-randomize-btn');
+        const previewToolbarEl = document.getElementById('holder-preview-toolbar');
+        const previewMetaEl = document.getElementById('holder-preview-meta');
+        const previewPrevBtn = document.getElementById('holder-preview-prev');
+        const previewNextBtn = document.getElementById('holder-preview-next');
 
         const walletItems = Array.isArray(items) ? items : [];
         populateHolderTraitTypeOptions(walletItems, { preserveType: true });
@@ -3796,6 +3918,14 @@
           previewEl.classList.remove('single');
           previewEl.style.removeProperty('--holder-preview-columns');
           previewEl.style.removeProperty('--holder-preview-gap');
+          holderLookupState.previewPage = 1;
+          holderLookupState.previewPageCount = 1;
+          holderLookupState.previewPageSize = 0;
+          holderLookupState.previewContextKey = '';
+          if (previewToolbarEl) previewToolbarEl.hidden = true;
+          if (previewMetaEl) previewMetaEl.textContent = '';
+          if (previewPrevBtn) previewPrevBtn.disabled = true;
+          if (previewNextBtn) previewNextBtn.disabled = true;
           return;
         }
 
@@ -3812,9 +3942,44 @@
           previewEl.classList.remove('single');
           previewEl.style.removeProperty('--holder-preview-columns');
           previewEl.style.removeProperty('--holder-preview-gap');
+          holderLookupState.previewPage = 1;
+          holderLookupState.previewPageCount = 1;
+          holderLookupState.previewPageSize = 0;
+          if (previewToolbarEl) previewToolbarEl.hidden = true;
+          if (previewMetaEl) previewMetaEl.textContent = '';
+          if (previewPrevBtn) previewPrevBtn.disabled = true;
+          if (previewNextBtn) previewNextBtn.disabled = true;
           updateHolderTraitClearState();
           return;
         }
+
+        const previewContextKey = [
+          holderLookupState.address,
+          selectedTraitType || '*',
+          selectedTraitValue || '*',
+          selectedGrid || 'auto',
+          selectedMode,
+          holderLookupState.randomSeed,
+        ].join('|');
+        if (holderLookupState.previewContextKey !== previewContextKey) {
+          holderLookupState.previewContextKey = previewContextKey;
+          holderLookupState.previewPage = 1;
+        }
+
+        const previewPageSize = getHolderPreviewPageSize();
+        const totalPreviewItems = composition.selectedItems.length;
+        const previewPageCount = Math.max(1, Math.ceil(totalPreviewItems / previewPageSize));
+        const currentPreviewPage = Math.min(
+          Math.max(1, Number(holderLookupState.previewPage) || 1),
+          previewPageCount
+        );
+        const pageStart = (currentPreviewPage - 1) * previewPageSize;
+        const previewItems = composition.selectedItems.slice(pageStart, pageStart + previewPageSize);
+        const pageEnd = pageStart + previewItems.length;
+
+        holderLookupState.previewPage = currentPreviewPage;
+        holderLookupState.previewPageCount = previewPageCount;
+        holderLookupState.previewPageSize = previewPageSize;
 
         const viewportMaxColumns =
           typeof window !== 'undefined' &&
@@ -3827,14 +3992,14 @@
           Math.min(
             viewportMaxColumns,
             getAdaptivePreviewColumns(
-              composition.selectedItems.length || filteredItems.length,
-              selectedGrid
+              previewItems.length || totalPreviewItems,
+              Number.isInteger(selectedGrid) && selectedGrid <= viewportMaxColumns ? selectedGrid : null
             )
           )
         );
         const compactPreview =
-          previewColumns >= 14 || composition.selectedItems.length >= 220;
-        const singlePreview = composition.selectedItems.length === 1;
+          previewColumns >= 12 || previewItems.length >= 160;
+        const singlePreview = totalPreviewItems === 1;
         const previewGap =
           previewColumns <= 2
             ? '0.48rem'
@@ -3854,10 +4019,19 @@
         exportBtn.disabled = false;
         if (randomizeBtn) randomizeBtn.disabled = false;
 
+        if (previewToolbarEl) previewToolbarEl.hidden = previewPageCount <= 1;
+        if (previewMetaEl) {
+          previewMetaEl.textContent =
+            `Viewing ${pageStart + 1}-${pageEnd} of ${totalPreviewItems}` +
+            (previewPageCount > 1 ? ` • Page ${currentPreviewPage}/${previewPageCount}` : '');
+        }
+        if (previewPrevBtn) previewPrevBtn.disabled = currentPreviewPage <= 1;
+        if (previewNextBtn) previewNextBtn.disabled = currentPreviewPage >= previewPageCount;
+
         const modeText = selectedMode === 'random' ? 'random mix' : 'ordered';
         const sampleText = composition.isSample
-          ? `${composition.selectedItems.length}/${filteredItems.length} shown`
-          : `${composition.selectedItems.length} shown`;
+          ? `${composition.selectedItems.length}/${filteredItems.length} in export`
+          : `${composition.selectedItems.length} in export`;
         const filterText = selectedTraitType
           ? selectedTraitValue
             ? `${selectedTraitType}: ${selectedTraitValue}`
@@ -3865,9 +4039,9 @@
           : 'all traits';
         metaEl.textContent =
           `${walletItems.length} held • ${filteredItems.length} match (${filterText}) • ` +
-          `${composition.columns} x ${composition.rows} • ${selectedCanvas} x ${selectedCanvas} PNG • ${modeText} • ${sampleText}`;
+          `${composition.columns} x ${composition.rows} • ${selectedCanvas} x ${selectedCanvas} PNG • ${modeText} • ${sampleText} • preview ${pageStart + 1}-${pageEnd}/${totalPreviewItems}`;
 
-        const html = composition.selectedItems
+        const html = previewItems
           .map((item) => `
             <div class="holder-grid-item">
               <img src="${item.src}" alt="No-Punk #${item.tokenId}" loading="lazy" decoding="async" onerror="${getPunkImageOnErrorAttr(item.tokenId)}" />
@@ -4080,6 +4254,7 @@
 
         initCollectionExplorerOnce().catch(() => {});
         result.textContent = 'Loading holder profile...';
+        holderLookupState.previewPage = 1;
         renderHolderWalletGrid([], address);
 
         try {
@@ -4095,6 +4270,7 @@
           const tokenIds = Array.isArray(data.tokenIds) ? data.tokenIds : [];
           const holderItems = buildHolderWalletItems(tokenIds);
           holderLookupState.randomSeed = Date.now();
+          holderLookupState.previewPage = 1;
           renderHolderWalletGrid(holderItems, address);
           const preview = tokenIds.slice(0, 20).map((id) => `#${id}`).join(', ');
           const overflow = tokenIds.length > 20 ? ` +${tokenIds.length - 20} more` : '';

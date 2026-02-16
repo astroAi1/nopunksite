@@ -1,8 +1,6 @@
-// NO-PUNKS Service Worker v1.0
-const CACHE_NAME = 'nopunks-v1';
+// NO-PUNKS Service Worker v1.1
+const CACHE_NAME = 'nopunks-v2';
 const STATIC_ASSETS = [
-  '/',
-  '/index.html',
   '/manifest.json',
   '/icons/52.png',
   '/No-PingPong/',
@@ -42,9 +40,16 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   // Skip non-GET requests
   if (event.request.method !== 'GET') return;
+  if (event.request.mode === 'navigate') return;
 
-  // Skip API requests - always go to network
-  if (event.request.url.includes('/api/')) return;
+  // Skip dynamic data requests - always go to network.
+  if (
+    event.request.url.includes('/api/') ||
+    event.request.url.includes('/explorer-data/') ||
+    event.request.url.includes('/public/data/explorer/')
+  ) {
+    return;
+  }
 
   event.respondWith(
     fetch(event.request)

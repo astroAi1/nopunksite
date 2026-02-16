@@ -276,8 +276,6 @@ async function main() {
       usedOnchainTraits += 1;
     }
 
-    const compactBlob = traits.map(([type, value]) => `${type}:${value}`).join(' | ');
-
     const searchParts = [name, String(tokenId), `#${tokenId}`];
     traits.forEach(([type, value]) => {
       const traitKey = `${type}|${value}`;
@@ -298,16 +296,12 @@ async function main() {
       searchParts.push(type, value, `${type}:${value}`, `${type} ${value}`);
     });
 
-    const searchRaw = searchParts.join(' ').toLowerCase();
-    const searchNormalized = normalizeSearchText(searchRaw);
+    const searchNormalized = normalizeSearchText(searchParts.join(' ').toLowerCase());
 
     tokenTraitBlobs[index] = {
       id: tokenId,
       i: index,
-      n: name,
       im: imageUrl || undefined,
-      b: compactBlob,
-      q: searchRaw,
       z: searchNormalized,
       t: traits,
     };

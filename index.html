@@ -1542,7 +1542,7 @@
         display: grid;
         grid-template-columns: repeat(var(--holder-preview-columns, 10), minmax(0, 1fr));
         gap: 0.38rem;
-        max-height: 280px;
+        max-height: min(68vh, 920px);
         overflow-y: auto;
         min-height: 90px;
       }
@@ -1550,9 +1550,19 @@
       .holder-grid-item {
         position: relative;
         border: 1px solid rgba(255,255,255,0.14);
-        background: rgba(0,0,0,0.64);
+        background:
+          linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01)),
+          repeating-linear-gradient(
+            0deg,
+            rgba(255,255,255,0.03) 0px,
+            rgba(255,255,255,0.03) 1px,
+            rgba(0,0,0,0) 1px,
+            rgba(0,0,0,0) 6px
+          ),
+          #0e0e0e;
         overflow: hidden;
         aspect-ratio: 1 / 1;
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
       }
 
       .holder-grid-item img {
@@ -1560,6 +1570,9 @@
         height: 100%;
         display: block;
         image-rendering: pixelated;
+        object-fit: contain;
+        object-position: center;
+        background: #090909;
       }
 
       .holder-grid-id {
@@ -1650,6 +1663,10 @@
         .holder-grid-controls {
           grid-template-columns: 1fr 1fr;
         }
+
+        .holder-grid-preview {
+          max-height: min(58vh, 700px);
+        }
       }
 
       @media (max-width: 640px) {
@@ -1672,6 +1689,10 @@
         .holder-wallet-actions {
           flex-direction: column;
           align-items: stretch;
+        }
+
+        .holder-grid-preview {
+          max-height: 54vh;
         }
       }
 
@@ -2195,13 +2216,13 @@
       const OPENSEA_BASE = 'https://opensea.io/assets/base';
       const OPENSEA_ITEM_BASE = 'https://opensea.io/item/base';
       const EXPLORER_TRAIT_INDEX_PATH = '/explorer-data/trait_to_token_ids.json';
-      const EXPLORER_TOKEN_BLOB_PATH = '/explorer-data/token_trait_blob.json';
       const EXPLORER_IMAGE_BASE = '/explorer-data/images';
       const TOTAL_SUPPLY = 10000;
       const ONCHAIN_TOKEN_META_BASE = `${API_BASE}/onchain/token`;
 
       const collectionState = {
         traitIndex: { traitToTokenIds: {}, typeValues: {}, traitTypes: [] },
+        typeToTokenIds: {},
         tokenById: new Map(),
         allTokenIds: [],
         filteredTokenIds: [],
@@ -2260,29 +2281,15 @@
         return "this.onerror=null;this.style.opacity='0'";
       }
 
-      // Prefer precomputed onchain image URL from explorer blobs, then runtime fallback.
       function getPunkImageUrl(tokenId, preferredUrl = '') {
         const safeId = sanitizeTokenId(tokenId, 52);
         const staticExplorerPath = `${EXPLORER_IMAGE_BASE}/${safeId}.svg`;
-        const onchainPath = `${ONCHAIN_TOKEN_META_BASE}/${safeId}/image`;
+        if (staticExplorerPath) return staticExplorerPath;
+
         const preferred = normalizeImageSource(preferredUrl);
-        if (preferred && !preferred.startsWith('<svg')) {
-          if (/^\/public\/data\/explorer\/images\/\d+\.svg$/i.test(preferred)) {
-            return preferred.replace('/public/data/explorer/images/', `${EXPLORER_IMAGE_BASE}/`);
-          }
-          return preferred;
-        }
+        if (preferred && !preferred.startsWith('<svg')) return preferred;
 
-        const token = collectionState.tokenById.get(String(tokenId));
-        const indexed = normalizeImageSource(token?.imageUrl || '');
-        if (indexed && !indexed.startsWith('<svg')) {
-          if (/^\/public\/data\/explorer\/images\/\d+\.svg$/i.test(indexed)) {
-            return indexed.replace('/public/data/explorer/images/', `${EXPLORER_IMAGE_BASE}/`);
-          }
-          return indexed;
-        }
-
-        return staticExplorerPath || onchainPath;
+        return `${ONCHAIN_TOKEN_META_BASE}/${safeId}/image`;
       }
 
       function extractLookupTraitsHtml(data) {
@@ -2373,6 +2380,41 @@
       let collectionExplorerInitPromise = null;
       let noMetaShowcaseInitPromise = null;
 
+      async function hydrateTraitMenusFallback() {
+        try {
+          const fallbackTypeValues = await fetchFirstJson(
+            ['/trait_values_by_type.json', '/public/trait_values_by_type.json'],
+            { cache: 'no-store' }
+          );
+          if (!fallbackTypeValues || typeof fallbackTypeValues !== 'object') {
+            return false;
+          }
+
+          const typeValues = Object.create(null);
+          Object.entries(fallbackTypeValues).forEach(([traitType, values]) => {
+            if (!traitType) return;
+            const normalizedValues = (Array.isArray(values) ? values : [])
+              .map((value) => String(value || '').trim())
+              .filter(Boolean)
+              .sort((a, b) => a.localeCompare(b));
+            typeValues[String(traitType)] = normalizedValues;
+          });
+
+          collectionState.traitIndex = {
+            traitToTokenIds: collectionState.traitIndex.traitToTokenIds || {},
+            typeValues,
+            traitTypes: Object.keys(typeValues).sort((a, b) => a.localeCompare(b)),
+          };
+
+          populateCollectionTypeFilters();
+          populateCollectionValueFilters();
+          return true;
+        } catch (err) {
+          console.warn('Trait menu fallback hydrate failed:', err);
+          return false;
+        }
+      }
+
       function initCollectionExplorerOnce() {
         if (!collectionExplorerInitPromise) {
           collectionExplorerInitPromise = initCollectionExplorer()
@@ -2385,8 +2427,15 @@
                 console.error('holder grid post-index refresh error:', err);
               }
             })
-            .catch((err) => {
+            .catch(async (err) => {
               console.error('initCollectionExplorer init error:', err);
+              const statusEl = document.getElementById('collection-status');
+              const hydratedFallback = await hydrateTraitMenusFallback();
+              if (statusEl) {
+                statusEl.textContent = hydratedFallback
+                  ? 'Traits loaded (fallback). Explorer index still loading.'
+                  : 'Explorer index unavailable. Check local data build.';
+              }
               throw err;
             });
         }
@@ -2403,11 +2452,10 @@
       }
 
       function initDeferredSections() {
-        const collectionSection = document.getElementById('collection');
         const noMetaSection = document.getElementById('nometa-showcase');
         const collectionStatus = document.getElementById('collection-status');
         if (collectionStatus) {
-          collectionStatus.textContent = 'Explorer loads when this section enters view.';
+          collectionStatus.textContent = 'Loading explorer indexes...';
         }
 
         if (!('IntersectionObserver' in window)) {
@@ -2422,10 +2470,7 @@
           (entries) => {
             entries.forEach((entry) => {
               if (!entry.isIntersecting) return;
-              if (entry.target.id === 'collection') {
-                initCollectionExplorerOnce().catch(() => {});
-                observer.unobserve(entry.target);
-              } else if (entry.target.id === 'nometa-showcase') {
+              if (entry.target.id === 'nometa-showcase') {
                 loadNoMetaShowcaseOnce().catch(() => {});
                 observer.unobserve(entry.target);
               }
@@ -2437,13 +2482,21 @@
           }
         );
 
-        if (collectionSection) observer.observe(collectionSection);
         if (noMetaSection) observer.observe(noMetaSection);
 
-        // Warm explorer in background so holder trait filtering is ready even without scrolling.
-        window.setTimeout(() => {
-          initCollectionExplorerOnce().catch(() => {});
-        }, 6500);
+        // Boot collection explorer deterministically so trait dropdowns are always hydrated.
+        if ('requestIdleCallback' in window) {
+          window.requestIdleCallback(
+            () => {
+              initCollectionExplorerOnce().catch(() => {});
+            },
+            { timeout: 1200 }
+          );
+        } else {
+          window.setTimeout(() => {
+            initCollectionExplorerOnce().catch(() => {});
+          }, 700);
+        }
       }
 
       document.addEventListener('DOMContentLoaded', () => {
@@ -2559,6 +2612,7 @@
         try { loadFeaturedPunks(); } catch (err) { console.error('loadFeaturedPunks init error:', err); }
         try { randomHeroPunks(); } catch (err) { console.error('randomHeroPunks init error:', err); }
         try { initDeferredSections(); } catch (err) { console.error('deferred sections init error:', err); }
+        try { initCollectionExplorerOnce().catch(() => {}); } catch (err) { console.error('collection explorer eager init error:', err); }
         try { loadHolderIntel(); } catch (err) { console.error('loadHolderIntel init error:', err); }
 
       });
@@ -2822,29 +2876,13 @@
         return Array.from({ length: TOTAL_SUPPLY }, (_, idx) => idx);
       }
 
-      function normalizeTraitPairs(traitPairs) {
-        if (!Array.isArray(traitPairs)) return [];
-        return traitPairs
-          .map((pair) => {
-            if (!Array.isArray(pair) || pair.length < 2) return null;
-            const type = String(pair[0] || '').trim();
-            const value = String(pair[1] || '').trim();
-            if (!type || !value) return null;
-            return { trait_type: type, value };
-          })
-          .filter(Boolean);
-      }
-
-      async function getExplorerIndexVersion() {
-        try {
-          const res = await fetch(`${API_BASE}/explorer/status`, { cache: 'no-store' });
-          if (!res.ok) return '';
-          const data = await res.json();
-          const generatedAt = String(data?.generatedAt || '').trim();
-          return generatedAt ? encodeURIComponent(generatedAt) : '';
-        } catch {
-          return '';
-        }
+      function compareIds(a, b) {
+        const aNum = Number(a);
+        const bNum = Number(b);
+        const aIsNum = Number.isFinite(aNum) && String(aNum) === String(a);
+        const bIsNum = Number.isFinite(bNum) && String(bNum) === String(b);
+        if (aIsNum && bIsNum) return aNum - bNum;
+        return String(a).localeCompare(String(b));
       }
 
       async function fetchFirstJson(urls, options = {}) {
@@ -2915,59 +2953,127 @@
         return typeValues;
       }
 
-      function buildTokenTraitsFromPairMap(pairMap, totalSupply) {
-        const byTokenId = new Map();
-        Object.entries(pairMap || {}).forEach(([pair, tokenIds]) => {
+      function applyCollectionStateFromTraitMap({
+        traitToTokenIds,
+        typeValues,
+        traitTypes,
+        totalSupply,
+        quickText = [],
+      }) {
+        const boundedSupply = Number.isInteger(Number(totalSupply))
+          ? Math.max(1, Math.min(TOTAL_SUPPLY, Number(totalSupply)))
+          : TOTAL_SUPPLY;
+        const normalizedTraitToTokenIds = Object.create(null);
+        const typeToTokenIdSets = Object.create(null);
+        const typeValueSets = Object.create(null);
+        const pairEntries = Object.entries(traitToTokenIds || {});
+
+        collectionState.tokenById.clear();
+        collectionState.allTokenIds = [];
+
+        for (let tokenId = 0; tokenId < boundedSupply; tokenId += 1) {
+          const key = String(tokenId);
+          const searchSeed = String(
+            quickText[tokenId] || `no-punk #${tokenId} ${tokenId}`
+          ).toLowerCase();
+          collectionState.tokenById.set(key, {
+            id: tokenId,
+            localIndex: tokenId,
+            name: `No-Punk #${tokenId}`,
+            traits: [],
+            searchNormalized: normalizeSearchText(searchSeed),
+          });
+          collectionState.allTokenIds.push(tokenId);
+        }
+
+        pairEntries.forEach(([pair, rawIds]) => {
           const parts = String(pair).split('|');
           if (parts.length < 2) return;
           const traitType = String(parts[0] || '').trim();
           const traitValue = String(parts.slice(1).join('|') || '').trim();
           if (!traitType || !traitValue) return;
 
-          (Array.isArray(tokenIds) ? tokenIds : []).forEach((rawId) => {
+          const normalizedIds = [];
+          const seen = new Set();
+          (Array.isArray(rawIds) ? rawIds : []).forEach((rawId) => {
             const tokenId = sanitizeTokenId(rawId, -1);
-            if (tokenId < 0 || tokenId >= totalSupply) return;
-            const key = String(tokenId);
-            if (!byTokenId.has(key)) byTokenId.set(key, []);
-            byTokenId.get(key).push({ trait_type: traitType, value: traitValue });
-          });
-        });
-        return byTokenId;
-      }
+            if (tokenId < 0 || tokenId >= boundedSupply) return;
+            if (seen.has(tokenId)) return;
+            seen.add(tokenId);
+            normalizedIds.push(tokenId);
 
-      function applyCollectionStateFromBlob(traitData, blobData) {
-        const traitToTokenIds = traitData?.traitToTokenIds || {};
-        const typeValues = traitData?.typeValues || {};
-        const traitTypes = Array.isArray(traitData?.traitTypes) ? traitData.traitTypes : [];
+            const token = collectionState.tokenById.get(String(tokenId));
+            if (!token) return;
+            token.traits.push({ trait_type: traitType, value: traitValue });
+          });
+
+          normalizedIds.sort(compareIds);
+          normalizedTraitToTokenIds[`${traitType}|${traitValue}`] = normalizedIds;
+
+          if (!typeToTokenIdSets[traitType]) typeToTokenIdSets[traitType] = new Set();
+          normalizedIds.forEach((tokenId) => typeToTokenIdSets[traitType].add(tokenId));
+
+          if (!typeValueSets[traitType]) typeValueSets[traitType] = new Set();
+          typeValueSets[traitType].add(traitValue);
+        });
+
+        collectionState.tokenById.forEach((token, tokenId) => {
+          const searchParts = [token.name, tokenId, `#${tokenId}`];
+          token.traits.forEach((trait) => {
+            searchParts.push(
+              String(trait?.trait_type || ''),
+              String(trait?.value || ''),
+              `${trait?.trait_type || ''} ${trait?.value || ''}`
+            );
+          });
+          token.searchNormalized = normalizeSearchText(searchParts.join(' '));
+        });
+
+        const normalizedTypeValues = Object.create(null);
+        const configuredTypes = typeValues && typeof typeValues === 'object' ? typeValues : {};
+        Object.keys(configuredTypes).forEach((traitType) => {
+          const values = Array.isArray(configuredTypes[traitType]) ? configuredTypes[traitType] : [];
+          const normalizedValues = values
+            .map((value) => String(value || '').trim())
+            .filter(Boolean);
+          if (normalizedValues.length) {
+            normalizedValues.sort((a, b) => a.localeCompare(b));
+            normalizedTypeValues[traitType] = normalizedValues;
+          }
+        });
+
+        Object.keys(typeValueSets).forEach((traitType) => {
+          if (normalizedTypeValues[traitType]) return;
+          normalizedTypeValues[traitType] = Array.from(typeValueSets[traitType]).sort((a, b) =>
+            String(a).localeCompare(String(b))
+          );
+        });
+
+        const configuredOrder = Array.isArray(traitTypes) ? traitTypes.map((t) => String(t || '').trim()).filter(Boolean) : [];
+        const fallbackOrder = Object.keys(normalizedTypeValues).sort((a, b) => a.localeCompare(b));
+        const mergedOrder = [];
+        configuredOrder.forEach((traitType) => {
+          if (!normalizedTypeValues[traitType]) return;
+          if (mergedOrder.includes(traitType)) return;
+          mergedOrder.push(traitType);
+        });
+        fallbackOrder.forEach((traitType) => {
+          if (!mergedOrder.includes(traitType)) mergedOrder.push(traitType);
+        });
+
+        const normalizedTypeToTokenIds = Object.create(null);
+        Object.entries(typeToTokenIdSets).forEach(([traitType, tokenIdSet]) => {
+          const ids = Array.from(tokenIdSet);
+          ids.sort(compareIds);
+          normalizedTypeToTokenIds[traitType] = ids;
+        });
 
         collectionState.traitIndex = {
-          traitToTokenIds,
-          typeValues,
-          traitTypes,
+          traitToTokenIds: normalizedTraitToTokenIds,
+          typeValues: normalizedTypeValues,
+          traitTypes: mergedOrder,
         };
-
-        collectionState.tokenById.clear();
-        collectionState.allTokenIds = [];
-
-        (blobData?.tokens || []).forEach((token, index) => {
-          const tokenId = normalizeTokenId(token.id, index);
-          const traits = normalizeTraitPairs(token.t);
-          const searchSeed = String(token.q || '').toLowerCase();
-          const searchText = searchSeed;
-          const searchNormalized = normalizeSearchText(token.z || searchSeed);
-          const localIndex = Number.isFinite(Number(token.i)) ? Number(token.i) : index;
-          const imageUrl = normalizeImageSource(token.im || token.image || token.image_url || '');
-          collectionState.tokenById.set(String(tokenId), {
-            id: tokenId,
-            localIndex,
-            name: token.n || `No-Punk #${tokenId}`,
-            traits,
-            imageUrl,
-            searchText,
-            searchNormalized,
-          });
-          collectionState.allTokenIds.push(tokenId);
-        });
+        collectionState.typeToTokenIds = normalizedTypeToTokenIds;
       }
 
       async function loadLegacyCollectionIndexes() {
@@ -2989,34 +3095,14 @@
 
         const typeValues = buildLegacyTypeValues(pairMap, fallbackTypeValues);
         const traitTypes = Object.keys(typeValues);
-        const tokenTraitsById = buildTokenTraitsFromPairMap(pairMap, totalSupply);
 
-        collectionState.traitIndex = {
+        applyCollectionStateFromTraitMap({
           traitToTokenIds: pairMap,
           typeValues,
           traitTypes,
-        };
-
-        collectionState.tokenById.clear();
-        collectionState.allTokenIds = [];
-
-        for (let tokenId = 0; tokenId < totalSupply; tokenId += 1) {
-          const key = String(tokenId);
-          const traits = tokenTraitsById.get(key) || [];
-          const searchSeed = String(
-            quickText[tokenId] || `no-punk #${tokenId} ${tokenId}`
-          ).toLowerCase();
-          collectionState.tokenById.set(key, {
-            id: tokenId,
-            localIndex: tokenId,
-            name: `No-Punk #${tokenId}`,
-            traits,
-            imageUrl: '',
-            searchText: searchSeed,
-            searchNormalized: normalizeSearchText(searchSeed),
-          });
-          collectionState.allTokenIds.push(tokenId);
-        }
+          totalSupply,
+          quickText,
+        });
       }
 
       async function loadCollectionIndexes() {
@@ -3024,36 +3110,39 @@
         statusEl.textContent = 'Loading explorer indexes...';
 
         try {
-          const version = await getExplorerIndexVersion();
-          const suffix = version ? `?v=${version}` : '';
-
-          const [traitData, blobData] = await Promise.all([
-            fetchFirstJson(getExplorerPathCandidates(EXPLORER_TRAIT_INDEX_PATH, suffix), {
-              cache: 'force-cache',
-            }),
-            fetchFirstJson(getExplorerPathCandidates(EXPLORER_TOKEN_BLOB_PATH, suffix), {
-              cache: 'force-cache',
-            }),
-          ]);
+          const traitData = await fetchFirstJson(
+            [
+              ...getExplorerPathCandidates(EXPLORER_TRAIT_INDEX_PATH),
+              '/trait_to_token_ids.json',
+              '/public/trait_to_token_ids.json',
+            ],
+            { cache: 'no-store' }
+          );
 
           const hasTraitMap = Object.keys(traitData?.traitToTokenIds || {}).length > 0;
-          const hasTokenBlob = Array.isArray(blobData?.tokens) && blobData.tokens.length > 0;
-          if (!hasTraitMap || !hasTokenBlob) {
+          if (!hasTraitMap) {
             throw new Error('Explorer indexes not found');
           }
 
+          const hasOnchainTraitCountField =
+            traitData?.sources &&
+            Object.prototype.hasOwnProperty.call(traitData.sources, 'onchainTraitCount');
           const onchainTraitCount = Number(traitData?.sources?.onchainTraitCount || 0);
-
-          if (traitData?.sources && onchainTraitCount <= 0) {
-            throw new Error(
-              'Explorer index is not onchain-backed. Rebuild with npm run build:indexes:onchain.'
+          if (hasOnchainTraitCountField && onchainTraitCount <= 0) {
+            console.warn(
+              'Explorer index reports zero onchain traits. Rebuild with npm run build:indexes:onchain for canonical onchain parity.'
             );
           }
 
-          applyCollectionStateFromBlob(traitData, blobData);
+          applyCollectionStateFromTraitMap({
+            traitToTokenIds: traitData?.traitToTokenIds || {},
+            typeValues: traitData?.typeValues || {},
+            traitTypes: Array.isArray(traitData?.traitTypes) ? traitData.traitTypes : [],
+            totalSupply: Number(traitData?.totalSupply) || TOTAL_SUPPLY,
+          });
 
           if (!collectionState.allTokenIds.length) {
-            throw new Error('Explorer token blob is empty');
+            throw new Error('Explorer trait index is empty');
           }
 
           statusEl.textContent = `Indexed ${collectionState.allTokenIds.length.toLocaleString()} tokens`;
@@ -3067,6 +3156,7 @@
             console.error('Legacy collection index fallback failed:', legacyErr);
             const fallbackIds = await loadTokenMapFallback();
             collectionState.traitIndex = { traitToTokenIds: {}, typeValues: {}, traitTypes: [] };
+            collectionState.typeToTokenIds = {};
             collectionState.tokenById.clear();
             collectionState.allTokenIds = [];
 
@@ -3076,8 +3166,6 @@
                 localIndex: index,
                 name: `No-Punk #${tokenId}`,
                 traits: [],
-                imageUrl: '',
-                searchText: `${tokenId} #${tokenId}`.toLowerCase(),
                 searchNormalized: normalizeSearchText(`${tokenId} #${tokenId}`),
               });
               collectionState.allTokenIds.push(tokenId);
@@ -3140,9 +3228,9 @@
         spacer.style.height = `${Math.max(totalRows * rowHeight, rowHeight)}px`;
         grid.style.setProperty('--collection-columns', String(columns));
 
-        const bufferRows = window.innerWidth <= 768 ? 1 : 2;
+        const bufferRows = window.innerWidth <= 768 ? 2 : 3;
         const startRow = Math.max(0, Math.floor(viewport.scrollTop / rowHeight) - bufferRows);
-        const maxRenderRows = window.innerWidth <= 768 ? 8 : 10;
+        const maxRenderRows = window.innerWidth <= 768 ? 10 : 14;
         const visibleRows = Math.min(
           maxRenderRows,
           Math.ceil(viewport.clientHeight / rowHeight) + bufferRows * 2
@@ -3166,7 +3254,7 @@
             const imgOnError = getPunkImageOnErrorAttr(tokenId);
             return `
               <a href="${OPENSEA_BASE}/${CONTRACT}/${tokenId}" target="_blank" class="collection-punk punk-card" data-token-id="${tokenId}" data-local-index="${tokenId}">
-                <img src="${imgUrl}" alt="No-Punk #${tokenId}" onerror="${imgOnError}" loading="lazy" decoding="async" />
+                <img src="${imgUrl}" alt="No-Punk #${tokenId}" onerror="${imgOnError}" loading="lazy" decoding="async" fetchpriority="low" />
               </a>
             `;
           })
@@ -3224,26 +3312,17 @@
         const query = queryRaw.startsWith('#') ? queryRaw.slice(1) : queryRaw;
         const queryNormalized = normalizeSearchText(queryRaw);
 
-        let ids = [...collectionState.allTokenIds];
+        let ids = collectionState.allTokenIds;
         const traitToTokenIds = collectionState.traitIndex.traitToTokenIds || {};
-        const typeValues = collectionState.traitIndex.typeValues || {};
+        const typeToTokenIds = collectionState.typeToTokenIds || {};
 
         if (type && value) {
           ids = Array.isArray(traitToTokenIds[`${type}|${value}`])
-            ? [...traitToTokenIds[`${type}|${value}`]]
+            ? traitToTokenIds[`${type}|${value}`]
             : [];
         } else if (type && !value) {
-          const values = Array.isArray(typeValues[type]) ? typeValues[type] : [];
-          const union = new Set();
-          values.forEach((v) => {
-            const pairIds = traitToTokenIds[`${type}|${v}`];
-            if (!Array.isArray(pairIds)) return;
-            pairIds.forEach((id) => union.add(id));
-          });
-          ids = Array.from(union);
+          ids = Array.isArray(typeToTokenIds[type]) ? typeToTokenIds[type] : [];
         }
-
-        ids = ids.map((id) => normalizeTokenId(id, id));
 
         if (query) {
           const terms = queryNormalized
@@ -3255,14 +3334,13 @@
             if (idText.includes(query)) return true;
             const token = collectionState.tokenById.get(String(id));
             if (!token) return false;
-            if (token.searchText.includes(queryRaw)) return true;
             if (queryNormalized && token.searchNormalized.includes(queryNormalized)) return true;
             if (!terms.length) return false;
             return terms.every((term) => token.searchNormalized.includes(term));
           });
         }
 
-        collectionState.filteredTokenIds = ids;
+        collectionState.filteredTokenIds = Array.isArray(ids) ? ids : [];
         collectionState.lastRenderKey = '';
         updateCollectionCount();
 
@@ -3634,13 +3712,13 @@
         normalizedIds.sort(compareTokenIds);
         return normalizedIds.map((tokenId) => {
           const safeTokenId = sanitizeTokenId(tokenId, 52);
-          const preferredImage = getPunkImageUrl(safeTokenId);
           const onchainImage = `${ONCHAIN_TOKEN_META_BASE}/${safeTokenId}/image`;
+          const indexedImage = getPunkImageUrl(safeTokenId);
           return {
             tokenId,
-            src: preferredImage,
-            srcExport: preferredImage,
-            fallbackSrc: onchainImage,
+            src: onchainImage,
+            srcExport: onchainImage,
+            fallbackSrc: indexedImage,
           };
         });
       }

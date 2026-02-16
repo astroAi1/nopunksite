@@ -258,6 +258,11 @@ const explorerTokenBlobPath = path.join(
   'token_trait_blob.json'
 );
 
+const explorerPublicDir = path.join(__dirname, 'public', 'data', 'explorer');
+const explorerPublicImagesDir = path.join(explorerPublicDir, 'images');
+const explorerPublishedDir = path.join(__dirname, 'explorer-data');
+const explorerPublishedImagesDir = path.join(explorerPublishedDir, 'images');
+
 const onchainTraitsSnapshotPath = path.join(
   __dirname,
   'public',
@@ -691,11 +696,66 @@ const nftCache = new Map();
 // -----------------------------
 // STATIC FILES
 // -----------------------------
+const ONE_HOUR_MS = 60 * 60 * 1000;
+const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
+
+function setExplorerStaticHeaders(res, filePath) {
+  const ext = path.extname(filePath || '').toLowerCase();
+  if (ext === '.json') {
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.setHeader('Vary', 'Accept-Encoding');
+    return;
+  }
+  if (ext === '.svg' || ext === '.png' || ext === '.jpg' || ext === '.jpeg' || ext === '.webp') {
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    return;
+  }
+  res.setHeader('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
+}
+
+const immutableImageStaticOptions = {
+  maxAge: ONE_YEAR_MS,
+  immutable: true,
+  etag: true,
+  fallthrough: true,
+};
+
+const explorerDataStaticOptions = {
+  maxAge: ONE_HOUR_MS,
+  etag: true,
+  fallthrough: true,
+  setHeaders: setExplorerStaticHeaders,
+};
+
+app.use('/explorer-data/images', express.static(explorerPublishedImagesDir, immutableImageStaticOptions));
+app.use('/explorer-data', express.static(explorerPublishedDir, explorerDataStaticOptions));
+app.use('/public/data/explorer/images', express.static(explorerPublicImagesDir, immutableImageStaticOptions));
+app.use('/public/data/explorer', express.static(explorerPublicDir, explorerDataStaticOptions));
+
+// Expose service worker at root while keeping source under /public.
+app.get('/sw.js', (req, res) => {
+  const swPath = path.join(__dirname, 'public', 'sw.js');
+  if (!fs.existsSync(swPath)) {
+    return res.sendStatus(404);
+  }
+  res.setHeader('Cache-Control', 'no-cache');
+  res.sendFile(swPath);
+});
+
+app.get('/manifest.json', (req, res) => {
+  const manifestPath = path.join(__dirname, 'public', 'manifest.json');
+  if (!fs.existsSync(manifestPath)) {
+    return res.sendStatus(404);
+  }
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  res.sendFile(manifestPath);
+});
+
 // Serve everything from project root
-app.use(express.static(path.join(__dirname)));
+app.use(express.static(path.join(__dirname), { maxAge: 0, etag: true }));
 
 // Also explicitly serve /public for anything you’ve parked in there
-app.use('/public', express.static(path.join(__dirname, 'public')));
+app.use('/public', express.static(path.join(__dirname, 'public'), { maxAge: 0, etag: true }));
 
 // Traits index for frontend
 app.use(
@@ -2109,6 +2169,7 @@ app.get('/api/listed', async (req, res) => {
 app.get('/api/explorer/status', (req, res) => {
   const traitIndex = readJsonFileCached(explorerTraitIndexPath);
   const tokenBlob = readJsonFileCached(explorerTokenBlobPath);
+  res.setHeader('Cache-Control', 'no-store');
 
   res.json({
     ready: Boolean(traitIndex && tokenBlob),

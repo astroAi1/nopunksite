@@ -1,13 +1,22 @@
 node_modules/
-.DS_Store
 .env
 npm-debug.log*
 yarn-error.log*
-node_modules/
-node_modules/
-.DS_Store
-.env
 
-.env
+# macOS metadata
 .DS_Store
-assets/.DS_Store
+**/.DS_Store
+
+# Local agent/tooling artifacts
+.agents/
+.claude/
+.codex/
+.opencode/
+
+# Local working artifacts (not website runtime)
+index-old.html
+content/
+research/
+public/marketplace/
+public/*_grid.png
+public/data/

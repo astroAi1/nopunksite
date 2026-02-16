@@ -7,7 +7,15 @@
   "scripts": {
     "start": "node server.js",
     "dev": "NODE_ENV=development node server.js",
-    "build": "echo 'Static site – nothing to build'"
+    "build": "echo 'Static site – nothing to build'",
+    "build:traits:onchain": "node scripts/build-onchain-traits.mjs --chain-id 8453 --rpc-url \"https://base.llamarpc.com,https://base-rpc.publicnode.com,https://1rpc.io/base,https://mainnet.base.org\" --concurrency 4 --log-every 25",
+    "build:indexes": "node scripts/build-explorer-index.mjs",
+    "build:indexes:onchain": "npm run build:traits:onchain && npm run build:indexes",
+    "build:holders": "node scripts/build-holder-snapshots.mjs --source owners --rpc-url \"https://base.llamarpc.com,https://base-rpc.publicnode.com,https://1rpc.io/base,https://mainnet.base.org\" --owner-batch-size 120 --total-supply 10000",
+    "build:holders:local": "npm run build:holders",
+    "build:data": "npm run build:indexes:onchain && npm run build:holders",
+    "build:data:local": "npm run build:indexes:onchain && npm run build:holders:local",
+    "localhost": "npm run build:data:local && npm run dev"
   },
   "keywords": [
     "nopunks",

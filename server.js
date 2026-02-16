@@ -2,7 +2,7 @@
 // NoPunks site server
 // - Serves static files (if needed)
 // - Proxies OpenSea for NFT metadata + stats + sales + listings
-// - Uses public/token_map.json to map 0–9999 index -> real token ID
+// - Uses onchain token IDs directly (0–9999) unless USE_TOKEN_MAP=1
 // - Exposes /api/showcase for daily rotating cross-collection picks
 // - Exposes /api/etherscan/transfers for chain-level NoPunks data (via Etherscan/Basescan)
 
@@ -11,6 +11,7 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const { spawn } = require('child_process');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -83,7 +84,7 @@ const SHOWCASE_COLLECTIONS = [
     label: 'No-Punks',
     contract: CONTRACT,
     totalSupply: NOPUNKS_SUPPLY,
-    useTokenMap: true,
+    useTokenMap: false,
   },
   {
     key: 'no-pnuks',
@@ -144,32 +145,46 @@ const fetchFn = global.fetch
 // -----------------------------
 // TOKEN MAP
 // -----------------------------
-// IMPORTANT: we now use /public/token_map.json
+// Default is identity mapping (onchain token IDs). Enable remap only when explicitly needed.
+const USE_TOKEN_MAP = /^(1|true|yes)$/i.test(String(process.env.USE_TOKEN_MAP || '').trim());
 const tokenMapPath = path.join(__dirname, 'public', 'token_map.json');
 let tokenMap = {};
-try {
-  tokenMap = JSON.parse(fs.readFileSync(tokenMapPath, 'utf8'));
-} catch (err) {
-  console.warn('Could not read public/token_map.json, using identity mapping.', err);
+if (USE_TOKEN_MAP) {
+  try {
+    tokenMap = JSON.parse(fs.readFileSync(tokenMapPath, 'utf8'));
+  } catch (err) {
+    console.warn('Could not read public/token_map.json, using identity mapping.', err);
+  }
 }
 
 function indexToTokenId(index) {
+  if (!USE_TOKEN_MAP) return index;
   const key = String(index);
   const mapped = tokenMap[key];
   return mapped != null ? mapped : index;
 }
 
+function parseOnChainTokenId(value) {
+  const tokenId = parseInt(String(value), 10);
+  if (!Number.isInteger(tokenId) || tokenId < 0 || tokenId >= NOPUNKS_SUPPLY) {
+    return null;
+  }
+  return tokenId;
+}
+
 // Reverse token map: on-chain tokenId -> 0–9999 collection index
 const reverseTokenMap = {};
 try {
-  Object.keys(tokenMap).forEach((idx) => {
-    const mapped = tokenMap[idx];
-    if (mapped != null) {
-      reverseTokenMap[String(mapped)] = Number(idx);
-    }
-  });
+  if (USE_TOKEN_MAP) {
+    Object.keys(tokenMap).forEach((idx) => {
+      const mapped = tokenMap[idx];
+      if (mapped != null) {
+        reverseTokenMap[String(mapped)] = Number(idx);
+      }
+    });
+  }
 
-  // If tokenMap is empty or partial, fall back to identity for 0–9999
+  // Identity fallback for all onchain token IDs.
   for (let i = 0; i < NOPUNKS_SUPPLY; i++) {
     const key = String(i);
     if (reverseTokenMap[key] == null) {
@@ -180,29 +195,40 @@ try {
   console.warn('Failed to build reverseTokenMap from token_map.json', e);
 }
 
+function getCollectionIndexForTokenId(tokenId) {
+  if (!Number.isInteger(tokenId)) return null;
+  const idx = reverseTokenMap[String(tokenId)];
+  return Number.isInteger(idx) ? idx : null;
+}
+
 // -----------------------------
 // TRAITS INDEX – local canonical traits for hover + stats
 // -----------------------------
 const traitsIndexPath = path.join(__dirname, 'public', 'traits', 'traits_index.json');
+const USE_LOCAL_TRAITS_INDEX = /^(1|true|yes)$/i.test(
+  String(process.env.USE_LOCAL_TRAITS_INDEX || '').trim()
+);
 let traitsIndex = null;
 let traitsIndexIsArray = false;
 
-try {
-  const raw = JSON.parse(fs.readFileSync(traitsIndexPath, 'utf8'));
-  if (Array.isArray(raw)) {
-    traitsIndex = raw;
-    traitsIndexIsArray = true;
-  } else if (raw && typeof raw === 'object') {
-    traitsIndex = raw;
-    traitsIndexIsArray = false;
-  } else {
-    console.warn('traits_index.json has unexpected format; ignoring.');
+if (USE_LOCAL_TRAITS_INDEX) {
+  try {
+    const raw = JSON.parse(fs.readFileSync(traitsIndexPath, 'utf8'));
+    if (Array.isArray(raw)) {
+      traitsIndex = raw;
+      traitsIndexIsArray = true;
+    } else if (raw && typeof raw === 'object') {
+      traitsIndex = raw;
+      traitsIndexIsArray = false;
+    } else {
+      console.warn('traits_index.json has unexpected format; ignoring.');
+    }
+  } catch (err) {
+    console.warn(
+      'Could not read traits_index.json – hover traits will use OpenSea metadata only.',
+      err
+    );
   }
-} catch (err) {
-  console.warn(
-    'Could not read traits_index.json – hover traits will use OpenSea metadata only.',
-    err
-  );
 }
 
 function normaliseTraitsEntry(entry) {
@@ -211,6 +237,328 @@ function normaliseTraitsEntry(entry) {
   if (Array.isArray(entry.attributes)) return entry.attributes;
   if (Array.isArray(entry)) return entry;
   return null;
+}
+
+// -----------------------------
+// PRECOMPUTED DATA FILES
+// -----------------------------
+const explorerTraitIndexPath = path.join(
+  __dirname,
+  'public',
+  'data',
+  'explorer',
+  'trait_to_token_ids.json'
+);
+
+const explorerTokenBlobPath = path.join(
+  __dirname,
+  'public',
+  'data',
+  'explorer',
+  'token_trait_blob.json'
+);
+
+const onchainTraitsSnapshotPath = path.join(
+  __dirname,
+  'public',
+  'data',
+  'explorer',
+  'onchain_traits.json'
+);
+
+const holderLatestPath = path.join(
+  __dirname,
+  'public',
+  'data',
+  'holders',
+  'latest.json'
+);
+
+const holderHistoryPath = path.join(
+  __dirname,
+  'public',
+  'data',
+  'holders',
+  'history.json'
+);
+
+function parsePositiveIntEnv(name, fallback, min, max = Number.MAX_SAFE_INTEGER) {
+  const raw = String(process.env[name] || '').trim();
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
+
+const HOLDER_AUTO_REBUILD_ENABLED = /^(1|true|yes)$/i.test(
+  String(process.env.HOLDER_AUTO_REBUILD || 'true').trim()
+);
+const HOLDER_AUTO_REBUILD_INTERVAL_MS = parsePositiveIntEnv(
+  'HOLDER_AUTO_REBUILD_INTERVAL_MS',
+  10 * 60 * 1000,
+  60 * 1000
+);
+const HOLDER_AUTO_REBUILD_STARTUP_DELAY_MS = parsePositiveIntEnv(
+  'HOLDER_AUTO_REBUILD_STARTUP_DELAY_MS',
+  25 * 1000,
+  0
+);
+const HOLDER_AUTO_REBUILD_RETRY_DELAY_MS = parsePositiveIntEnv(
+  'HOLDER_AUTO_REBUILD_RETRY_DELAY_MS',
+  2 * 60 * 1000,
+  15 * 1000
+);
+const HOLDER_AUTO_REBUILD_TIMEOUT_MS = parsePositiveIntEnv(
+  'HOLDER_AUTO_REBUILD_TIMEOUT_MS',
+  20 * 60 * 1000,
+  60 * 1000
+);
+const HOLDER_AUTO_REBUILD_OWNER_BATCH_SIZE = parsePositiveIntEnv(
+  'HOLDER_AUTO_REBUILD_OWNER_BATCH_SIZE',
+  parsePositiveIntEnv('HOLDER_OWNER_BATCH_SIZE', 120, 10),
+  10
+);
+const HOLDER_AUTO_REBUILD_SUPPLY = parsePositiveIntEnv(
+  'HOLDER_AUTO_REBUILD_SUPPLY',
+  10000,
+  1
+);
+const HOLDER_AUTO_REBUILD_SOURCE = String(
+  process.env.HOLDER_AUTO_REBUILD_SOURCE || 'owners'
+).trim() || 'owners';
+const HOLDER_AUTO_REBUILD_RPC_URL = String(
+  process.env.HOLDER_AUTO_REBUILD_RPC_URLS ||
+    process.env.HOLDER_RPC_URLS ||
+    process.env.BASE_RPC_URL ||
+    'https://base.llamarpc.com,https://base-rpc.publicnode.com,https://1rpc.io/base,https://mainnet.base.org'
+).trim();
+
+const fileJsonCache = new Map(); // filePath -> { mtimeMs, value }
+
+function readJsonFileCached(filePath) {
+  try {
+    const stat = fs.statSync(filePath);
+    const mtimeMs = stat.mtimeMs;
+    const cached = fileJsonCache.get(filePath);
+    if (cached && cached.mtimeMs === mtimeMs) {
+      return cached.value;
+    }
+
+    const raw = fs.readFileSync(filePath, 'utf8');
+    const value = JSON.parse(raw);
+    fileJsonCache.set(filePath, { mtimeMs, value });
+    return value;
+  } catch {
+    return null;
+  }
+}
+
+let onchainTraitsLookupCache = {
+  sourceRef: null,
+  byTokenId: null,
+};
+
+function normalizeOnchainTupleTraits(attrs) {
+  return (Array.isArray(attrs) ? attrs : [])
+    .map((pair) => {
+      if (!Array.isArray(pair) || pair.length < 2) return null;
+      const trait_type = String(pair[0] || '').trim();
+      const value = String(pair[1] || '').trim();
+      if (!trait_type || !value) return null;
+      return { trait_type, value };
+    })
+    .filter(Boolean);
+}
+
+function getOnchainTraitsLookupMap() {
+  const payload = readJsonFileCached(onchainTraitsSnapshotPath);
+  if (!payload || !Array.isArray(payload.tokens)) return null;
+
+  if (
+    onchainTraitsLookupCache.sourceRef === payload &&
+    onchainTraitsLookupCache.byTokenId instanceof Map
+  ) {
+    return onchainTraitsLookupCache.byTokenId;
+  }
+
+  const byTokenId = new Map();
+  payload.tokens.forEach((entry) => {
+    if (!entry || entry.id == null) return;
+    byTokenId.set(String(entry.id), entry);
+  });
+
+  onchainTraitsLookupCache = {
+    sourceRef: payload,
+    byTokenId,
+  };
+  return byTokenId;
+}
+
+function getOnchainSnapshotMetadata(tokenId) {
+  const lookup = getOnchainTraitsLookupMap();
+  if (!(lookup instanceof Map)) return null;
+
+  const entry = lookup.get(String(tokenId));
+  if (!entry || typeof entry !== 'object') return null;
+
+  const attributes = normalizeOnchainTupleTraits(entry.a || entry.attributes || entry.traits);
+  const image = normalizeIpfsUri(entry.im || entry.image || entry.image_url || '');
+
+  return {
+    tokenId,
+    tokenURI: '',
+    name: String(entry.n || entry.name || `No-Punk #${tokenId}`),
+    description: '',
+    attributes,
+    image,
+    image_data: '',
+    external_url: '',
+    raw: { attributes, image },
+    source: 'onchain-traits-snapshot',
+  };
+}
+
+function normaliseAddress(addr) {
+  if (!addr) return '';
+  const value = String(addr).trim().toLowerCase();
+  return /^0x[a-f0-9]{40}$/.test(value) ? value : '';
+}
+
+function buildHoldersFromBalancesObject(balancesObj) {
+  if (!balancesObj || typeof balancesObj !== 'object') return [];
+
+  return Object.entries(balancesObj)
+    .map(([address, balance]) => ({
+      address: normaliseAddress(address),
+      balance: Number(balance) || 0,
+      tokenIds: [],
+      lastActivity: null,
+    }))
+    .filter((h) => h.address && h.balance > 0)
+    .sort((a, b) => {
+      if (b.balance !== a.balance) return b.balance - a.balance;
+      return a.address.localeCompare(b.address);
+    });
+}
+
+function getSnapshotHolders(snapshot) {
+  if (!snapshot || typeof snapshot !== 'object') return [];
+
+  if (Array.isArray(snapshot.holders)) {
+    return snapshot.holders
+      .map((holder) => ({
+        address: normaliseAddress(holder.address),
+        balance:
+          Number(holder.balance) ||
+          (Array.isArray(holder.tokenIds) ? holder.tokenIds.length : 0),
+        tokenIds: Array.isArray(holder.tokenIds) ? holder.tokenIds : [],
+        lastActivity: holder.lastActivity || null,
+      }))
+      .filter((holder) => holder.address && holder.balance > 0)
+      .sort((a, b) => {
+        if (b.balance !== a.balance) return b.balance - a.balance;
+        return a.address.localeCompare(b.address);
+      });
+  }
+
+  if (snapshot.balances && typeof snapshot.balances === 'object') {
+    return buildHoldersFromBalancesObject(snapshot.balances);
+  }
+
+  return [];
+}
+
+function getSnapshotBalanceMap(snapshot) {
+  const map = new Map();
+
+  if (snapshot && snapshot.balances && typeof snapshot.balances === 'object') {
+    Object.entries(snapshot.balances).forEach(([address, balance]) => {
+      const addr = normaliseAddress(address);
+      if (!addr) return;
+      const amount = Number(balance) || 0;
+      if (amount > 0) map.set(addr, amount);
+    });
+    return map;
+  }
+
+  const holders = getSnapshotHolders(snapshot);
+  holders.forEach((holder) => {
+    map.set(holder.address, holder.balance);
+  });
+  return map;
+}
+
+function getTopHoldersFromSnapshot(snapshot, limit) {
+  const max = Math.max(1, Math.min(Number(limit) || 25, 250));
+  const summarySupply =
+    Number(snapshot?.summary?.supplyAccounted) || null;
+
+  if (Array.isArray(snapshot?.topHolders) && snapshot.topHolders.length > 0) {
+    return snapshot.topHolders.slice(0, max).map((holder, idx) => ({
+      rank: Number(holder.rank) || idx + 1,
+      address: normaliseAddress(holder.address),
+      balance: Number(holder.balance) || 0,
+      shareOfSupplyPct:
+        holder.shareOfSupplyPct != null
+          ? Number(holder.shareOfSupplyPct)
+          : summarySupply && summarySupply > 0
+          ? Number((((Number(holder.balance) || 0) / summarySupply) * 100).toFixed(3))
+          : 0,
+      tokenPreview: Array.isArray(holder.tokenPreview) ? holder.tokenPreview : [],
+      lastActivity: holder.lastActivity || null,
+    }));
+  }
+
+  const holders = getSnapshotHolders(snapshot);
+  const supply =
+    summarySupply || holders.reduce((sum, holder) => sum + holder.balance, 0);
+
+  return holders.slice(0, max).map((holder, idx) => ({
+    rank: idx + 1,
+    address: holder.address,
+    balance: holder.balance,
+    shareOfSupplyPct:
+      supply > 0 ? Number(((holder.balance / supply) * 100).toFixed(3)) : 0,
+    tokenPreview: holder.tokenIds.slice(0, 12),
+    lastActivity: holder.lastActivity || null,
+  }));
+}
+
+function buildCohortsFromHolders(holders, supplyAccounted) {
+  const groups = [
+    { id: 'single', label: '1 Token', min: 1, max: 1 },
+    { id: 'small', label: '2-4 Tokens', min: 2, max: 4 },
+    { id: 'medium', label: '5-19 Tokens', min: 5, max: 19 },
+    { id: 'large', label: '20-49 Tokens', min: 20, max: 49 },
+    { id: 'whale', label: '50+ Tokens', min: 50, max: Number.POSITIVE_INFINITY },
+  ];
+
+  return groups.map((group) => {
+    const inGroup = holders.filter((holder) => {
+      if (holder.balance < group.min) return false;
+      if (group.max === Number.POSITIVE_INFINITY) return true;
+      return holder.balance <= group.max;
+    });
+
+    const tokenCount = inGroup.reduce((sum, holder) => sum + holder.balance, 0);
+
+    return {
+      id: group.id,
+      label: group.label,
+      min: group.min,
+      max: Number.isFinite(group.max) ? group.max : null,
+      holders: inGroup.length,
+      tokenCount,
+      holderSharePct:
+        holders.length > 0
+          ? Number(((inGroup.length / holders.length) * 100).toFixed(2))
+          : 0,
+      tokenSharePct:
+        supplyAccounted > 0
+          ? Number(((tokenCount / supplyAccounted) * 100).toFixed(2))
+          : 0,
+    };
+  });
 }
 
 function getTraitsForToken(tokenId, index) {
@@ -310,6 +658,266 @@ function normaliseImageUrl(url) {
     return url.replace('ipfs://', 'https://ipfs.io/ipfs/');
   }
   return url;
+}
+
+function extractSvgFromInlineValue(value) {
+  if (!value || typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+
+  if (trimmed.startsWith('<svg')) {
+    return trimmed;
+  }
+
+  if (!/^data:image\/svg\+xml/i.test(trimmed)) {
+    return '';
+  }
+
+  const commaIndex = trimmed.indexOf(',');
+  if (commaIndex === -1) {
+    return '';
+  }
+
+  const metadata = trimmed.slice(0, commaIndex);
+  const payload = trimmed.slice(commaIndex + 1);
+
+  try {
+    let decoded = payload;
+    if (/;base64/i.test(metadata)) {
+      decoded = Buffer.from(payload, 'base64').toString('utf8');
+    } else {
+      try {
+        decoded = decodeURIComponent(payload);
+      } catch {
+        decoded = payload;
+      }
+    }
+    const svg = decoded.trim();
+    return svg.startsWith('<svg') ? svg : '';
+  } catch {
+    return '';
+  }
+}
+
+function shouldTryRemoteSvgFetch(value) {
+  if (!value || typeof value !== 'string') return false;
+  const normalized = normaliseImageUrl(value).toLowerCase();
+  if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
+    return false;
+  }
+
+  if (
+    /\.(png|jpe?g|gif|webp|avif)(\?|$)/i.test(normalized) &&
+    !normalized.includes('svg')
+  ) {
+    return false;
+  }
+
+  return (
+    normalized.includes('.svg') ||
+    normalized.includes('image/svg+xml') ||
+    normalized.includes('format=svg') ||
+    !/\.(png|jpe?g|gif|webp|avif)(\?|$)/i.test(normalized)
+  );
+}
+
+async function fetchTextFromUrl(url, label = 'Remote text', timeoutMs = 20000) {
+  const normalizedUrl = normaliseImageUrl(url);
+  if (!normalizedUrl) {
+    throw new Error(`${label} URL missing`);
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetchFn(normalizedUrl, {
+      headers: {
+        accept: 'image/svg+xml,text/plain,*/*',
+      },
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      throw new Error(`${label} request failed with ${res.status}`);
+    }
+
+    const text = await res.text();
+    return {
+      text,
+      contentType: (res.headers.get('content-type') || '').toLowerCase(),
+      url: normalizedUrl,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function fetchJsonFromUrl(url, label = 'Remote JSON', timeoutMs = 20000) {
+  const normalizedUrl = normaliseImageUrl(url);
+  if (!normalizedUrl) {
+    throw new Error(`${label} URL missing`);
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetchFn(normalizedUrl, {
+      headers: {
+        accept: 'application/json,*/*',
+      },
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      throw new Error(`${label} request failed with ${res.status}`);
+    }
+
+    const text = await res.text();
+    return JSON.parse(text);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function collectSvgCandidates(nft, metadata) {
+  const candidates = [];
+  const push = (value) => {
+    if (typeof value === 'string' && value.trim()) {
+      candidates.push(value.trim());
+    }
+  };
+
+  push(nft && nft.image_data);
+  push(nft && nft.image);
+  push(nft && nft.image_original_url);
+  push(nft && nft.image_url);
+  push(nft && nft.display_image_url);
+
+  if (Array.isArray(nft && nft.media)) {
+    nft.media.forEach((entry) => {
+      push(entry && entry.gateway);
+      push(entry && entry.thumbnail);
+      push(entry && entry.raw);
+      push(entry && entry.url);
+    });
+  }
+
+  if (metadata && typeof metadata === 'object') {
+    push(metadata.image_data);
+    push(metadata.image);
+    push(metadata.image_url);
+    push(metadata.animation_url);
+  }
+
+  return [...new Set(candidates)];
+}
+
+async function resolveOpenSeaSvgFromNft(nft) {
+  let embeddedMetadata = null;
+
+  if (nft && nft.metadata && typeof nft.metadata === 'object') {
+    embeddedMetadata = nft.metadata;
+  } else if (nft && typeof nft.metadata === 'string') {
+    try {
+      embeddedMetadata = JSON.parse(nft.metadata);
+    } catch {
+      embeddedMetadata = null;
+    }
+  }
+
+  const candidates = collectSvgCandidates(nft, embeddedMetadata);
+
+  for (const candidate of candidates) {
+    const inlineSvg = extractSvgFromInlineValue(candidate);
+    if (inlineSvg) {
+      return {
+        svg: inlineSvg,
+        source: candidate.startsWith('<svg')
+          ? 'inline-svg'
+          : 'inline-svg-data-url',
+      };
+    }
+
+    if (!shouldTryRemoteSvgFetch(candidate)) {
+      continue;
+    }
+
+    try {
+      const remote = await fetchTextFromUrl(candidate, 'SVG source', 20000);
+      if (
+        remote.contentType.includes('image/svg+xml') ||
+        /<svg[\s>]/i.test(remote.text)
+      ) {
+        return {
+          svg: remote.text,
+          source: remote.url,
+        };
+      }
+    } catch (err) {
+      console.warn(
+        `Could not fetch SVG candidate: ${candidate}`,
+        err && (err.message || err)
+      );
+    }
+  }
+
+  if (nft && nft.metadata_url) {
+    try {
+      const metadata = await fetchJsonFromUrl(
+        nft.metadata_url,
+        'NFT metadata',
+        20000
+      );
+      const metadataCandidates = collectSvgCandidates({}, metadata);
+
+      for (const candidate of metadataCandidates) {
+        const inlineSvg = extractSvgFromInlineValue(candidate);
+        if (inlineSvg) {
+          return {
+            svg: inlineSvg,
+            source: candidate.startsWith('<svg')
+              ? 'metadata-inline-svg'
+              : 'metadata-inline-svg-data-url',
+          };
+        }
+
+        if (!shouldTryRemoteSvgFetch(candidate)) {
+          continue;
+        }
+
+        try {
+          const remote = await fetchTextFromUrl(
+            candidate,
+            'Metadata SVG source',
+            20000
+          );
+          if (
+            remote.contentType.includes('image/svg+xml') ||
+            /<svg[\s>]/i.test(remote.text)
+          ) {
+            return {
+              svg: remote.text,
+              source: remote.url,
+            };
+          }
+        } catch (err) {
+          console.warn(
+            `Could not fetch metadata SVG candidate: ${candidate}`,
+            err && (err.message || err)
+          );
+        }
+      }
+    } catch (err) {
+      console.warn(
+        `Could not read metadata for SVG resolution: ${nft.metadata_url}`,
+        err && (err.message || err)
+      );
+    }
+  }
+
+  return null;
 }
 
 async function fetchJsonFromOpenSea(url, label = 'OpenSea', timeoutMs = 20000) {
@@ -496,6 +1104,63 @@ function hashToRange(str, max) {
 }
 
 // =======================
+// /api/nft/token/:tokenId
+// Direct on-chain token ID lookup (matches OpenSea item URL token ID)
+// =======================
+app.get('/api/nft/token/:tokenId', async (req, res) => {
+  try {
+    const tokenId = parseOnChainTokenId(req.params.tokenId);
+    if (tokenId == null) {
+      return res.status(400).json({ error: 'Invalid tokenId' });
+    }
+
+    const cacheKey = `${CONTRACT.toLowerCase()}:${tokenId}`;
+    const cached = nftCache.get(cacheKey);
+    const collectionIndex = getCollectionIndexForTokenId(tokenId);
+    if (cached) {
+      const canonicalTraits = getTraitsForToken(tokenId, collectionIndex);
+      if (canonicalTraits && !cached.traits && !cached.attributes) {
+        cached.traits = canonicalTraits;
+        cached.attributes = canonicalTraits;
+      }
+      return res.json(cached);
+    }
+
+    const url = `https://api.opensea.io/api/v2/chain/${CHAIN}/contract/${CONTRACT}/nfts/${tokenId}`;
+    const data = await queueOpenSeaRequest(url, 'NFT token');
+
+    const nft = data.nft || data || {};
+
+    const image_url = normaliseImageUrl(
+      nft.image_url ||
+        nft.display_image_url ||
+        nft.image_original_url ||
+        nft.image ||
+        ''
+    );
+
+    const canonicalTraits = getTraitsForToken(tokenId, collectionIndex);
+
+    const payload = {
+      ...nft,
+      image_url,
+      onChainId: nft.identifier || nft.token_id || tokenId,
+    };
+
+    if (canonicalTraits) {
+      payload.traits = canonicalTraits;
+      payload.attributes = canonicalTraits;
+    }
+
+    nftCache.set(cacheKey, payload);
+    res.json(payload);
+  } catch (err) {
+    console.error('NFT token API error:', err.message || err);
+    res.status(500).json({ error: 'Failed to fetch NFT from OpenSea' });
+  }
+});
+
+// =======================
 // /api/nft/:index
 // =======================
 app.get('/api/nft/:index', async (req, res) => {
@@ -548,6 +1213,101 @@ app.get('/api/nft/:index', async (req, res) => {
   } catch (err) {
     console.error('NFT API error:', err.message || err);
     res.status(500).json({ error: 'Failed to fetch NFT from OpenSea' });
+  }
+});
+
+// =======================
+// /api/nft/token/:tokenId/svg
+// =======================
+app.get('/api/nft/token/:tokenId/svg', async (req, res) => {
+  try {
+    const tokenId = parseOnChainTokenId(req.params.tokenId);
+    if (tokenId == null) {
+      return res.status(400).json({ error: 'Invalid tokenId' });
+    }
+
+    const url = `https://api.opensea.io/api/v2/chain/${CHAIN}/contract/${CONTRACT}/nfts/${tokenId}`;
+    const data = await queueOpenSeaRequest(url, 'NFT token SVG');
+    const nft = data.nft || data || {};
+    const onChainId = nft.identifier || nft.token_id || tokenId;
+    const image_url = normaliseImageUrl(
+      nft.image_url ||
+        nft.display_image_url ||
+        nft.image_original_url ||
+        nft.image ||
+        ''
+    );
+
+    const resolved = await resolveOpenSeaSvgFromNft(nft);
+    if (!resolved || !resolved.svg) {
+      return res.status(404).json({
+        error: 'SVG source unavailable for this NFT',
+        tokenId,
+        onChainId,
+        image_url,
+      });
+    }
+
+    res.json({
+      tokenId,
+      onChainId,
+      image_url,
+      source: resolved.source || null,
+      svg: resolved.svg,
+    });
+  } catch (err) {
+    console.error('NFT token SVG API error:', err.message || err);
+    res
+      .status(500)
+      .json({ error: 'Failed to fetch NFT SVG source from OpenSea' });
+  }
+});
+
+// =======================
+// /api/nft/:index/svg
+// =======================
+app.get('/api/nft/:index/svg', async (req, res) => {
+  try {
+    const index = parseInt(req.params.index, 10);
+    if (Number.isNaN(index) || index < 0 || index >= 10000) {
+      return res.status(400).json({ error: 'Invalid index' });
+    }
+
+    const tokenId = indexToTokenId(index);
+    const url = `https://api.opensea.io/api/v2/chain/${CHAIN}/contract/${CONTRACT}/nfts/${tokenId}`;
+    const data = await queueOpenSeaRequest(url, 'NFT SVG');
+    const nft = data.nft || data || {};
+    const onChainId = nft.identifier || nft.token_id || tokenId;
+    const image_url = normaliseImageUrl(
+      nft.image_url ||
+        nft.display_image_url ||
+        nft.image_original_url ||
+        nft.image ||
+        ''
+    );
+
+    const resolved = await resolveOpenSeaSvgFromNft(nft);
+    if (!resolved || !resolved.svg) {
+      return res.status(404).json({
+        error: 'SVG source unavailable for this NFT',
+        tokenId: index,
+        onChainId,
+        image_url,
+      });
+    }
+
+    res.json({
+      tokenId: index,
+      onChainId,
+      image_url,
+      source: resolved.source || null,
+      svg: resolved.svg,
+    });
+  } catch (err) {
+    console.error('NFT SVG API error:', err.message || err);
+    res
+      .status(500)
+      .json({ error: 'Failed to fetch NFT SVG source from OpenSea' });
   }
 });
 
@@ -1157,6 +1917,273 @@ app.get('/api/listed', async (req, res) => {
 });
 
 // =======================
+// /api/explorer/status
+// =======================
+app.get('/api/explorer/status', (req, res) => {
+  const traitIndex = readJsonFileCached(explorerTraitIndexPath);
+  const tokenBlob = readJsonFileCached(explorerTokenBlobPath);
+
+  res.json({
+    ready: Boolean(traitIndex && tokenBlob),
+    generatedAt:
+      traitIndex?.generatedAt || tokenBlob?.generatedAt || null,
+    totalSupply:
+      Number(traitIndex?.totalSupply) || Number(tokenBlob?.totalSupply) || null,
+    files: {
+      traitIndex: Boolean(traitIndex),
+      tokenBlob: Boolean(tokenBlob),
+    },
+  });
+});
+
+// =======================
+// /api/holders/summary
+// =======================
+app.get('/api/holders/summary', (req, res) => {
+  const latest = readJsonFileCached(holderLatestPath);
+  if (!latest) {
+    return res.status(503).json({
+      error: 'Holder snapshot unavailable',
+      message: 'Run `npm run build:holders` to generate holder data.',
+    });
+  }
+
+  return res.json({
+    generatedAt: latest.generatedAt || null,
+    chain: latest.chain || CHAIN,
+    contract: latest.contract || CONTRACT,
+    source: latest.source || null,
+    summary: latest.summary || {},
+  });
+});
+
+// =======================
+// /api/holders/top
+// =======================
+app.get('/api/holders/top', (req, res) => {
+  const latest = readJsonFileCached(holderLatestPath);
+  if (!latest) {
+    return res.status(503).json({
+      holders: [],
+      error: 'Holder snapshot unavailable',
+    });
+  }
+
+  const limit = Math.max(1, Math.min(parseInt(req.query.limit, 10) || 25, 250));
+  const includeTokens = String(req.query.includeTokens || '') === '1';
+
+  const topHolders = getTopHoldersFromSnapshot(latest, limit).map((holder) => ({
+    rank: holder.rank,
+    address: holder.address,
+    balance: holder.balance,
+    shareOfSupplyPct: holder.shareOfSupplyPct,
+    tokenPreview: holder.tokenPreview,
+    tokenIds: includeTokens ? holder.tokenPreview : undefined,
+    lastActivity: holder.lastActivity,
+  }));
+
+  return res.json({
+    generatedAt: latest.generatedAt || null,
+    summary: latest.summary || {},
+    holders: topHolders,
+  });
+});
+
+// =======================
+// /api/holders/cohorts
+// =======================
+app.get('/api/holders/cohorts', (req, res) => {
+  const latest = readJsonFileCached(holderLatestPath);
+  if (!latest) {
+    return res.status(503).json({
+      cohorts: [],
+      error: 'Holder snapshot unavailable',
+    });
+  }
+
+  const holders = getSnapshotHolders(latest);
+  const supplyAccounted =
+    Number(latest?.summary?.supplyAccounted) ||
+    holders.reduce((sum, holder) => sum + holder.balance, 0);
+
+  const cohorts =
+    Array.isArray(latest.cohorts) && latest.cohorts.length > 0
+      ? latest.cohorts
+      : buildCohortsFromHolders(holders, supplyAccounted);
+
+  return res.json({
+    generatedAt: latest.generatedAt || null,
+    supplyAccounted,
+    cohorts,
+  });
+});
+
+// =======================
+// /api/holders/deltas
+// =======================
+app.get('/api/holders/deltas', (req, res) => {
+  const latest = readJsonFileCached(holderLatestPath);
+  if (!latest) {
+    return res.status(503).json({
+      error: 'Holder snapshot unavailable',
+    });
+  }
+
+  const history = readJsonFileCached(holderHistoryPath);
+  const snapshots = Array.isArray(history?.snapshots)
+    ? [...history.snapshots].sort((a, b) => {
+        const at = new Date(a?.generatedAt || 0).getTime();
+        const bt = new Date(b?.generatedAt || 0).getTime();
+        return at - bt;
+      })
+    : [];
+
+  const previous = snapshots.length >= 2 ? snapshots[snapshots.length - 2] : null;
+  const limit = Math.max(1, Math.min(parseInt(req.query.limit, 10) || 25, 100));
+
+  if (!previous) {
+    return res.json({
+      generatedAt: latest.generatedAt || null,
+      previousGeneratedAt: null,
+      summaryDelta: {
+        holderCount: 0,
+        supplyAccounted: 0,
+        top10SharePct: 0,
+        top25SharePct: 0,
+        entrants: 0,
+        exits: 0,
+      },
+      movers: [],
+    });
+  }
+
+  const latestBalances = getSnapshotBalanceMap(latest);
+  const previousBalances = getSnapshotBalanceMap(previous);
+  const allAddresses = new Set([
+    ...latestBalances.keys(),
+    ...previousBalances.keys(),
+  ]);
+
+  let entrants = 0;
+  let exits = 0;
+  const movers = [];
+
+  for (const address of allAddresses) {
+    const currentBalance = latestBalances.get(address) || 0;
+    const previousBalance = previousBalances.get(address) || 0;
+    const delta = currentBalance - previousBalance;
+
+    if (previousBalance === 0 && currentBalance > 0) entrants += 1;
+    if (previousBalance > 0 && currentBalance === 0) exits += 1;
+
+    if (delta !== 0) {
+      movers.push({
+        address,
+        delta,
+        currentBalance,
+        previousBalance,
+      });
+    }
+  }
+
+  movers.sort((a, b) => {
+    const absDiff = Math.abs(b.delta) - Math.abs(a.delta);
+    if (absDiff !== 0) return absDiff;
+    if (b.delta !== a.delta) return b.delta - a.delta;
+    return a.address.localeCompare(b.address);
+  });
+
+  const latestSummary = latest.summary || {};
+  const prevSummary = previous.summary || {};
+
+  return res.json({
+    generatedAt: latest.generatedAt || null,
+    previousGeneratedAt: previous.generatedAt || null,
+    summaryDelta: {
+      holderCount:
+        (Number(latestSummary.holderCount) || latestBalances.size) -
+        (Number(prevSummary.holderCount) || previousBalances.size),
+      supplyAccounted:
+        (Number(latestSummary.supplyAccounted) || 0) -
+        (Number(prevSummary.supplyAccounted) || 0),
+      top10SharePct:
+        Number(
+          (
+            (Number(latestSummary.top10SharePct) || 0) -
+            (Number(prevSummary.top10SharePct) || 0)
+          ).toFixed(3)
+        ),
+      top25SharePct:
+        Number(
+          (
+            (Number(latestSummary.top25SharePct) || 0) -
+            (Number(prevSummary.top25SharePct) || 0)
+          ).toFixed(3)
+        ),
+      entrants,
+      exits,
+    },
+    movers: movers.slice(0, limit),
+  });
+});
+
+// =======================
+// /api/holders/:address
+// =======================
+app.get('/api/holders/:address', (req, res) => {
+  const latest = readJsonFileCached(holderLatestPath);
+  if (!latest) {
+    return res.status(503).json({
+      error: 'Holder snapshot unavailable',
+    });
+  }
+
+  const address = normaliseAddress(req.params.address);
+  if (!address) {
+    return res.status(400).json({ error: 'Invalid address' });
+  }
+
+  const holders = getSnapshotHolders(latest);
+  const found =
+    holders.find((holder) => holder.address === address) || null;
+
+  if (!found) {
+    return res.status(404).json({
+      generatedAt: latest.generatedAt || null,
+      address,
+      balance: 0,
+      rank: null,
+      percentile: 0,
+      tokenIds: [],
+      lastActivity: null,
+    });
+  }
+
+  let rank = 1;
+  holders.forEach((holder) => {
+    if (holder.address === address) return;
+    if (holder.balance > found.balance) rank += 1;
+    if (holder.balance === found.balance && holder.address < address) rank += 1;
+  });
+
+  const totalHolders = holders.length;
+  const percentile =
+    totalHolders > 0
+      ? Number((((totalHolders - rank + 1) / totalHolders) * 100).toFixed(2))
+      : 0;
+
+  return res.json({
+    generatedAt: latest.generatedAt || null,
+    address,
+    balance: found.balance,
+    rank,
+    percentile,
+    tokenIds: Array.isArray(found.tokenIds) ? found.tokenIds : [],
+    lastActivity: found.lastActivity || null,
+  });
+});
+
+// =======================
 // MARKETPLACE CONFIG
 // =======================
 
@@ -1167,6 +2194,312 @@ try {
 } catch (e) {
   console.warn('ethers not installed - marketplace API will be limited');
 }
+
+// =======================
+// ONCHAIN TOKEN METADATA + IMAGES
+// =======================
+const ONCHAIN_TOKEN_URI_ABI = ['function tokenURI(uint256 tokenId) view returns (string)'];
+const ONCHAIN_CHAIN_ID = Number(process.env.CHAIN_ID || (CHAIN.toLowerCase() === 'base' ? 8453 : 1));
+const ONCHAIN_RPC_URLS = String(
+  process.env.ONCHAIN_RPC_URLS ||
+    process.env.BASE_RPC_URL ||
+    'https://mainnet.base.org,https://base.llamarpc.com,https://base-rpc.publicnode.com,https://1rpc.io/base'
+)
+  .split(',')
+  .map((url) => url.trim())
+  .filter(Boolean);
+
+const onchainTokenCache = new Map();
+let onchainContracts = null;
+
+function normalizeIpfsUri(value) {
+  if (!value) return '';
+  const text = String(value).trim();
+  if (!text) return '';
+  if (text.startsWith('ipfs://')) {
+    return `https://ipfs.io/ipfs/${text.slice('ipfs://'.length).replace(/^ipfs\//, '')}`;
+  }
+  return text;
+}
+
+function decodeDataJsonUri(uri) {
+  if (!uri || typeof uri !== 'string') return null;
+  const lower = uri.toLowerCase();
+
+  if (lower.startsWith('data:application/json;base64,')) {
+    const payload = uri.slice('data:application/json;base64,'.length);
+    return JSON.parse(Buffer.from(payload, 'base64').toString('utf8'));
+  }
+  if (lower.startsWith('data:application/json;utf8,')) {
+    const payload = uri.slice('data:application/json;utf8,'.length);
+    return JSON.parse(decodeURIComponent(payload));
+  }
+  if (lower.startsWith('data:application/json,')) {
+    const payload = uri.slice('data:application/json,'.length);
+    return JSON.parse(decodeURIComponent(payload));
+  }
+
+  return null;
+}
+
+function parseDataUri(value) {
+  if (!value || typeof value !== 'string') return null;
+  const text = value.trim();
+  if (!/^data:/i.test(text)) return null;
+
+  const commaIndex = text.indexOf(',');
+  if (commaIndex === -1) return null;
+
+  const metadata = text.slice(5, commaIndex);
+  const payload = text.slice(commaIndex + 1);
+  const parts = metadata
+    .split(';')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const contentType = (parts[0] || 'application/octet-stream').toLowerCase();
+  const isBase64 = parts.some((part) => part.toLowerCase() === 'base64');
+
+  if (isBase64) {
+    return {
+      contentType,
+      body: Buffer.from(payload, 'base64'),
+    };
+  }
+
+  let decoded = payload;
+  try {
+    decoded = decodeURIComponent(payload);
+  } catch {
+    decoded = payload;
+  }
+
+  return {
+    contentType,
+    body: Buffer.from(decoded, 'utf8'),
+  };
+}
+
+function normalizeTokenAttributes(metadata) {
+  const attrs = Array.isArray(metadata?.attributes)
+    ? metadata.attributes
+    : Array.isArray(metadata?.traits)
+    ? metadata.traits
+    : [];
+
+  return attrs
+    .map((entry) => {
+      const trait_type = String(entry?.trait_type || entry?.type || '').trim();
+      const value = String(entry?.value ?? '').trim();
+      if (!trait_type || !value) return null;
+      return { trait_type, value };
+    })
+    .filter(Boolean);
+}
+
+function getOnchainContracts() {
+  if (!ethers) return [];
+  if (Array.isArray(onchainContracts)) return onchainContracts;
+
+  onchainContracts = ONCHAIN_RPC_URLS.map((rpcUrl) => {
+    const provider = Number.isFinite(ONCHAIN_CHAIN_ID)
+      ? new ethers.providers.JsonRpcProvider(rpcUrl, ONCHAIN_CHAIN_ID)
+      : new ethers.providers.JsonRpcProvider(rpcUrl);
+    return new ethers.Contract(CONTRACT, ONCHAIN_TOKEN_URI_ABI, provider);
+  });
+
+  return onchainContracts;
+}
+
+async function resolveTokenUriFromChain(tokenId) {
+  const contracts = getOnchainContracts();
+  if (!contracts.length) {
+    throw new Error('Onchain RPC contracts unavailable');
+  }
+
+  let lastErr = null;
+  for (let i = 0; i < contracts.length; i += 1) {
+    try {
+      return await contracts[i].tokenURI(tokenId);
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+
+  throw lastErr || new Error('tokenURI failed across all RPC endpoints');
+}
+
+async function fetchJsonFromRemoteUrl(url, timeoutMs = 20000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetchFn(url, {
+      headers: { accept: 'application/json,*/*' },
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Remote JSON fetch failed (${res.status}): ${body.slice(0, 180)}`);
+    }
+    return await res.json();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function fetchBufferFromRemoteUrl(url, timeoutMs = 25000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetchFn(url, {
+      headers: { accept: 'image/*,*/*' },
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Remote image fetch failed (${res.status}): ${body.slice(0, 180)}`);
+    }
+    const contentType = (res.headers.get('content-type') || 'application/octet-stream').toLowerCase();
+    const body = Buffer.from(await res.arrayBuffer());
+    return { contentType, body };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function getOnchainTokenMetadata(tokenId, options = {}) {
+  const requireImage = options && options.requireImage === true;
+  const key = String(tokenId);
+  const cached = onchainTokenCache.get(key);
+  if (cached) {
+    const resolved = cached instanceof Promise ? await cached : cached;
+    if (!requireImage || getImageCandidateFromMetadata(resolved)) {
+      return resolved;
+    }
+  }
+
+  const snapshotMeta = getOnchainSnapshotMetadata(tokenId);
+  if (snapshotMeta && (!requireImage || getImageCandidateFromMetadata(snapshotMeta))) {
+    onchainTokenCache.set(key, snapshotMeta);
+    return snapshotMeta;
+  }
+
+  const inflight = (async () => {
+    const tokenUri = await resolveTokenUriFromChain(tokenId);
+    let metadata = decodeDataJsonUri(tokenUri);
+    if (!metadata) {
+      const normalizedTokenUri = normalizeIpfsUri(tokenUri);
+      if (!/^https?:\/\//i.test(normalizedTokenUri)) {
+        throw new Error(`Unsupported tokenURI format for token ${tokenId}`);
+      }
+      metadata = await fetchJsonFromRemoteUrl(normalizedTokenUri, 20000);
+    }
+
+    const attributes = normalizeTokenAttributes(metadata);
+    const image = normalizeIpfsUri(metadata?.image || metadata?.image_data || '');
+    const image_data = normalizeIpfsUri(metadata?.image_data || '');
+
+    return {
+      tokenId,
+      tokenURI: tokenUri,
+      name: String(metadata?.name || `No-Punk #${tokenId}`),
+      description: String(metadata?.description || ''),
+      attributes,
+      image,
+      image_data,
+      external_url: normalizeIpfsUri(metadata?.external_url || ''),
+      raw: metadata,
+      source: 'onchain-tokenURI',
+    };
+  })();
+
+  onchainTokenCache.set(key, inflight);
+  try {
+    const resolved = await inflight;
+    onchainTokenCache.set(key, resolved);
+    return resolved;
+  } catch (err) {
+    onchainTokenCache.delete(key);
+    throw err;
+  }
+}
+
+function getImageCandidateFromMetadata(metadata) {
+  if (!metadata || typeof metadata !== 'object') return '';
+  const candidates = [
+    metadata.image,
+    metadata.image_data,
+    metadata.raw?.image,
+    metadata.raw?.image_data,
+  ];
+
+  for (const candidate of candidates) {
+    const value = normalizeIpfsUri(candidate);
+    if (value) return value;
+  }
+  return '';
+}
+
+app.get('/api/onchain/token/:tokenId', async (req, res) => {
+  try {
+    const tokenId = parseOnChainTokenId(req.params.tokenId);
+    if (tokenId == null) {
+      return res.status(400).json({ error: 'Invalid tokenId' });
+    }
+    const metadata = await getOnchainTokenMetadata(tokenId);
+    res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=86400');
+    return res.json(metadata);
+  } catch (err) {
+    console.error('Onchain token metadata error:', err.message || err);
+    return res.status(502).json({ error: 'Onchain token metadata unavailable' });
+  }
+});
+
+app.get('/api/onchain/token/:tokenId/image', async (req, res) => {
+  try {
+    const tokenId = parseOnChainTokenId(req.params.tokenId);
+    if (tokenId == null) {
+      return res.status(400).json({ error: 'Invalid tokenId' });
+    }
+
+    const metadata = await getOnchainTokenMetadata(tokenId, { requireImage: true });
+    const imageValue = getImageCandidateFromMetadata(metadata);
+    if (!imageValue) {
+      return res.status(404).json({ error: 'Onchain image unavailable' });
+    }
+
+    if (imageValue.startsWith('<svg')) {
+      res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+      res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
+      return res.send(imageValue);
+    }
+
+    const dataUri = parseDataUri(imageValue);
+    if (dataUri) {
+      res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+      res.setHeader('Content-Type', dataUri.contentType || 'application/octet-stream');
+      return res.send(dataUri.body);
+    }
+
+    const normalizedUrl = normalizeIpfsUri(imageValue);
+    if (normalizedUrl.startsWith('/public/')) {
+      res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+      return res.redirect(302, normalizedUrl);
+    }
+    if (/^https?:\/\//i.test(normalizedUrl)) {
+      const remote = await fetchBufferFromRemoteUrl(normalizedUrl, 25000);
+      res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+      res.setHeader('Content-Type', remote.contentType || 'application/octet-stream');
+      return res.send(remote.body);
+    }
+
+    return res.status(404).json({ error: 'Unsupported onchain image format' });
+  } catch (err) {
+    console.error('Onchain token image error:', err.message || err);
+    return res.status(502).json({ error: 'Onchain token image unavailable' });
+  }
+});
 
 // Marketplace contract address (set after deployment)
 const MARKETPLACE_CONTRACT = process.env.MARKETPLACE_CONTRACT || '';
@@ -1503,6 +2836,159 @@ app.get('/api/marketplace/auction/:id', async (req, res) => {
 });
 
 // =======================
+// HOLDER SNAPSHOT AUTO-REBUILD
+// =======================
+let holderAutoRebuildInFlight = false;
+let holderAutoRebuildNextAllowedAt = 0;
+let holderAutoRebuildIntervalHandle = null;
+let holderAutoRebuildStartupHandle = null;
+
+function formatMsAsSeconds(ms) {
+  return `${Math.max(0, Math.ceil(ms / 1000))}s`;
+}
+
+function buildHolderRebuildArgs() {
+  const args = [
+    path.join(__dirname, 'scripts', 'build-holder-snapshots.mjs'),
+    '--source',
+    HOLDER_AUTO_REBUILD_SOURCE,
+    '--chain',
+    CHAIN,
+    '--contract',
+    CONTRACT.toLowerCase(),
+    '--rpc-url',
+    HOLDER_AUTO_REBUILD_RPC_URL,
+    '--owner-batch-size',
+    String(HOLDER_AUTO_REBUILD_OWNER_BATCH_SIZE),
+    '--total-supply',
+    String(HOLDER_AUTO_REBUILD_SUPPLY),
+  ];
+
+  if (process.env.CHAIN_ID) {
+    args.push('--chain-id', String(process.env.CHAIN_ID));
+  }
+
+  return args;
+}
+
+async function runHolderSnapshotAutoRebuild(trigger) {
+  if (!HOLDER_AUTO_REBUILD_ENABLED) return false;
+  if (holderAutoRebuildInFlight) {
+    console.log(`[holders:auto] Skip ${trigger}; rebuild already running.`);
+    return false;
+  }
+
+  const now = Date.now();
+  if (now < holderAutoRebuildNextAllowedAt) {
+    const waitMs = holderAutoRebuildNextAllowedAt - now;
+    console.log(
+      `[holders:auto] Skip ${trigger}; cooldown active (${formatMsAsSeconds(waitMs)} remaining).`
+    );
+    return false;
+  }
+
+  holderAutoRebuildInFlight = true;
+  const startedAt = Date.now();
+  const args = buildHolderRebuildArgs();
+
+  console.log(
+    `[holders:auto] Starting holder snapshot rebuild (${trigger}).`
+  );
+
+  return await new Promise((resolve) => {
+    const child = spawn(process.execPath, args, {
+      cwd: __dirname,
+      env: process.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    let timedOut = false;
+    const timeoutHandle = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGTERM');
+    }, HOLDER_AUTO_REBUILD_TIMEOUT_MS);
+
+    child.stdout.on('data', (chunk) => {
+      const line = String(chunk || '').trim();
+      if (line) console.log(`[holders:auto] ${line}`);
+    });
+
+    child.stderr.on('data', (chunk) => {
+      const line = String(chunk || '').trim();
+      if (line) console.warn(`[holders:auto] ${line}`);
+    });
+
+    child.once('error', (err) => {
+      clearTimeout(timeoutHandle);
+      holderAutoRebuildInFlight = false;
+      holderAutoRebuildNextAllowedAt =
+        Date.now() + HOLDER_AUTO_REBUILD_RETRY_DELAY_MS;
+      console.error(
+        `[holders:auto] Rebuild process failed to start: ${err.message || err}`
+      );
+      resolve(false);
+    });
+
+    child.once('close', (code, signal) => {
+      clearTimeout(timeoutHandle);
+      holderAutoRebuildInFlight = false;
+
+      const elapsedMs = Date.now() - startedAt;
+      if (code === 0 && !timedOut) {
+        holderAutoRebuildNextAllowedAt = 0;
+        const latest = readJsonFileCached(holderLatestPath);
+        const generatedAt = latest?.generatedAt || null;
+        const generatedText = generatedAt
+          ? new Date(generatedAt).toLocaleString()
+          : 'unknown';
+        console.log(
+          `[holders:auto] Rebuild complete in ${formatMsAsSeconds(elapsedMs)}; snapshot=${generatedText}.`
+        );
+        resolve(true);
+        return;
+      }
+
+      holderAutoRebuildNextAllowedAt =
+        Date.now() + HOLDER_AUTO_REBUILD_RETRY_DELAY_MS;
+      console.error(
+        `[holders:auto] Rebuild failed (code=${code}, signal=${signal || 'none'}, timeout=${timedOut}) after ` +
+          `${formatMsAsSeconds(elapsedMs)}. Retrying in ${formatMsAsSeconds(HOLDER_AUTO_REBUILD_RETRY_DELAY_MS)}.`
+      );
+      resolve(false);
+    });
+  });
+}
+
+function startHolderSnapshotAutoRebuild() {
+  if (!HOLDER_AUTO_REBUILD_ENABLED) {
+    console.log('[holders:auto] Disabled (set HOLDER_AUTO_REBUILD=1 to enable).');
+    return;
+  }
+
+  if (holderAutoRebuildIntervalHandle || holderAutoRebuildStartupHandle) {
+    return;
+  }
+
+  console.log(
+    `[holders:auto] Enabled interval=${formatMsAsSeconds(HOLDER_AUTO_REBUILD_INTERVAL_MS)} ` +
+      `startupDelay=${formatMsAsSeconds(HOLDER_AUTO_REBUILD_STARTUP_DELAY_MS)} ` +
+      `timeout=${formatMsAsSeconds(HOLDER_AUTO_REBUILD_TIMEOUT_MS)}.`
+  );
+
+  holderAutoRebuildStartupHandle = setTimeout(() => {
+    runHolderSnapshotAutoRebuild('startup').catch((err) => {
+      console.error('[holders:auto] Startup rebuild threw:', err.message || err);
+    });
+  }, HOLDER_AUTO_REBUILD_STARTUP_DELAY_MS);
+
+  holderAutoRebuildIntervalHandle = setInterval(() => {
+    runHolderSnapshotAutoRebuild('interval').catch((err) => {
+      console.error('[holders:auto] Interval rebuild threw:', err.message || err);
+    });
+  }, HOLDER_AUTO_REBUILD_INTERVAL_MS);
+}
+
+// =======================
 // START SERVER
 // =======================
 app.listen(PORT, () => {
@@ -1511,4 +2997,6 @@ app.listen(PORT, () => {
       `Collection slug: ${COLLECTION_SLUG} | Chain: ${CHAIN} | Contract: ${CONTRACT}` +
       (MARKETPLACE_CONTRACT ? `\nMarketplace: ${MARKETPLACE_CONTRACT}` : '')
   );
+
+  startHolderSnapshotAutoRebuild();
 });

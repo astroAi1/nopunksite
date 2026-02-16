@@ -1835,13 +1835,13 @@
         <div class="hero-punk-glow"></div>
         <div class="hero-punks-showcase">
           <div class="hero-punk-wrap">
-            <img id="hero-punk-left" class="hero-punk" src="/api/onchain/token/3100/image" alt="No-Punk" onclick="randomHeroPunks()" />
+            <img id="hero-punk-left" class="hero-punk" src="/public/data/explorer/images/3100.svg" alt="No-Punk" onclick="randomHeroPunks()" onerror="this.onerror=function(){this.onerror=null;this.src='/api/onchain/token/52/image';};this.src='/api/onchain/token/3100/image'" />
           </div>
           <div class="hero-punk-wrap center">
-            <img id="hero-punk-center" class="hero-punk" src="/api/onchain/token/52/image" alt="No-Punk" onclick="randomHeroPunks()" />
+            <img id="hero-punk-center" class="hero-punk" src="/public/data/explorer/images/52.svg" alt="No-Punk" onclick="randomHeroPunks()" onerror="this.onerror=null;this.src='/api/onchain/token/52/image'" />
           </div>
           <div class="hero-punk-wrap">
-            <img id="hero-punk-right" class="hero-punk" src="/api/onchain/token/7804/image" alt="No-Punk" onclick="randomHeroPunks()" />
+            <img id="hero-punk-right" class="hero-punk" src="/public/data/explorer/images/7804.svg" alt="No-Punk" onclick="randomHeroPunks()" onerror="this.onerror=function(){this.onerror=null;this.src='/api/onchain/token/52/image';};this.src='/api/onchain/token/7804/image'" />
           </div>
         </div>
         <h1 class="hero-title">NO-PUNKS</h1>
@@ -1975,7 +1975,7 @@
         </div>
         <div class="collection-controls">
           <div class="collection-count"><span id="collection-count">0</span> / 10,000 match filter</div>
-          <div id="collection-status" class="collection-count">Loading explorer indexes...</div>
+          <div id="collection-status" class="collection-count">Explorer loads when section is visible.</div>
         </div>
       </div>
     </section>
@@ -2138,13 +2138,13 @@
         </div>
         <div class="team-grid">
           <div class="team-member">
-            <img class="team-member-img" src="/api/onchain/token/784/image" alt="Astro-AI" onerror="this.src='/api/onchain/token/52/image'" />
+            <img class="team-member-img" src="/public/data/explorer/images/784.svg" alt="Astro-AI" onerror="this.onerror=function(){this.onerror=null;this.src='/api/onchain/token/52/image';};this.src='/api/onchain/token/784/image'" />
             <div class="team-member-name">Astro-AI</div>
             <div class="team-member-role">Co-Founder</div>
             <p class="team-member-bio">Started NoPunks on Base as a minimalist, no-meta derivative. Keeps pushing the art, glitch experiments, and on-chain tooling forward.</p>
           </div>
           <div class="team-member">
-            <img class="team-member-img" src="/api/onchain/token/5093/image" alt="Holu" onerror="this.src='/api/onchain/token/52/image'" />
+            <img class="team-member-img" src="/public/data/explorer/images/5093.svg" alt="Holu" onerror="this.onerror=function(){this.onerror=null;this.src='/api/onchain/token/52/image';};this.src='/api/onchain/token/5093/image'" />
             <div class="team-member-name">Holu</div>
             <div class="team-member-role">Co-Founder</div>
             <p class="team-member-bio">Original collaborator on NoPunks, helping define the palette, structure and early direction.</p>
@@ -2191,6 +2191,7 @@
       const OPENSEA_ITEM_BASE = 'https://opensea.io/item/base';
       const EXPLORER_TRAIT_INDEX_PATH = '/public/data/explorer/trait_to_token_ids.json';
       const EXPLORER_TOKEN_BLOB_PATH = '/public/data/explorer/token_trait_blob.json';
+      const EXPLORER_IMAGE_BASE = '/public/data/explorer/images';
       const TOTAL_SUPPLY = 10000;
       const ONCHAIN_TOKEN_META_BASE = `${API_BASE}/onchain/token`;
 
@@ -2238,6 +2239,28 @@
         return url;
       }
 
+      function sanitizeTokenId(tokenId, fallbackId = 52) {
+        const raw = String(tokenId == null ? '' : tokenId).trim();
+        if (/^\d+$/.test(raw)) {
+          const parsed = Number.parseInt(raw, 10);
+          if (Number.isInteger(parsed) && parsed >= 0 && parsed < TOTAL_SUPPLY) {
+            return parsed;
+          }
+        }
+        return fallbackId;
+      }
+
+      function getPunkImageOnErrorAttr(tokenId) {
+        const safeId = sanitizeTokenId(tokenId, 52);
+        if (safeId === 52) {
+          return `this.onerror=null;this.src='${ONCHAIN_TOKEN_META_BASE}/52/image'`;
+        }
+        return (
+          `this.onerror=function(){this.onerror=null;this.src='${ONCHAIN_TOKEN_META_BASE}/52/image';};` +
+          `this.src='${ONCHAIN_TOKEN_META_BASE}/${safeId}/image'`
+        );
+      }
+
       // Prefer precomputed onchain image URL from explorer blobs, then runtime fallback.
       function getPunkImageUrl(tokenId, preferredUrl = '') {
         const preferred = normalizeImageSource(preferredUrl);
@@ -2251,7 +2274,8 @@
           return indexed;
         }
 
-        return `${ONCHAIN_TOKEN_META_BASE}/${tokenId}/image`;
+        const safeId = sanitizeTokenId(tokenId, 52);
+        return `${EXPLORER_IMAGE_BASE}/${safeId}.svg`;
       }
 
       function extractLookupTraitsHtml(data) {
@@ -2338,6 +2362,82 @@
       // ========================================
       // Initialize
       // ========================================
+
+      let collectionExplorerInitPromise = null;
+      let noMetaShowcaseInitPromise = null;
+
+      function initCollectionExplorerOnce() {
+        if (!collectionExplorerInitPromise) {
+          collectionExplorerInitPromise = initCollectionExplorer()
+            .then(() => {
+              try {
+                if (holderLookupState.items.length) {
+                  renderHolderWalletGrid(holderLookupState.items, holderLookupState.address);
+                }
+              } catch (err) {
+                console.error('holder grid post-index refresh error:', err);
+              }
+            })
+            .catch((err) => {
+              console.error('initCollectionExplorer init error:', err);
+              throw err;
+            });
+        }
+        return collectionExplorerInitPromise;
+      }
+
+      function loadNoMetaShowcaseOnce() {
+        if (!noMetaShowcaseInitPromise) {
+          noMetaShowcaseInitPromise = loadNoMetaShowcase().catch((err) => {
+            console.error('loadNoMetaShowcase init error:', err);
+          });
+        }
+        return noMetaShowcaseInitPromise;
+      }
+
+      function initDeferredSections() {
+        const collectionSection = document.getElementById('collection');
+        const noMetaSection = document.getElementById('nometa-showcase');
+        const collectionStatus = document.getElementById('collection-status');
+        if (collectionStatus) {
+          collectionStatus.textContent = 'Explorer loads when this section enters view.';
+        }
+
+        if (!('IntersectionObserver' in window)) {
+          window.setTimeout(() => {
+            initCollectionExplorerOnce().catch(() => {});
+            loadNoMetaShowcaseOnce().catch(() => {});
+          }, 800);
+          return;
+        }
+
+        const observer = new IntersectionObserver(
+          (entries) => {
+            entries.forEach((entry) => {
+              if (!entry.isIntersecting) return;
+              if (entry.target.id === 'collection') {
+                initCollectionExplorerOnce().catch(() => {});
+                observer.unobserve(entry.target);
+              } else if (entry.target.id === 'nometa-showcase') {
+                loadNoMetaShowcaseOnce().catch(() => {});
+                observer.unobserve(entry.target);
+              }
+            });
+          },
+          {
+            rootMargin: '360px 0px',
+            threshold: 0.01,
+          }
+        );
+
+        if (collectionSection) observer.observe(collectionSection);
+        if (noMetaSection) observer.observe(noMetaSection);
+
+        // Warm explorer in background so holder trait filtering is ready even without scrolling.
+        window.setTimeout(() => {
+          initCollectionExplorerOnce().catch(() => {});
+        }, 6500);
+      }
 
       document.addEventListener('DOMContentLoaded', () => {
         // Enter key for lookup
@@ -2434,31 +2534,10 @@
         try { loadStats(); } catch (err) { console.error('loadStats init error:', err); }
         try { loadRecentSales(); } catch (err) { console.error('loadRecentSales init error:', err); }
         try { loadListedPunks(); } catch (err) { console.error('loadListedPunks init error:', err); }
-        try { loadNoMetaShowcase(); } catch (err) { console.error('loadNoMetaShowcase init error:', err); }
         try { loadNoirDeNoir(); } catch (err) { console.error('loadNoirDeNoir init error:', err); }
-        try {
-          initCollectionExplorer()
-            .then(() => {
-              try { loadFeaturedPunks(); } catch (err) { console.error('loadFeaturedPunks init error:', err); }
-              try { randomHeroPunks(); } catch (err) { console.error('randomHeroPunks init error:', err); }
-              try {
-                if (holderLookupState.items.length) {
-                  renderHolderWalletGrid(holderLookupState.items, holderLookupState.address);
-                }
-              } catch (err) {
-                console.error('holder grid post-index refresh error:', err);
-              }
-            })
-            .catch((err) => {
-              console.error('initCollectionExplorer init error:', err);
-              try { loadFeaturedPunks(); } catch (e) { console.error('loadFeaturedPunks fallback error:', e); }
-              try { randomHeroPunks(); } catch (e) { console.error('randomHeroPunks fallback error:', e); }
-            });
-        } catch (err) {
-          console.error('initCollectionExplorer init error:', err);
-          try { loadFeaturedPunks(); } catch (e) { console.error('loadFeaturedPunks fallback error:', e); }
-          try { randomHeroPunks(); } catch (e) { console.error('randomHeroPunks fallback error:', e); }
-        }
+        try { loadFeaturedPunks(); } catch (err) { console.error('loadFeaturedPunks init error:', err); }
+        try { randomHeroPunks(); } catch (err) { console.error('randomHeroPunks init error:', err); }
+        try { initDeferredSections(); } catch (err) { console.error('deferred sections init error:', err); }
         try { loadHolderIntel(); } catch (err) { console.error('loadHolderIntel init error:', err); }
 
       });
@@ -2519,11 +2598,12 @@
             const tokenId = sale.onChainId || '?';
             const price = sale.price?.toFixed(4) || '?';
             const imgUrl = getPunkImageUrl(tokenId, sale.image_url);
+            const imgOnError = getPunkImageOnErrorAttr(tokenId);
             const time = sale.time ? timeAgo(sale.time) : '';
 
             container.innerHTML += `
               <a href="${OPENSEA_BASE}/${CONTRACT}/${tokenId}" target="_blank" class="activity-row punk-card" data-token-id="${tokenId}" style="animation: fadeSlideIn 0.3s ease ${index * 0.1}s both;">
-                <img class="activity-img" src="${imgUrl}" alt="No-Punk #${tokenId}" onerror="this.src='/api/onchain/token/52/image'" />
+                <img class="activity-img" src="${imgUrl}" alt="No-Punk #${tokenId}" onerror="${imgOnError}" />
                 <div class="activity-info">
                   <div class="activity-id">#${tokenId}</div>
                   <div class="activity-meta">
@@ -2571,10 +2651,11 @@
             const tokenId = listing.onChainId || '?';
             const price = listing.price?.toFixed(4) || '?';
             const imgUrl = getPunkImageUrl(tokenId, listing.image_url);
+            const imgOnError = getPunkImageOnErrorAttr(tokenId);
 
             container.innerHTML += `
               <a href="${OPENSEA_BASE}/${CONTRACT}/${tokenId}" target="_blank" class="activity-row punk-card" data-token-id="${tokenId}" style="animation: fadeSlideIn 0.3s ease ${index * 0.1}s both;">
-                <img class="activity-img" src="${imgUrl}" alt="No-Punk #${tokenId}" onerror="this.src='/api/onchain/token/52/image'" />
+                <img class="activity-img" src="${imgUrl}" alt="No-Punk #${tokenId}" onerror="${imgOnError}" />
                 <div class="activity-info">
                   <div class="activity-id">#${tokenId}</div>
                   <div class="activity-meta">
@@ -2610,9 +2691,10 @@
 
         const featuredIds = getRandomPunkIds(10);
         featuredIds.forEach(id => {
+          const imgOnError = getPunkImageOnErrorAttr(id);
           container.innerHTML += `
             <a href="${OPENSEA_BASE}/${CONTRACT}/${id}" target="_blank" class="featured-punk punk-card" data-token-id="${id}">
-              <img src="${getPunkImageUrl(id)}" alt="No-Punk #${id}" onerror="this.src='/api/onchain/token/52/image'" />
+              <img src="${getPunkImageUrl(id)}" alt="No-Punk #${id}" onerror="${imgOnError}" />
             </a>
           `;
         });
@@ -2629,9 +2711,10 @@
         container.innerHTML = '';
 
         NOIR_DE_NOIR.forEach(id => {
+          const imgOnError = getPunkImageOnErrorAttr(id);
           container.innerHTML += `
             <a href="${OPENSEA_BASE}/${CONTRACT}/${id}" target="_blank" class="noir-card punk-card" data-token-id="${id}">
-              <img class="noir-punk" src="${getPunkImageUrl(id)}" alt="Noir #${id}" onerror="this.style.display='none'" />
+              <img class="noir-punk" src="${getPunkImageUrl(id)}" alt="Noir #${id}" onerror="${imgOnError}" />
               <div class="noir-id">#${id}</div>
             </a>
           `;
@@ -2890,9 +2973,10 @@
         grid.innerHTML = visibleIds
           .map((tokenId) => {
             const imgUrl = getPunkImageUrl(tokenId);
+            const imgOnError = getPunkImageOnErrorAttr(tokenId);
             return `
               <a href="${OPENSEA_BASE}/${CONTRACT}/${tokenId}" target="_blank" class="collection-punk punk-card" data-token-id="${tokenId}" data-local-index="${tokenId}">
-                <img src="${imgUrl}" alt="No-Punk #${tokenId}" onerror="this.src='/api/onchain/token/52/image'" loading="lazy" />
+                <img src="${imgUrl}" alt="No-Punk #${tokenId}" onerror="${imgOnError}" loading="lazy" />
               </a>
             `;
           })
@@ -3358,11 +3442,14 @@
 
         normalizedIds.sort(compareTokenIds);
         return normalizedIds.map((tokenId) => {
-          const onchainImage = `${ONCHAIN_TOKEN_META_BASE}/${tokenId}/image`;
+          const safeTokenId = sanitizeTokenId(tokenId, 52);
+          const localImage = `${EXPLORER_IMAGE_BASE}/${safeTokenId}.svg`;
+          const onchainImage = `${ONCHAIN_TOKEN_META_BASE}/${safeTokenId}/image`;
           return {
             tokenId,
-            src: onchainImage,
-            srcExport: onchainImage,
+            src: localImage,
+            srcExport: localImage,
+            fallbackSrc: onchainImage,
           };
         });
       }
@@ -3446,7 +3533,7 @@
         const html = visibleItems
           .map((item) => `
             <div class="holder-grid-item">
-              <img src="${item.src}" alt="No-Punk #${item.tokenId}" loading="lazy" onerror="this.src='/api/onchain/token/52/image'" />
+              <img src="${item.src}" alt="No-Punk #${item.tokenId}" loading="lazy" onerror="${getPunkImageOnErrorAttr(item.tokenId)}" />
               <div class="holder-grid-id">#${item.tokenId}</div>
             </div>
           `)
@@ -3473,7 +3560,12 @@
             try {
               images[current] = await loadLookupImage(items[current].srcExport || items[current].src);
             } catch {
-              images[current] = null;
+              try {
+                const fallbackSrc = items[current]?.fallbackSrc;
+                images[current] = fallbackSrc ? await loadLookupImage(fallbackSrc) : null;
+              } catch {
+                images[current] = null;
+              }
             }
           }
         }
@@ -3653,6 +3745,7 @@
           return;
         }
 
+        initCollectionExplorerOnce().catch(() => {});
         result.textContent = 'Loading holder profile...';
         renderHolderWalletGrid([], address);
 

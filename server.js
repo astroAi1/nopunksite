@@ -333,6 +333,66 @@ const HOLDER_AUTO_REBUILD_RPC_URL = String(
     'https://base.llamarpc.com,https://base-rpc.publicnode.com,https://1rpc.io/base,https://mainnet.base.org'
 ).trim();
 
+const OPENSEA_QUEUE_DELAY_MS = parsePositiveIntEnv(
+  'OPENSEA_QUEUE_DELAY_MS',
+  120,
+  60,
+  2000
+);
+const OPENSEA_STATS_CACHE_TTL_MS = parsePositiveIntEnv(
+  'OPENSEA_STATS_CACHE_TTL_MS',
+  2 * 60 * 1000,
+  10 * 1000
+);
+const OPENSEA_RECENT_SALES_CACHE_TTL_MS = parsePositiveIntEnv(
+  'OPENSEA_RECENT_SALES_CACHE_TTL_MS',
+  45 * 1000,
+  10 * 1000
+);
+const OPENSEA_LISTINGS_CACHE_TTL_MS = parsePositiveIntEnv(
+  'OPENSEA_LISTINGS_CACHE_TTL_MS',
+  60 * 1000,
+  10 * 1000
+);
+const OPENSEA_SHOWCASE_CACHE_TTL_MS = parsePositiveIntEnv(
+  'OPENSEA_SHOWCASE_CACHE_TTL_MS',
+  15 * 60 * 1000,
+  60 * 1000
+);
+const LISTED_DEFAULT_MAX_PAGES = parsePositiveIntEnv(
+  'LISTED_DEFAULT_MAX_PAGES',
+  2,
+  1,
+  10
+);
+const LISTED_MAX_PAGES_CAP = parsePositiveIntEnv(
+  'LISTED_MAX_PAGES_CAP',
+  5,
+  1,
+  20
+);
+const LISTED_DEFAULT_RESULT_LIMIT = parsePositiveIntEnv(
+  'LISTED_DEFAULT_RESULT_LIMIT',
+  80,
+  8,
+  400
+);
+const LISTED_RESULT_LIMIT_CAP = parsePositiveIntEnv(
+  'LISTED_RESULT_LIMIT_CAP',
+  200,
+  8,
+  500
+);
+const LISTED_PAGE_SIZE_DEFAULT = parsePositiveIntEnv(
+  'LISTED_PAGE_SIZE_DEFAULT',
+  50,
+  20,
+  50
+);
+const SHOWCASE_DEBUG_LOGS =
+  /^(1|true|yes)$/i.test(String(process.env.SHOWCASE_DEBUG_LOGS || '').trim()) ||
+  String(process.env.NODE_ENV || '').trim().toLowerCase() === 'development';
+
 const fileJsonCache = new Map(); // filePath -> { mtimeMs, value }
 
 function readJsonFileCached(filePath) {
@@ -1061,6 +1121,58 @@ app.get('/api/etherscan/transfers', async (req, res) => {
 // -----------------------------
 const openSeaQueue = [];
 let openSeaActive = false;
+const apiResponseCache = new Map(); // key -> { value, expiresAt, inflight }
+
+async function getOrSetApiResponseCache(cacheKey, ttlMs, loader) {
+  const now = Date.now();
+  const cached = apiResponseCache.get(cacheKey);
+
+  if (cached && cached.value != null && now < cached.expiresAt) {
+    return cached.value;
+  }
+  if (cached && cached.inflight) {
+    return cached.inflight;
+  }
+
+  const staleValue = cached && cached.value != null ? cached.value : null;
+
+  const inflight = (async () => {
+    try {
+      const value = await loader();
+      apiResponseCache.set(cacheKey, {
+        value,
+        expiresAt: Date.now() + ttlMs,
+        inflight: null,
+      });
+      return value;
+    } catch (err) {
+      if (staleValue != null) {
+        apiResponseCache.set(cacheKey, {
+          value: staleValue,
+          expiresAt: Date.now() + Math.min(15000, Math.max(5000, Math.floor(ttlMs / 4))),
+          inflight: null,
+        });
+        return staleValue;
+      }
+      apiResponseCache.delete(cacheKey);
+      throw err;
+    }
+  })();
+
+  apiResponseCache.set(cacheKey, {
+    value: staleValue,
+    expiresAt: cached ? cached.expiresAt : 0,
+    inflight,
+  });
+
+  return inflight;
+}
+
+function parseBoundedInt(value, fallback, min, max) {
+  const parsed = Number.parseInt(String(value == null ? '' : value).trim(), 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
 
 function processOpenSeaQueue() {
   if (openSeaActive) return;
@@ -1075,7 +1187,7 @@ function processOpenSeaQueue() {
     .catch((err) => reject(err))
     .finally(() => {
       openSeaActive = false;
-      setTimeout(processOpenSeaQueue, 500); // ~2 req/s max
+      setTimeout(processOpenSeaQueue, OPENSEA_QUEUE_DELAY_MS);
     });
 }
 
@@ -1450,163 +1562,183 @@ app.get('/api/collection', async (req, res) => {
 // /api/showcase
 // =======================
 app.get('/api/showcase', async (req, res) => {
-  const seedBase = getDailySeedString();
-  const showcase = [];
-  const failedCollections = [];
+  try {
+    const seedBase = getDailySeedString();
+    const cacheKey = `showcase:${CHAIN}:${seedBase}`;
+    const payload = await getOrSetApiResponseCache(
+      cacheKey,
+      OPENSEA_SHOWCASE_CACHE_TTL_MS,
+      async () => {
+        const showcase = [];
+        const failedCollections = [];
 
-  for (const cfg of SHOWCASE_COLLECTIONS) {
-    let picked = null;
+        for (const cfg of SHOWCASE_COLLECTIONS) {
+          let picked = null;
 
-    // 1) Try slug-based list
-    try {
-      const slugUrl = `https://api.opensea.io/api/v2/collection/${cfg.key}/nfts?limit=50&chain=${CHAIN}`;
-      const data = await queueOpenSeaRequest(
-        slugUrl,
-        `Showcase collection ${cfg.key}`,
-        20000
-      );
+          // 1) Try slug-based list
+          try {
+            const slugUrl = `https://api.opensea.io/api/v2/collection/${cfg.key}/nfts?limit=50&chain=${CHAIN}`;
+            const data = await queueOpenSeaRequest(
+              slugUrl,
+              `Showcase collection ${cfg.key}`,
+              20000
+            );
 
-      const nfts = Array.isArray(data.nfts)
-        ? data.nfts
-        : Array.isArray(data.assets)
-        ? data.assets
-        : [];
+            const nfts = Array.isArray(data.nfts)
+              ? data.nfts
+              : Array.isArray(data.assets)
+              ? data.assets
+              : [];
 
-      if (nfts.length) {
-        const pickIndex = hashToRange(`${seedBase}:${cfg.key}`, nfts.length);
-        const nft = nfts[pickIndex];
+            if (nfts.length) {
+              const pickIndex = hashToRange(`${seedBase}:${cfg.key}`, nfts.length);
+              const nft = nfts[pickIndex];
 
-        const tokenId =
-          nft.identifier ||
-          nft.token_id ||
-          nft.tokenId ||
-          (nft.id && nft.id.tokenId) ||
-          null;
+              const tokenId =
+                nft.identifier ||
+                nft.token_id ||
+                nft.tokenId ||
+                (nft.id && nft.id.tokenId) ||
+                null;
 
-        const image_url = normaliseImageUrl(
-          nft.image_url ||
-            nft.image_original_url ||
-            nft.display_image_url ||
-            (nft.media &&
-              nft.media[0] &&
-              (nft.media[0].thumbnail || nft.media[0].gateway)) ||
-            ''
-        );
+              const image_url = normaliseImageUrl(
+                nft.image_url ||
+                  nft.image_original_url ||
+                  nft.display_image_url ||
+                  (nft.media &&
+                    nft.media[0] &&
+                    (nft.media[0].thumbnail || nft.media[0].gateway)) ||
+                  ''
+              );
 
-        const onChainId = tokenId || null;
+              const onChainId = tokenId || null;
 
-        if (cfg.contract && onChainId) {
-          const cacheKey = `${cfg.contract.toLowerCase()}:${onChainId}`;
-          nftCache.set(cacheKey, {
-            ...nft,
-            image_url,
-            onChainId,
-          });
-        }
+              if (cfg.contract && onChainId) {
+                const imageCacheKey = `${cfg.contract.toLowerCase()}:${onChainId}`;
+                nftCache.set(imageCacheKey, {
+                  ...nft,
+                  image_url,
+                  onChainId,
+                });
+              }
 
-        picked = {
-          key: cfg.key,
-          label: cfg.label,
-          projectLabel: cfg.label,
-          project: cfg.key,
-          collection: cfg.key,
-          contract: cfg.contract,
-          tokenId: onChainId ? String(onChainId) : '',
-          image_url,
-          onChainId,
-        };
-      } else {
-        console.warn(
-          `Showcase: collection ${cfg.key} returned no NFTs for slug-based fetch`
-        );
-      }
-    } catch (err) {
-      console.error(
-        `Showcase: slug-based fetch failed for collection ${cfg.key}`,
-        err && (err.message || err)
-      );
-    }
-
-    // 2) Fallback – token-id guesses
-    if (!picked && cfg.totalSupply && cfg.totalSupply > 0) {
-      const maxAttempts = 8;
-      for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        try {
-          const indexZeroBased = hashToRange(
-            `${seedBase}:${cfg.key}:fallback:${attempt}`,
-            cfg.totalSupply
-          );
-
-          let tokenId;
-          if (cfg.useTokenMap) {
-            tokenId = indexToTokenId(indexZeroBased);
-          } else {
-            tokenId = indexZeroBased + 1;
+              picked = {
+                key: cfg.key,
+                label: cfg.label,
+                projectLabel: cfg.label,
+                project: cfg.key,
+                collection: cfg.key,
+                contract: cfg.contract,
+                tokenId: onChainId ? String(onChainId) : '',
+                image_url,
+                onChainId,
+              };
+            } else {
+              console.warn(
+                `Showcase: collection ${cfg.key} returned no NFTs for slug-based fetch`
+              );
+            }
+          } catch (err) {
+            console.error(
+              `Showcase: slug-based fetch failed for collection ${cfg.key}`,
+              err && (err.message || err)
+            );
           }
 
-          const nftUrl = `https://api.opensea.io/api/v2/chain/${CHAIN}/contract/${cfg.contract}/nfts/${tokenId}`;
-          const data = await queueOpenSeaRequest(
-            nftUrl,
-            `Showcase fallback ${cfg.key}`,
-            15000
-          );
-          const nft = data.nft || data || {};
+          // 2) Fallback – token-id guesses
+          if (!picked && cfg.totalSupply && cfg.totalSupply > 0) {
+            const maxAttempts = 8;
+            for (let attempt = 0; attempt < maxAttempts; attempt++) {
+              try {
+                const indexZeroBased = hashToRange(
+                  `${seedBase}:${cfg.key}:fallback:${attempt}`,
+                  cfg.totalSupply
+                );
 
-          const image_url = normaliseImageUrl(
-            nft.image_url ||
-              nft.display_image_url ||
-              nft.image_original_url ||
-              nft.image ||
-              ''
-          );
+                let tokenId;
+                if (cfg.useTokenMap) {
+                  tokenId = indexToTokenId(indexZeroBased);
+                } else {
+                  tokenId = indexZeroBased + 1;
+                }
 
-          const onChainId =
-            nft.identifier || nft.token_id || tokenId || null;
+                const nftUrl = `https://api.opensea.io/api/v2/chain/${CHAIN}/contract/${cfg.contract}/nfts/${tokenId}`;
+                const data = await queueOpenSeaRequest(
+                  nftUrl,
+                  `Showcase fallback ${cfg.key}`,
+                  15000
+                );
+                const nft = data.nft || data || {};
 
-          const cacheKey = `${cfg.contract.toLowerCase()}:${onChainId}`;
-          nftCache.set(cacheKey, {
-            ...nft,
-            image_url,
-            onChainId,
-          });
+                const image_url = normaliseImageUrl(
+                  nft.image_url ||
+                    nft.display_image_url ||
+                    nft.image_original_url ||
+                    nft.image ||
+                    ''
+                );
 
-          picked = {
-            key: cfg.key,
-            label: cfg.label,
-            projectLabel: cfg.label,
-            project: cfg.key,
-            collection: cfg.key,
-            contract: cfg.contract,
-            tokenId: String(onChainId),
-            image_url,
-            onChainId,
-          };
+                const onChainId = nft.identifier || nft.token_id || tokenId || null;
 
-          break;
-        } catch (fallbackErr) {
-          console.error(
-            `Showcase fallback attempt ${attempt + 1} failed for ${cfg.key}`,
-            fallbackErr && (fallbackErr.message || fallbackErr)
-          );
+                const imageCacheKey = `${cfg.contract.toLowerCase()}:${onChainId}`;
+                nftCache.set(imageCacheKey, {
+                  ...nft,
+                  image_url,
+                  onChainId,
+                });
+
+                picked = {
+                  key: cfg.key,
+                  label: cfg.label,
+                  projectLabel: cfg.label,
+                  project: cfg.key,
+                  collection: cfg.key,
+                  contract: cfg.contract,
+                  tokenId: String(onChainId),
+                  image_url,
+                  onChainId,
+                };
+
+                break;
+              } catch (fallbackErr) {
+                console.error(
+                  `Showcase fallback attempt ${attempt + 1} failed for ${cfg.key}`,
+                  fallbackErr && (fallbackErr.message || fallbackErr)
+                );
+              }
+            }
+          }
+
+          if (picked) {
+            showcase.push(picked);
+          } else {
+            failedCollections.push(cfg.key);
+          }
         }
+
+        return {
+          seed: seedBase,
+          showcase,
+          failedCollections,
+        };
       }
+    );
+
+    if (SHOWCASE_DEBUG_LOGS) {
+      console.log('Showcase debug:', JSON.stringify(payload, null, 2));
     }
 
-    if (picked) {
-      showcase.push(picked);
-    } else {
-      failedCollections.push(cfg.key);
-    }
+    res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=900');
+    res.json(payload);
+  } catch (err) {
+    console.error('Showcase API error:', err.message || err);
+    res.status(502).json({
+      seed: getDailySeedString(),
+      showcase: [],
+      failedCollections: SHOWCASE_COLLECTIONS.map((cfg) => cfg.key),
+      error: 'Showcase unavailable',
+    });
   }
-
-  const payload = {
-    seed: seedBase,
-    showcase,
-    failedCollections,
-  };
-
-  console.log('Showcase debug:', JSON.stringify(payload, null, 2));
-  res.json(payload);
 });
 
 // =======================
@@ -1614,73 +1746,82 @@ app.get('/api/showcase', async (req, res) => {
 // =======================
 app.get('/api/stats', async (req, res) => {
   try {
-    const url = `https://api.opensea.io/api/v2/collections/${COLLECTION_SLUG}/stats`;
-    const data = await queueOpenSeaRequest(url, 'Stats', 25000);
+    const payload = await getOrSetApiResponseCache(
+      `stats:${CHAIN}:${COLLECTION_SLUG}`,
+      OPENSEA_STATS_CACHE_TTL_MS,
+      async () => {
+        const url = `https://api.opensea.io/api/v2/collections/${COLLECTION_SLUG}/stats`;
+        const data = await queueOpenSeaRequest(url, 'Stats', 25000);
 
-    const rawStats = data.stats || data.total || data || {};
+        const rawStats = data.stats || data.total || data || {};
 
-    function coerceNumber(v) {
-      if (v == null) return null;
-      if (typeof v === 'object') {
-        if (v.quantity != null) return coerceNumber(v.quantity);
-        if (v.total != null) return coerceNumber(v.total);
-        if (v.value != null) return coerceNumber(v.value);
-      }
-      const n = Number(v);
-      return Number.isFinite(n) ? n : null;
-    }
+        function coerceNumber(v) {
+          if (v == null) return null;
+          if (typeof v === 'object') {
+            if (v.quantity != null) return coerceNumber(v.quantity);
+            if (v.total != null) return coerceNumber(v.total);
+            if (v.value != null) return coerceNumber(v.value);
+          }
+          const n = Number(v);
+          return Number.isFinite(n) ? n : null;
+        }
 
-    const floorPrice = coerceNumber(
-      rawStats.floor_price ??
-        rawStats.total_floor_price ??
-        rawStats.floorPrice ??
-        rawStats.floor ??
-        rawStats.floor_price_eth ??
-        null
-    );
+        const floorPrice = coerceNumber(
+          rawStats.floor_price ??
+            rawStats.total_floor_price ??
+            rawStats.floorPrice ??
+            rawStats.floor ??
+            rawStats.floor_price_eth ??
+            null
+        );
 
-    let totalVolume = coerceNumber(
-      rawStats.total_volume ??
-        rawStats.volume_traded ??
-        rawStats.totalVolume ??
-        rawStats.volume ??
-        rawStats.total_volume_eth ??
-        null
-    );
+        let totalVolume = coerceNumber(
+          rawStats.total_volume ??
+            rawStats.volume_traded ??
+            rawStats.totalVolume ??
+            rawStats.volume ??
+            rawStats.total_volume_eth ??
+            null
+        );
 
-    if (totalVolume == null) {
-      try {
-        for (const [key, value] of Object.entries(rawStats)) {
-          if (!/volume/i.test(key)) continue;
-          const n = coerceNumber(value);
-          if (n == null) continue;
-          if (totalVolume == null || n > totalVolume) {
-            totalVolume = n;
+        if (totalVolume == null) {
+          try {
+            for (const [key, value] of Object.entries(rawStats)) {
+              if (!/volume/i.test(key)) continue;
+              const n = coerceNumber(value);
+              if (n == null) continue;
+              if (totalVolume == null || n > totalVolume) {
+                totalVolume = n;
+              }
+            }
+          } catch (scanErr) {
+            console.warn('Could not auto-detect totalVolume from stats', scanErr);
           }
         }
-      } catch (scanErr) {
-        console.warn('Could not auto-detect totalVolume from stats', scanErr);
-      }
-    }
 
-    const numOwners = coerceNumber(
-      rawStats.num_owners ??
-        rawStats.numOwners ??
-        rawStats.owners ??
-        rawStats.unique_owners ??
-        null
+        const numOwners = coerceNumber(
+          rawStats.num_owners ??
+            rawStats.numOwners ??
+            rawStats.owners ??
+            rawStats.unique_owners ??
+            null
+        );
+
+        if (floorPrice != null) rawStats.floor_price = floorPrice;
+        if (totalVolume != null) rawStats.total_volume = totalVolume;
+        if (numOwners != null) rawStats.num_owners = numOwners;
+
+        return {
+          floorPrice,
+          totalVolume,
+          numOwners,
+          stats: rawStats,
+        };
+      }
     );
 
-    if (floorPrice != null) rawStats.floor_price = floorPrice;
-    if (totalVolume != null) rawStats.total_volume = totalVolume;
-    if (numOwners != null) rawStats.num_owners = numOwners;
-
-    res.json({
-      floorPrice,
-      totalVolume,
-      numOwners,
-      stats: rawStats,
-    });
+    res.setHeader('Cache-Control', 'public, max-age=30, stale-while-revalidate=120');
+    res.json(payload);
   } catch (err) {
     console.error('Stats API error:', err.message || err);
     res.status(502).json({
@@ -1698,60 +1839,70 @@ app.get('/api/stats', async (req, res) => {
 // =======================
 app.get('/api/recent-sales', async (req, res) => {
   try {
-    const url =
-      `https://api.opensea.io/api/v2/events/collection/${COLLECTION_SLUG}` +
-      `?event_type=sale&limit=5&chain=${CHAIN}`;
+    const limit = parseBoundedInt(req.query.limit, 5, 1, 20);
+    const payload = await getOrSetApiResponseCache(
+      `recent-sales:${CHAIN}:${COLLECTION_SLUG}:limit=${limit}`,
+      OPENSEA_RECENT_SALES_CACHE_TTL_MS,
+      async () => {
+        const url =
+          `https://api.opensea.io/api/v2/events/collection/${COLLECTION_SLUG}` +
+          `?event_type=sale&limit=${limit}&chain=${CHAIN}`;
 
-    const data = await queueOpenSeaRequest(url, 'Recent sales', 25000);
-    const events = data.asset_events || data.events || [];
+        const data = await queueOpenSeaRequest(url, 'Recent sales', 25000);
+        const events = data.asset_events || data.events || [];
 
-    const sales = events.map((ev) => {
-      const asset = ev.asset || ev.nft || {};
-      const tokenId = asset.token_id || asset.identifier || null;
+        const sales = events.map((ev) => {
+          const asset = ev.asset || ev.nft || {};
+          const tokenId = asset.token_id || asset.identifier || null;
 
-      const payment = ev.payment || ev.payment_token || {};
-      const totalPrice = payment.quantity || ev.total_price || null;
-      const decimals =
-        payment.decimals != null ? Number(payment.decimals) : 18;
-      const symbol =
-        (payment.token && payment.token.symbol) ||
-        payment.symbol ||
-        'ETH';
+          const payment = ev.payment || ev.payment_token || {};
+          const totalPrice = payment.quantity || ev.total_price || null;
+          const decimals =
+            payment.decimals != null ? Number(payment.decimals) : 18;
+          const symbol =
+            (payment.token && payment.token.symbol) ||
+            payment.symbol ||
+            'ETH';
 
-      const price =
-        totalPrice != null ? Number(totalPrice) / 10 ** decimals : null;
+          const price =
+            totalPrice != null ? Number(totalPrice) / 10 ** decimals : null;
 
-      const time =
-        ev.event_timestamp ||
-        (ev.transaction && ev.transaction.timestamp) ||
-        ev.created_date ||
-        null;
+          const time =
+            ev.event_timestamp ||
+            (ev.transaction && ev.transaction.timestamp) ||
+            ev.created_date ||
+            null;
 
-      const image_url = normaliseImageUrl(
-        asset.image_url ||
-          asset.image_original_url ||
-          asset.image_preview_url ||
-          asset.display_image_url ||
-          ''
-      );
+          const image_url = normaliseImageUrl(
+            asset.image_url ||
+              asset.image_original_url ||
+              asset.image_preview_url ||
+              asset.display_image_url ||
+              ''
+          );
 
-      // include buyer so "Sold to" text can show correctly
-      const buyer =
-        (ev.to_account && ev.to_account.address) ||
-        (ev.winner_account && ev.winner_account.address) ||
-        null;
+          // include buyer so "Sold to" text can show correctly
+          const buyer =
+            (ev.to_account && ev.to_account.address) ||
+            (ev.winner_account && ev.winner_account.address) ||
+            null;
 
-      return {
-        onChainId: tokenId,
-        price,
-        unit: symbol,
-        time,
-        image_url,
-        buyer,
-      };
-    });
+          return {
+            onChainId: tokenId,
+            price,
+            unit: symbol,
+            time,
+            image_url,
+            buyer,
+          };
+        });
 
-    res.json({ sales });
+        return { sales };
+      }
+    );
+
+    res.setHeader('Cache-Control', 'public, max-age=15, stale-while-revalidate=90');
+    res.json(payload);
   } catch (err) {
     console.error('Recent sales API error:', err.message || err);
     res.status(502).json({ sales: [], error: 'Recent sales unavailable' });
@@ -1763,153 +1914,189 @@ app.get('/api/recent-sales', async (req, res) => {
 // =======================
 app.get('/api/listed', async (req, res) => {
   try {
-    // Paginate through all listings
-    let allListings = [];
-    let nextCursor = null;
-    const maxPages = 10; // Safety limit
-    let page = 0;
+    const maxPages = parseBoundedInt(
+      req.query.pages,
+      LISTED_DEFAULT_MAX_PAGES,
+      1,
+      LISTED_MAX_PAGES_CAP
+    );
+    const limit = parseBoundedInt(
+      req.query.limit,
+      LISTED_DEFAULT_RESULT_LIMIT,
+      8,
+      LISTED_RESULT_LIMIT_CAP
+    );
+    const pageSize = parseBoundedInt(
+      req.query.pageSize,
+      LISTED_PAGE_SIZE_DEFAULT,
+      20,
+      50
+    );
 
-    do {
-      const url = nextCursor
-        ? `https://api.opensea.io/api/v2/listings/collection/${COLLECTION_SLUG}/all?limit=50&chain=${CHAIN}&next=${nextCursor}`
-        : `https://api.opensea.io/api/v2/listings/collection/${COLLECTION_SLUG}/all?limit=50&chain=${CHAIN}`;
+    const cacheKey =
+      `listed:${CHAIN}:${COLLECTION_SLUG}:pages=${maxPages}:limit=${limit}:pageSize=${pageSize}`;
 
-      const data = await queueOpenSeaRequest(url, `Listings page ${page + 1}`);
-      const listings = data.listings || [];
-      allListings = allListings.concat(listings);
-      nextCursor = data.next || null;
-      page++;
-    } while (nextCursor && page < maxPages);
+    const payload = await getOrSetApiResponseCache(
+      cacheKey,
+      OPENSEA_LISTINGS_CACHE_TTL_MS,
+      async () => {
+        let allListings = [];
+        let nextCursor = null;
+        let page = 0;
+        const fetchTarget = Math.max(limit * 2, pageSize);
 
-    const rawListings = allListings;
+        do {
+          const url = nextCursor
+            ? `https://api.opensea.io/api/v2/listings/collection/${COLLECTION_SLUG}/all?limit=${pageSize}&chain=${CHAIN}&next=${nextCursor}`
+            : `https://api.opensea.io/api/v2/listings/collection/${COLLECTION_SLUG}/all?limit=${pageSize}&chain=${CHAIN}`;
 
-    const mapped = rawListings.map((l) => {
-      const nft = l.nft || {};
-      const tokenId =
-        (l.protocol_data &&
-          l.protocol_data.parameters &&
-          l.protocol_data.parameters.offer &&
-          l.protocol_data.parameters.offer[0] &&
-          l.protocol_data.parameters.offer[0].identifierOrCriteria) ||
-        nft.identifier ||
-        null;
+          const data = await queueOpenSeaRequest(url, `Listings page ${page + 1}`);
+          const listings = Array.isArray(data.listings) ? data.listings : [];
+          if (!listings.length) break;
+          allListings = allListings.concat(listings);
+          nextCursor = data.next || null;
+          page += 1;
+        } while (nextCursor && page < maxPages && allListings.length < fetchTarget);
 
-      const priceRaw =
-        l.price && l.price.current && l.price.current.value
-          ? String(l.price.current.value)
-          : null;
-      const decimals =
-        (l.price &&
-          l.price.current &&
-          l.price.current.decimals &&
-          Number(l.price.current.decimals)) ||
-        18;
+        const mapped = allListings.map((l) => {
+          const nft = l.nft || {};
+          const tokenId =
+            (l.protocol_data &&
+              l.protocol_data.parameters &&
+              l.protocol_data.parameters.offer &&
+              l.protocol_data.parameters.offer[0] &&
+              l.protocol_data.parameters.offer[0].identifierOrCriteria) ||
+            nft.identifier ||
+            null;
 
-      const price =
-        priceRaw != null ? Number(priceRaw) / 10 ** decimals : null;
+          const priceRaw =
+            l.price && l.price.current && l.price.current.value
+              ? String(l.price.current.value)
+              : null;
+          const decimals =
+            (l.price &&
+              l.price.current &&
+              l.price.current.decimals &&
+              Number(l.price.current.decimals)) ||
+            18;
 
-      const image_url = normaliseImageUrl(
-        nft.image_url ||
-          nft.image_original_url ||
-          nft.display_image_url ||
-          ''
-      );
+          const price =
+            priceRaw != null ? Number(priceRaw) / 10 ** decimals : null;
 
-      // include seller so "Listed by" text can show correctly
-      const seller =
-        (l.maker && l.maker.address) ||
-        (l.seller && l.seller.address) ||
-        null;
-
-      return {
-        onChainId: tokenId,
-        price,
-        unit: 'ETH',
-        source: 'OpenSea',
-        image_url,
-        seller,
-      };
-    });
-
-    // Deduplicate listings by tokenId, keeping only the lowest-priced listing for each
-    const deduped = [];
-    const seenTokenIds = new Map(); // tokenId -> index in deduped array
-
-    for (const listing of mapped) {
-      if (!listing.onChainId) continue;
-
-      const tokenId = String(listing.onChainId);
-      const existingIndex = seenTokenIds.get(tokenId);
-
-      if (existingIndex === undefined) {
-        // First time seeing this tokenId
-        seenTokenIds.set(tokenId, deduped.length);
-        deduped.push(listing);
-      } else {
-        // Already have a listing for this tokenId - keep the lower price
-        const existing = deduped[existingIndex];
-        if (listing.price != null && (existing.price == null || listing.price < existing.price)) {
-          deduped[existingIndex] = listing;
-        }
-      }
-    }
-
-    const listingsWithImages = await Promise.all(
-      deduped.map(async (item) => {
-        if (!item.onChainId) return item;
-
-        const cacheKey = `${CONTRACT.toLowerCase()}:${item.onChainId}`;
-        const cached = nftCache.get(cacheKey);
-
-        if (cached && cached.image_url) {
-          return { ...item, image_url: cached.image_url };
-        }
-
-        if (item.image_url) {
-          nftCache.set(cacheKey, {
-            ...(cached || {}),
-            onChainId: String(item.onChainId),
-            image_url: item.image_url,
-          });
-          return item;
-        }
-
-        try {
-          const nftUrl = `https://api.opensea.io/api/v2/chain/${CHAIN}/contract/${CONTRACT}/nfts/${item.onChainId}`;
-          const nftData = await queueOpenSeaRequest(
-            nftUrl,
-            'Listing NFT image',
-            15000
-          );
-          const nft = nftData.nft || nftData || {};
           const image_url = normaliseImageUrl(
             nft.image_url ||
-              nft.display_image_url ||
               nft.image_original_url ||
-              nft.image ||
+              nft.display_image_url ||
               ''
           );
 
-          if (image_url) {
-            const payload = {
-              ...(cached || {}),
-              onChainId: String(item.onChainId),
-              image_url,
-            };
-            nftCache.set(cacheKey, payload);
-            return { ...item, image_url };
-          }
+          const seller =
+            (l.maker && l.maker.address) ||
+            (l.seller && l.seller.address) ||
+            null;
 
-          return item;
-        } catch (e) {
-          console.error('Failed to fetch listing NFT image', e.message || e);
-          return item;
+          return {
+            onChainId: tokenId,
+            price,
+            unit: 'ETH',
+            source: 'OpenSea',
+            image_url,
+            seller,
+          };
+        });
+
+        // Deduplicate listings by tokenId, keeping only the lowest-priced listing for each.
+        const deduped = [];
+        const seenTokenIds = new Map(); // tokenId -> index in deduped array
+
+        for (const listing of mapped) {
+          if (!listing.onChainId) continue;
+
+          const tokenId = String(listing.onChainId);
+          const existingIndex = seenTokenIds.get(tokenId);
+
+          if (existingIndex === undefined) {
+            seenTokenIds.set(tokenId, deduped.length);
+            deduped.push(listing);
+          } else {
+            const existing = deduped[existingIndex];
+            if (
+              listing.price != null &&
+              (existing.price == null || listing.price < existing.price)
+            ) {
+              deduped[existingIndex] = listing;
+            }
+          }
         }
-      })
+
+        deduped.sort((a, b) => {
+          if (a.price == null && b.price == null) return 0;
+          if (a.price == null) return 1;
+          if (b.price == null) return -1;
+          return a.price - b.price;
+        });
+
+        const selected = deduped.slice(0, limit);
+        const listingsWithImages = await Promise.all(
+          selected.map(async (item) => {
+            if (!item.onChainId) return item;
+
+            const imageCacheKey = `${CONTRACT.toLowerCase()}:${item.onChainId}`;
+            const cached = nftCache.get(imageCacheKey);
+
+            if (cached && cached.image_url) {
+              return { ...item, image_url: cached.image_url };
+            }
+
+            if (item.image_url) {
+              nftCache.set(imageCacheKey, {
+                ...(cached || {}),
+                onChainId: String(item.onChainId),
+                image_url: item.image_url,
+              });
+              return item;
+            }
+
+            try {
+              const nftUrl = `https://api.opensea.io/api/v2/chain/${CHAIN}/contract/${CONTRACT}/nfts/${item.onChainId}`;
+              const nftData = await queueOpenSeaRequest(
+                nftUrl,
+                'Listing NFT image',
+                15000
+              );
+              const nft = nftData.nft || nftData || {};
+              const image_url = normaliseImageUrl(
+                nft.image_url ||
+                  nft.display_image_url ||
+                  nft.image_original_url ||
+                  nft.image ||
+                  ''
+              );
+
+              if (image_url) {
+                const imagePayload = {
+                  ...(cached || {}),
+                  onChainId: String(item.onChainId),
+                  image_url,
+                };
+                nftCache.set(imageCacheKey, imagePayload);
+                return { ...item, image_url };
+              }
+
+              return item;
+            } catch (e) {
+              console.error('Failed to fetch listing NFT image', e.message || e);
+              return item;
+            }
+          })
+        );
+
+        return { listings: listingsWithImages };
+      }
     );
 
-    const listings = listingsWithImages;
-    res.json({ listings });
+    res.setHeader('Cache-Control', 'public, max-age=20, stale-while-revalidate=120');
+    res.json(payload);
   } catch (err) {
     console.error('Listings API error:', err.message || err);
     res.status(502).json({ listings: [], error: 'Listings unavailable' });

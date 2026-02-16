@@ -14,6 +14,9 @@ function parseArgs() {
     if (arg === '--total') parsed.total = Number.parseInt(next, 10);
     if (arg === '--out-dir') parsed.outDir = next;
     if (arg === '--publish-dir') parsed.publishDir = next;
+    if (arg === '--image-source-dir') parsed.imageSourceDir = next;
+    if (arg === '--image-publish-dir') parsed.imagePublishDir = next;
+    if (arg === '--no-publish-images') parsed.publishImages = false;
     if (arg === '--token-map') parsed.tokenMapPath = next;
     if (arg === '--use-token-map') parsed.useTokenMap = true;
     if (arg === '--onchain-traits') parsed.onchainTraitsPath = next;
@@ -25,6 +28,9 @@ function parseArgs() {
     total: Number.isFinite(parsed.total) ? parsed.total : 10000,
     outDir: parsed.outDir || './public/data/explorer',
     publishDir: parsed.publishDir || './explorer-data',
+    imageSourceDir: parsed.imageSourceDir || './public/data/explorer/images',
+    imagePublishDir: parsed.imagePublishDir || './explorer-data/images',
+    publishImages: parsed.publishImages !== false,
     tokenMapPath: parsed.tokenMapPath || './public/token_map.json',
     useTokenMap: Boolean(parsed.useTokenMap),
     onchainTraitsPath: parsed.onchainTraitsPath || './public/data/explorer/onchain_traits.json',
@@ -207,6 +213,8 @@ async function main() {
   const rootDir = path.resolve(cwd, cfg.rootDir);
   const outDir = path.resolve(cwd, cfg.outDir);
   const publishDir = path.resolve(cwd, cfg.publishDir);
+  const imageSourceDir = path.resolve(cwd, cfg.imageSourceDir);
+  const imagePublishDir = path.resolve(cwd, cfg.imagePublishDir);
   const tokenMapPath = path.resolve(cwd, cfg.tokenMapPath);
   const onchainTraitsPath = path.resolve(cwd, cfg.onchainTraitsPath);
 
@@ -361,6 +369,20 @@ async function main() {
   await fs.writeFile(publishTraitIndexPath, JSON.stringify(traitIndexPayload));
   await fs.writeFile(publishTokenBlobPath, JSON.stringify(tokenBlobPayload));
 
+  let publishedImageCount = 0;
+  if (cfg.publishImages) {
+    try {
+      await fs.mkdir(imagePublishDir, { recursive: true });
+      // Node's fs.cp is incremental-friendly and fast for local rebuild loops.
+      await fs.cp(imageSourceDir, imagePublishDir, { recursive: true, force: true });
+      const imageFiles = await fs.readdir(imagePublishDir);
+      publishedImageCount = imageFiles.length;
+    } catch (err) {
+      console.warn(`Could not publish explorer images from ${imageSourceDir} -> ${imagePublishDir}`);
+      console.warn(err && (err.message || err));
+    }
+  }
+
   const [traitStat, blobStat] = await Promise.all([
     fs.stat(traitIndexPath),
     fs.stat(tokenBlobPath),
@@ -378,6 +400,9 @@ async function main() {
   console.log(
     `Token blob published: ${publishTokenBlobPath} (${(publishBlobStat.size / 1024).toFixed(1)} KB)`
   );
+  if (cfg.publishImages) {
+    console.log(`Explorer images published: ${imagePublishDir} (${publishedImageCount} files)`);
+  }
 
   if (missingMetadata.length) {
     console.warn(`Missing metadata files: ${missingMetadata.length}`);

@@ -2196,6 +2196,7 @@
       const OPENSEA_ITEM_BASE = 'https://opensea.io/item/base';
       const EXPLORER_TRAIT_INDEX_PATH = '/explorer-data/trait_to_token_ids.json';
       const EXPLORER_TOKEN_BLOB_PATH = '/explorer-data/token_trait_blob.json';
+      const EXPLORER_IMAGE_BASE = '/explorer-data/images';
       const TOTAL_SUPPLY = 10000;
       const ONCHAIN_TOKEN_META_BASE = `${API_BASE}/onchain/token`;
 
@@ -2262,11 +2263,12 @@
       // Prefer precomputed onchain image URL from explorer blobs, then runtime fallback.
       function getPunkImageUrl(tokenId, preferredUrl = '') {
         const safeId = sanitizeTokenId(tokenId, 52);
+        const staticExplorerPath = `${EXPLORER_IMAGE_BASE}/${safeId}.svg`;
         const onchainPath = `${ONCHAIN_TOKEN_META_BASE}/${safeId}/image`;
         const preferred = normalizeImageSource(preferredUrl);
         if (preferred && !preferred.startsWith('<svg')) {
           if (/^\/public\/data\/explorer\/images\/\d+\.svg$/i.test(preferred)) {
-            return onchainPath;
+            return preferred.replace('/public/data/explorer/images/', `${EXPLORER_IMAGE_BASE}/`);
           }
           return preferred;
         }
@@ -2275,12 +2277,12 @@
         const indexed = normalizeImageSource(token?.imageUrl || '');
         if (indexed && !indexed.startsWith('<svg')) {
           if (/^\/public\/data\/explorer\/images\/\d+\.svg$/i.test(indexed)) {
-            return onchainPath;
+            return indexed.replace('/public/data/explorer/images/', `${EXPLORER_IMAGE_BASE}/`);
           }
           return indexed;
         }
 
-        return onchainPath;
+        return staticExplorerPath || onchainPath;
       }
 
       function extractLookupTraitsHtml(data) {
@@ -3632,11 +3634,12 @@
         normalizedIds.sort(compareTokenIds);
         return normalizedIds.map((tokenId) => {
           const safeTokenId = sanitizeTokenId(tokenId, 52);
+          const preferredImage = getPunkImageUrl(safeTokenId);
           const onchainImage = `${ONCHAIN_TOKEN_META_BASE}/${safeTokenId}/image`;
           return {
             tokenId,
-            src: onchainImage,
-            srcExport: onchainImage,
+            src: preferredImage,
+            srcExport: preferredImage,
             fallbackSrc: onchainImage,
           };
         });

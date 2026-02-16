@@ -3138,9 +3138,13 @@
         spacer.style.height = `${Math.max(totalRows * rowHeight, rowHeight)}px`;
         grid.style.setProperty('--collection-columns', String(columns));
 
-        const bufferRows = 4;
+        const bufferRows = window.innerWidth <= 768 ? 1 : 2;
         const startRow = Math.max(0, Math.floor(viewport.scrollTop / rowHeight) - bufferRows);
-        const visibleRows = Math.ceil(viewport.clientHeight / rowHeight) + bufferRows * 2;
+        const maxRenderRows = window.innerWidth <= 768 ? 8 : 10;
+        const visibleRows = Math.min(
+          maxRenderRows,
+          Math.ceil(viewport.clientHeight / rowHeight) + bufferRows * 2
+        );
         const endRow = Math.min(totalRows, startRow + visibleRows);
 
         const startIndex = startRow * columns;

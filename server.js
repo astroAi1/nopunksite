@@ -2398,6 +2398,7 @@ const ONCHAIN_RPC_URLS = String(
 
 const onchainTokenCache = new Map();
 let onchainContracts = null;
+const publicAssetExistsCache = new Map();
 
 function normalizeIpfsUri(value) {
   if (!value) return '';
@@ -2407,6 +2408,29 @@ function normalizeIpfsUri(value) {
     return `https://ipfs.io/ipfs/${text.slice('ipfs://'.length).replace(/^ipfs\//, '')}`;
   }
   return text;
+}
+
+function isLocalPublicPath(value) {
+  const text = String(value || '').trim();
+  return text.startsWith('/public/');
+}
+
+function doesLocalPublicAssetExist(publicPath) {
+  const normalized = String(publicPath || '').trim();
+  if (!normalized || !isLocalPublicPath(normalized)) return false;
+
+  const cached = publicAssetExistsCache.get(normalized);
+  if (cached != null) return cached;
+
+  const absPath = path.join(__dirname, normalized.replace(/^\/+/, ''));
+  let exists = false;
+  try {
+    exists = fs.existsSync(absPath);
+  } catch {
+    exists = false;
+  }
+  publicAssetExistsCache.set(normalized, exists);
+  return exists;
 }
 
 function decodeDataJsonUri(uri) {
@@ -2534,42 +2558,36 @@ async function fetchJsonFromRemoteUrl(url, timeoutMs = 20000) {
   }
 }
 
-async function fetchBufferFromRemoteUrl(url, timeoutMs = 25000) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const res = await fetchFn(url, {
-      headers: { accept: 'image/*,*/*' },
-      signal: controller.signal,
-    });
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`Remote image fetch failed (${res.status}): ${body.slice(0, 180)}`);
-    }
-    const contentType = (res.headers.get('content-type') || 'application/octet-stream').toLowerCase();
-    const body = Buffer.from(await res.arrayBuffer());
-    return { contentType, body };
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 async function getOnchainTokenMetadata(tokenId, options = {}) {
   const requireImage = options && options.requireImage === true;
+  const bypassCache = options && options.bypassCache === true;
+  const skipSnapshot = options && options.skipSnapshot === true;
   const key = String(tokenId);
-  const cached = onchainTokenCache.get(key);
-  if (cached) {
-    const resolved = cached instanceof Promise ? await cached : cached;
-    if (!requireImage || getImageCandidateFromMetadata(resolved)) {
-      return resolved;
+
+  if (!bypassCache) {
+    const cached = onchainTokenCache.get(key);
+    if (cached) {
+      const resolved = cached instanceof Promise ? await cached : cached;
+      if (!requireImage || getImageCandidateFromMetadata(resolved)) {
+        return resolved;
+      }
     }
   }
 
-  const snapshotMeta = getOnchainSnapshotMetadata(tokenId);
-  if (snapshotMeta && (!requireImage || getImageCandidateFromMetadata(snapshotMeta))) {
-    onchainTokenCache.set(key, snapshotMeta);
-    return snapshotMeta;
+  if (!skipSnapshot) {
+    const snapshotMeta = getOnchainSnapshotMetadata(tokenId);
+    if (snapshotMeta) {
+      const snapshotImage = getImageCandidateFromMetadata(snapshotMeta);
+      const snapshotImageUsable =
+        !requireImage ||
+        (snapshotImage &&
+          (!isLocalPublicPath(snapshotImage) || doesLocalPublicAssetExist(snapshotImage)));
+
+      if (snapshotImageUsable) {
+        onchainTokenCache.set(key, snapshotMeta);
+        return snapshotMeta;
+      }
+    }
   }
 
   const inflight = (async () => {
@@ -2601,7 +2619,9 @@ async function getOnchainTokenMetadata(tokenId, options = {}) {
     };
   })();
 
-  onchainTokenCache.set(key, inflight);
+  if (!bypassCache) {
+    onchainTokenCache.set(key, inflight);
+  }
   try {
     const resolved = await inflight;
     onchainTokenCache.set(key, resolved);
@@ -2650,8 +2670,20 @@ app.get('/api/onchain/token/:tokenId/image', async (req, res) => {
       return res.status(400).json({ error: 'Invalid tokenId' });
     }
 
-    const metadata = await getOnchainTokenMetadata(tokenId, { requireImage: true });
-    const imageValue = getImageCandidateFromMetadata(metadata);
+    let metadata = await getOnchainTokenMetadata(tokenId, { requireImage: true });
+    let imageValue = getImageCandidateFromMetadata(metadata);
+
+    // If snapshot points at a local file that is not present on this deployment,
+    // force a chain-backed metadata refresh for this token.
+    if (isLocalPublicPath(imageValue) && !doesLocalPublicAssetExist(imageValue)) {
+      metadata = await getOnchainTokenMetadata(tokenId, {
+        requireImage: true,
+        bypassCache: true,
+        skipSnapshot: true,
+      });
+      imageValue = getImageCandidateFromMetadata(metadata);
+    }
+
     if (!imageValue) {
       return res.status(404).json({ error: 'Onchain image unavailable' });
     }
@@ -2671,14 +2703,15 @@ app.get('/api/onchain/token/:tokenId/image', async (req, res) => {
 
     const normalizedUrl = normalizeIpfsUri(imageValue);
     if (normalizedUrl.startsWith('/public/')) {
+      if (!doesLocalPublicAssetExist(normalizedUrl)) {
+        return res.status(404).json({ error: 'Onchain image cache file unavailable' });
+      }
       res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
       return res.redirect(302, normalizedUrl);
     }
     if (/^https?:\/\//i.test(normalizedUrl)) {
-      const remote = await fetchBufferFromRemoteUrl(normalizedUrl, 25000);
       res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
-      res.setHeader('Content-Type', remote.contentType || 'application/octet-stream');
-      return res.send(remote.body);
+      return res.redirect(302, normalizedUrl);
     }
 
     return res.status(404).json({ error: 'Unsupported onchain image format' });

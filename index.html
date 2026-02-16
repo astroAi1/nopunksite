@@ -2011,7 +2011,7 @@
       <div class="container">
         <div class="section-header">
           <h2 class="section-title">Holders</h2>
-          <p class="section-subtitle">Owner intelligence snapshot</p>
+          <p class="section-subtitle">Owner intelligence live</p>
         </div>
 
         <div class="holder-metrics">
@@ -3759,7 +3759,7 @@
         if (!walletItems.length) {
           exportBtn.disabled = true;
           if (randomizeBtn) randomizeBtn.disabled = true;
-          metaEl.textContent = address ? '0 holdings in snapshot' : 'No wallet loaded';
+          metaEl.textContent = address ? '0 live holdings' : 'No wallet loaded';
           previewEl.innerHTML = '<div class="activity-empty">No holdings to preview.</div>';
           previewEl.style.removeProperty('--holder-preview-columns');
           return;
@@ -3963,7 +3963,7 @@
           const cohortsData = cohortsRes.ok ? await cohortsRes.json() : { cohorts: [] };
 
           if (!summaryRes.ok || !summaryData) {
-            const errText = 'Holder snapshot unavailable. Run npm run build:holders';
+            const errText = 'Holder data unavailable';
             updatedEl.textContent = errText;
             renderHolderLoadingFallback(errText);
             return;
@@ -3973,7 +3973,7 @@
           const sourceTransferCount = Number(summaryData?.source?.transferCount || 0);
 
           if ((Number(summary.supplyAccounted) || 0) === 0 && sourceTransferCount === 0) {
-            const errText = 'Holder snapshot is empty. Rebuild with npm run build:holders:local.';
+            const errText = 'Live holder data currently empty.';
             updatedEl.textContent = errText;
             renderHolderLoadingFallback(errText);
             return;
@@ -3991,9 +3991,9 @@
           renderHolderCohorts(cohortsData.cohorts || []);
 
           if (summaryData?.generatedAt) {
-            updatedEl.textContent = `Snapshot: ${new Date(summaryData.generatedAt).toLocaleString()}`;
+            updatedEl.textContent = `Live: ${new Date(summaryData.generatedAt).toLocaleString()}`;
           } else {
-            updatedEl.textContent = 'Holder snapshot unavailable. Run npm run build:holders';
+            updatedEl.textContent = 'Holder data unavailable';
           }
         } catch (err) {
           console.error('Holder intelligence load error:', err);
@@ -4021,7 +4021,7 @@
         try {
           const res = await fetch(`${API_BASE}/holders/${address}`);
           if (res.status === 404) {
-            result.innerHTML = 'Address is not in the current holder snapshot.';
+            result.innerHTML = 'Address currently holds 0 No-Punks.';
             renderHolderWalletGrid([], address);
             return;
           }

@@ -337,6 +337,29 @@ const HOLDER_AUTO_REBUILD_RPC_URL = String(
     process.env.BASE_RPC_URL ||
     'https://base.llamarpc.com,https://base-rpc.publicnode.com,https://1rpc.io/base,https://mainnet.base.org'
 ).trim();
+const HOLDER_LIVE_MODE_ENABLED = /^(1|true|yes)$/i.test(
+  String(process.env.HOLDER_LIVE_MODE || 'true').trim()
+);
+const HOLDER_LIVE_CACHE_TTL_MS = parsePositiveIntEnv(
+  'HOLDER_LIVE_CACHE_TTL_MS',
+  60 * 1000,
+  10 * 1000
+);
+const HOLDER_LIVE_BATCH_SIZE = parsePositiveIntEnv(
+  'HOLDER_LIVE_BATCH_SIZE',
+  150,
+  10,
+  300
+);
+const HOLDER_LIVE_RPC_TIMEOUT_MS = parsePositiveIntEnv(
+  'HOLDER_LIVE_RPC_TIMEOUT_MS',
+  20 * 1000,
+  4 * 1000,
+  120 * 1000
+);
+const HOLDER_LIVE_FORCE_REFRESH_ON_LOOKUP = /^(1|true|yes)$/i.test(
+  String(process.env.HOLDER_LIVE_FORCE_REFRESH_ON_LOOKUP || 'true').trim()
+);
 
 const OPENSEA_QUEUE_DELAY_MS = parsePositiveIntEnv(
   'OPENSEA_QUEUE_DELAY_MS',
@@ -487,6 +510,504 @@ function normaliseAddress(addr) {
   if (!addr) return '';
   const value = String(addr).trim().toLowerCase();
   return /^0x[a-f0-9]{40}$/.test(value) ? value : '';
+}
+
+const HOLDER_OWNER_OF_SELECTOR = '6352211e';
+const HOLDER_ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+let holderLiveRpcIdCounter = 1;
+
+const holderLiveState = {
+  snapshot: null,
+  previousSnapshot: null,
+  generatedAtMs: 0,
+  inflight: null,
+  lastError: null,
+  refreshCount: 0,
+};
+
+function parseHexInt(value) {
+  if (value == null) return 0;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  const text = String(value).trim();
+  if (!text) return 0;
+  const n = text.startsWith('0x')
+    ? Number.parseInt(text.slice(2), 16)
+    : Number.parseInt(text, 10);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function getHolderLiveRpcCandidates() {
+  const configured = String(
+    process.env.HOLDER_LIVE_RPC_URLS || process.env.HOLDER_RPC_URLS || ''
+  )
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  const fallback = Array.isArray(ONCHAIN_RPC_URLS) ? ONCHAIN_RPC_URLS : [];
+  const seen = new Set();
+  const merged = [];
+  [...configured, ...fallback].forEach((url) => {
+    if (!url || seen.has(url)) return;
+    seen.add(url);
+    merged.push(url);
+  });
+  return merged;
+}
+
+function getHolderLiveTokenIds() {
+  if (!USE_TOKEN_MAP || !tokenMap || typeof tokenMap !== 'object') {
+    return Array.from({ length: NOPUNKS_SUPPLY }, (_, idx) => idx);
+  }
+
+  const ids = Object.keys(tokenMap)
+    .map((key) => Number.parseInt(String(key), 10))
+    .filter((n) => Number.isFinite(n))
+    .sort((a, b) => a - b)
+    .map((index) => {
+      const mapped = tokenMap[String(index)];
+      const parsed = Number.parseInt(String(mapped), 10);
+      return Number.isFinite(parsed) ? parsed : index;
+    });
+
+  if (!ids.length) {
+    return Array.from({ length: NOPUNKS_SUPPLY }, (_, idx) => idx);
+  }
+
+  return Array.from(new Set(ids));
+}
+
+function encodeHolderOwnerOfCall(tokenId) {
+  const n = Number(tokenId);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return `0x${HOLDER_OWNER_OF_SELECTOR}${n.toString(16).padStart(64, '0')}`;
+}
+
+function parseHolderOwnerOfResult(raw) {
+  if (!raw || typeof raw !== 'string') return '';
+  const hex = raw.startsWith('0x') ? raw.slice(2) : raw;
+  if (hex.length < 40) return '';
+  return normaliseAddress(`0x${hex.slice(-40)}`);
+}
+
+async function callRpcJson(rpcUrl, method, params, timeoutMs = HOLDER_LIVE_RPC_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const body = {
+      jsonrpc: '2.0',
+      id: holderLiveRpcIdCounter++,
+      method,
+      params,
+    };
+
+    const res = await fetchFn(rpcUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`RPC ${method} failed (${res.status}): ${text.slice(0, 180)}`);
+    }
+
+    const json = await res.json();
+    if (json && json.error) {
+      const msg = json.error.message || JSON.stringify(json.error);
+      throw new Error(`RPC ${method} error: ${msg}`);
+    }
+
+    return json && Object.prototype.hasOwnProperty.call(json, 'result') ? json.result : null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function callRpcBatchJson(rpcUrl, calls, timeoutMs = HOLDER_LIVE_RPC_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const payload = calls.map((call) => ({
+      jsonrpc: '2.0',
+      id: call.id,
+      method: call.method,
+      params: call.params,
+    }));
+
+    const res = await fetchFn(rpcUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`RPC batch failed (${res.status}): ${text.slice(0, 180)}`);
+    }
+
+    const json = await res.json();
+    if (!Array.isArray(json)) {
+      throw new Error('RPC batch returned non-array result');
+    }
+    return json;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function callRpcWithFallback(rpcUrls, method, params) {
+  let lastErr = null;
+  for (const rpcUrl of rpcUrls) {
+    try {
+      const result = await callRpcJson(rpcUrl, method, params);
+      return { result, rpcUrl };
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw new Error(
+    `All RPC endpoints failed for ${method}. Last error: ${String(lastErr?.message || lastErr)}`
+  );
+}
+
+async function callRpcBatchWithFallback(rpcUrls, calls) {
+  let lastErr = null;
+  for (const rpcUrl of rpcUrls) {
+    try {
+      const result = await callRpcBatchJson(rpcUrl, calls);
+      return { result, rpcUrl };
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw new Error(
+    `All RPC endpoints failed for batch call. Last error: ${String(lastErr?.message || lastErr)}`
+  );
+}
+
+async function fetchLiveHolderOwnerEntries() {
+  const rpcUrls = getHolderLiveRpcCandidates();
+  if (!rpcUrls.length) {
+    throw new Error('No RPC URL available for live holder mode.');
+  }
+
+  const tokenIds = getHolderLiveTokenIds();
+  const contract = normaliseAddress(CONTRACT);
+  if (!contract) {
+    throw new Error(`Invalid contract address: ${CONTRACT}`);
+  }
+
+  const latestBlockResult = await callRpcWithFallback(rpcUrls, 'eth_blockNumber', []);
+  const latestBlock = parseHexInt(latestBlockResult.result);
+  const ownerEntries = [];
+  const unresolvedTokenIds = [];
+  const batchSize = Math.max(10, Number(HOLDER_LIVE_BATCH_SIZE) || 150);
+
+  for (let i = 0; i < tokenIds.length; i += batchSize) {
+    const slice = tokenIds.slice(i, i + batchSize);
+    const calls = [];
+
+    slice.forEach((tokenId) => {
+      const data = encodeHolderOwnerOfCall(tokenId);
+      if (!data) return;
+      calls.push({
+        id: `${i}:${tokenId}`,
+        method: 'eth_call',
+        params: [{ to: contract, data }, 'latest'],
+        tokenId,
+      });
+    });
+
+    const rpcResponse = await callRpcBatchWithFallback(rpcUrls, calls);
+    const rowsById = new Map();
+    rpcResponse.result.forEach((row) => {
+      rowsById.set(String(row.id), row);
+    });
+
+    calls.forEach((call) => {
+      const row = rowsById.get(String(call.id));
+      if (!row || row.error) {
+        unresolvedTokenIds.push(call.tokenId);
+        return;
+      }
+
+      const owner = parseHolderOwnerOfResult(row.result);
+      if (!owner || owner === HOLDER_ZERO_ADDRESS) {
+        unresolvedTokenIds.push(call.tokenId);
+        return;
+      }
+      ownerEntries.push({ tokenId: call.tokenId, owner });
+    });
+  }
+
+  if (unresolvedTokenIds.length) {
+    for (let i = 0; i < unresolvedTokenIds.length; i += 1) {
+      const tokenId = unresolvedTokenIds[i];
+      const data = encodeHolderOwnerOfCall(tokenId);
+      if (!data) continue;
+
+      let resolvedOwner = '';
+      let lastErr = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const rpcResponse = await callRpcWithFallback(rpcUrls, 'eth_call', [
+            { to: contract, data },
+            'latest',
+          ]);
+          resolvedOwner = parseHolderOwnerOfResult(rpcResponse.result);
+          if (resolvedOwner && resolvedOwner !== HOLDER_ZERO_ADDRESS) break;
+        } catch (err) {
+          lastErr = err;
+        }
+      }
+
+      if (!resolvedOwner || resolvedOwner === HOLDER_ZERO_ADDRESS) {
+        throw new Error(
+          `ownerOf unresolved for token ${tokenId}: ${String(lastErr?.message || lastErr || 'unknown')}`
+        );
+      }
+      ownerEntries.push({ tokenId, owner: resolvedOwner });
+    }
+  }
+
+  const coverageSet = new Set(ownerEntries.map((entry) => String(entry.tokenId)));
+  const missingCoverage = tokenIds.filter((tokenId) => !coverageSet.has(String(tokenId)));
+  if (missingCoverage.length) {
+    throw new Error(
+      `ownerOf coverage mismatch: missing ${missingCoverage.length} token IDs (first few: ${missingCoverage
+        .slice(0, 12)
+        .join(', ')})`
+    );
+  }
+
+  return {
+    tokenIds,
+    ownerEntries,
+    source: {
+      type: 'live-rpc-ownerOf',
+      rpcUrls,
+      chainId: String(ONCHAIN_CHAIN_ID || ''),
+      totalSupply: tokenIds.length,
+      ownerReads: ownerEntries.length,
+      latestBlock,
+      batchSize,
+      tokenIdSource: USE_TOKEN_MAP ? 'token-map' : 'onchain-range',
+      tokenMapPath: USE_TOKEN_MAP ? tokenMapPath : null,
+    },
+  };
+}
+
+function buildLiveHolderSnapshotFromOwnerEntries(payload) {
+  const ownerEntries = Array.isArray(payload?.ownerEntries) ? payload.ownerEntries : [];
+  const source = payload?.source || {};
+  const holdersByAddress = new Map();
+
+  ownerEntries.forEach((entry) => {
+    const address = normaliseAddress(entry.owner);
+    const tokenId = Number.parseInt(String(entry.tokenId), 10);
+    if (!address || !Number.isFinite(tokenId)) return;
+
+    if (!holdersByAddress.has(address)) {
+      holdersByAddress.set(address, {
+        address,
+        balance: 0,
+        tokenIds: [],
+        lastActivity: null,
+      });
+    }
+    const holder = holdersByAddress.get(address);
+    holder.balance += 1;
+    holder.tokenIds.push(tokenId);
+  });
+
+  const holders = Array.from(holdersByAddress.values())
+    .map((holder) => ({
+      ...holder,
+      tokenIds: holder.tokenIds.sort((a, b) => a - b),
+    }))
+    .sort((a, b) => {
+      if (b.balance !== a.balance) return b.balance - a.balance;
+      return a.address.localeCompare(b.address);
+    });
+
+  const supplyAccounted = holders.reduce((sum, holder) => sum + holder.balance, 0);
+  const holderCount = holders.length;
+  const top10Tokens = holders.slice(0, 10).reduce((sum, holder) => sum + holder.balance, 0);
+  const top25Tokens = holders.slice(0, 25).reduce((sum, holder) => sum + holder.balance, 0);
+  const top10SharePct =
+    supplyAccounted > 0 ? Number(((top10Tokens / supplyAccounted) * 100).toFixed(3)) : 0;
+  const top25SharePct =
+    supplyAccounted > 0 ? Number(((top25Tokens / supplyAccounted) * 100).toFixed(3)) : 0;
+  const avgTokensPerHolder =
+    holderCount > 0 ? Number((supplyAccounted / holderCount).toFixed(4)) : 0;
+
+  const topHolders = holders.slice(0, 250).map((holder, idx) => ({
+    rank: idx + 1,
+    address: holder.address,
+    balance: holder.balance,
+    shareOfSupplyPct:
+      supplyAccounted > 0
+        ? Number(((holder.balance / supplyAccounted) * 100).toFixed(3))
+        : 0,
+    tokenPreview: holder.tokenIds.slice(0, 12),
+    lastActivity: holder.lastActivity,
+  }));
+
+  const summary = {
+    holderCount,
+    supplyAccounted,
+    top10SharePct,
+    top25SharePct,
+    avgTokensPerHolder,
+  };
+
+  return {
+    generatedAt: new Date().toISOString(),
+    chain: CHAIN,
+    contract: CONTRACT,
+    source,
+    summary,
+    cohorts: buildCohortsFromHolders(holders, supplyAccounted),
+    topHolders,
+    holders,
+  };
+}
+
+async function refreshLiveHolderSnapshot(reason = 'manual') {
+  if (!HOLDER_LIVE_MODE_ENABLED) {
+    return null;
+  }
+  if (holderLiveState.inflight) {
+    return holderLiveState.inflight;
+  }
+
+  holderLiveState.inflight = (async () => {
+    const startedAt = Date.now();
+    const payload = await fetchLiveHolderOwnerEntries();
+    const snapshot = buildLiveHolderSnapshotFromOwnerEntries(payload);
+    snapshot.source = {
+      ...(snapshot.source || {}),
+      mode: 'live',
+      refreshReason: reason,
+      refreshDurationMs: Date.now() - startedAt,
+      refreshCount: holderLiveState.refreshCount + 1,
+    };
+
+    holderLiveState.previousSnapshot = holderLiveState.snapshot;
+    holderLiveState.snapshot = snapshot;
+    holderLiveState.generatedAtMs = Date.now();
+    holderLiveState.lastError = null;
+    holderLiveState.refreshCount += 1;
+    return snapshot;
+  })()
+    .catch((err) => {
+      holderLiveState.lastError = err;
+      throw err;
+    })
+    .finally(() => {
+      holderLiveState.inflight = null;
+    });
+
+  return holderLiveState.inflight;
+}
+
+async function getLiveHolderSnapshot(options = {}) {
+  if (!HOLDER_LIVE_MODE_ENABLED) {
+    return null;
+  }
+
+  const requireFresh = Boolean(options.requireFresh);
+  const now = Date.now();
+  const hasSnapshot = holderLiveState.snapshot != null;
+  const isFresh =
+    hasSnapshot && now - holderLiveState.generatedAtMs <= HOLDER_LIVE_CACHE_TTL_MS;
+
+  if (requireFresh) {
+    if (isFresh) return holderLiveState.snapshot;
+    try {
+      return await refreshLiveHolderSnapshot('require-fresh');
+    } catch (err) {
+      if (hasSnapshot) {
+        return holderLiveState.snapshot;
+      }
+      throw err;
+    }
+  }
+
+  if (isFresh) {
+    return holderLiveState.snapshot;
+  }
+
+  if (hasSnapshot) {
+    refreshLiveHolderSnapshot('stale-background').catch((err) => {
+      console.error('[holders:live] Background refresh failed:', err.message || err);
+    });
+    return holderLiveState.snapshot;
+  }
+
+  return refreshLiveHolderSnapshot('initial');
+}
+
+function getLiveHolderBalanceMap(snapshot) {
+  const holders = getSnapshotHolders(snapshot);
+  const map = new Map();
+  holders.forEach((holder) => {
+    map.set(holder.address, holder.balance);
+  });
+  return map;
+}
+
+async function resolveHolderSnapshot(options = {}) {
+  const requireFresh = Boolean(options.requireFresh);
+  let liveError = null;
+  const fallbackSnapshot = readJsonFileCached(holderLatestPath);
+
+  if (HOLDER_LIVE_MODE_ENABLED) {
+    const hasLiveSnapshot = holderLiveState.snapshot != null;
+    if (!requireFresh && !hasLiveSnapshot && fallbackSnapshot) {
+      refreshLiveHolderSnapshot('fallback-background').catch((err) => {
+        console.error('[holders:live] Background warm-up from fallback failed:', err.message || err);
+      });
+      return {
+        snapshot: fallbackSnapshot,
+        isLive: false,
+        liveError: null,
+      };
+    }
+
+    try {
+      const liveSnapshot = await getLiveHolderSnapshot({ requireFresh });
+      if (liveSnapshot) {
+        return {
+          snapshot: liveSnapshot,
+          isLive: true,
+          liveError: null,
+        };
+      }
+    } catch (err) {
+      liveError = err;
+      console.error('[holders:live] Snapshot resolve failed:', err.message || err);
+    }
+  }
+
+  if (fallbackSnapshot) {
+    return {
+      snapshot: fallbackSnapshot,
+      isLive: false,
+      liveError,
+    };
+  }
+
+  return {
+    snapshot: null,
+    isLive: false,
+    liveError,
+  };
 }
 
 function buildHoldersFromBalancesObject(balancesObj) {
@@ -2187,12 +2708,15 @@ app.get('/api/explorer/status', (req, res) => {
 // =======================
 // /api/holders/summary
 // =======================
-app.get('/api/holders/summary', (req, res) => {
-  const latest = readJsonFileCached(holderLatestPath);
+app.get('/api/holders/summary', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const resolved = await resolveHolderSnapshot({ requireFresh: false });
+  const latest = resolved.snapshot;
   if (!latest) {
     return res.status(503).json({
-      error: 'Holder snapshot unavailable',
-      message: 'Run `npm run build:holders` to generate holder data.',
+      error: 'Holder data unavailable',
+      message: 'Live holder scan failed and no fallback snapshot exists.',
+      details: resolved.liveError ? String(resolved.liveError.message || resolved.liveError) : null,
     });
   }
 
@@ -2200,7 +2724,18 @@ app.get('/api/holders/summary', (req, res) => {
     generatedAt: latest.generatedAt || null,
     chain: latest.chain || CHAIN,
     contract: latest.contract || CONTRACT,
-    source: latest.source || null,
+    source: {
+      ...(latest.source || {}),
+      mode: resolved.isLive ? 'live' : 'snapshot',
+      stale:
+        resolved.isLive &&
+        holderLiveState.generatedAtMs > 0 &&
+        Date.now() - holderLiveState.generatedAtMs > HOLDER_LIVE_CACHE_TTL_MS,
+      cacheAgeMs:
+        resolved.isLive && holderLiveState.generatedAtMs > 0
+          ? Math.max(0, Date.now() - holderLiveState.generatedAtMs)
+          : null,
+    },
     summary: latest.summary || {},
   });
 });
@@ -2208,12 +2743,14 @@ app.get('/api/holders/summary', (req, res) => {
 // =======================
 // /api/holders/top
 // =======================
-app.get('/api/holders/top', (req, res) => {
-  const latest = readJsonFileCached(holderLatestPath);
+app.get('/api/holders/top', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const resolved = await resolveHolderSnapshot({ requireFresh: false });
+  const latest = resolved.snapshot;
   if (!latest) {
     return res.status(503).json({
       holders: [],
-      error: 'Holder snapshot unavailable',
+      error: 'Holder data unavailable',
     });
   }
 
@@ -2232,6 +2769,10 @@ app.get('/api/holders/top', (req, res) => {
 
   return res.json({
     generatedAt: latest.generatedAt || null,
+    source: {
+      ...(latest.source || {}),
+      mode: resolved.isLive ? 'live' : 'snapshot',
+    },
     summary: latest.summary || {},
     holders: topHolders,
   });
@@ -2240,12 +2781,14 @@ app.get('/api/holders/top', (req, res) => {
 // =======================
 // /api/holders/cohorts
 // =======================
-app.get('/api/holders/cohorts', (req, res) => {
-  const latest = readJsonFileCached(holderLatestPath);
+app.get('/api/holders/cohorts', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const resolved = await resolveHolderSnapshot({ requireFresh: false });
+  const latest = resolved.snapshot;
   if (!latest) {
     return res.status(503).json({
       cohorts: [],
-      error: 'Holder snapshot unavailable',
+      error: 'Holder data unavailable',
     });
   }
 
@@ -2261,6 +2804,10 @@ app.get('/api/holders/cohorts', (req, res) => {
 
   return res.json({
     generatedAt: latest.generatedAt || null,
+    source: {
+      ...(latest.source || {}),
+      mode: resolved.isLive ? 'live' : 'snapshot',
+    },
     supplyAccounted,
     cohorts,
   });
@@ -2269,24 +2816,31 @@ app.get('/api/holders/cohorts', (req, res) => {
 // =======================
 // /api/holders/deltas
 // =======================
-app.get('/api/holders/deltas', (req, res) => {
-  const latest = readJsonFileCached(holderLatestPath);
+app.get('/api/holders/deltas', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const resolved = await resolveHolderSnapshot({ requireFresh: false });
+  const latest = resolved.snapshot;
   if (!latest) {
     return res.status(503).json({
-      error: 'Holder snapshot unavailable',
+      error: 'Holder data unavailable',
     });
   }
 
-  const history = readJsonFileCached(holderHistoryPath);
-  const snapshots = Array.isArray(history?.snapshots)
-    ? [...history.snapshots].sort((a, b) => {
-        const at = new Date(a?.generatedAt || 0).getTime();
-        const bt = new Date(b?.generatedAt || 0).getTime();
-        return at - bt;
-      })
-    : [];
+  let previous = null;
+  if (resolved.isLive && holderLiveState.previousSnapshot) {
+    previous = holderLiveState.previousSnapshot;
+  } else {
+    const history = readJsonFileCached(holderHistoryPath);
+    const snapshots = Array.isArray(history?.snapshots)
+      ? [...history.snapshots].sort((a, b) => {
+          const at = new Date(a?.generatedAt || 0).getTime();
+          const bt = new Date(b?.generatedAt || 0).getTime();
+          return at - bt;
+        })
+      : [];
+    previous = snapshots.length >= 2 ? snapshots[snapshots.length - 2] : null;
+  }
 
-  const previous = snapshots.length >= 2 ? snapshots[snapshots.length - 2] : null;
   const limit = Math.max(1, Math.min(parseInt(req.query.limit, 10) || 25, 100));
 
   if (!previous) {
@@ -2347,6 +2901,10 @@ app.get('/api/holders/deltas', (req, res) => {
   return res.json({
     generatedAt: latest.generatedAt || null,
     previousGeneratedAt: previous.generatedAt || null,
+    source: {
+      ...(latest.source || {}),
+      mode: resolved.isLive ? 'live' : 'snapshot',
+    },
     summaryDelta: {
       holderCount:
         (Number(latestSummary.holderCount) || latestBalances.size) -
@@ -2378,22 +2936,39 @@ app.get('/api/holders/deltas', (req, res) => {
 // =======================
 // /api/holders/:address
 // =======================
-app.get('/api/holders/:address', (req, res) => {
-  const latest = readJsonFileCached(holderLatestPath);
-  if (!latest) {
-    return res.status(503).json({
-      error: 'Holder snapshot unavailable',
-    });
-  }
-
+app.get('/api/holders/:address', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
   const address = normaliseAddress(req.params.address);
   if (!address) {
     return res.status(400).json({ error: 'Invalid address' });
   }
 
-  const holders = getSnapshotHolders(latest);
-  const found =
+  let resolved = await resolveHolderSnapshot({ requireFresh: false });
+  let latest = resolved.snapshot;
+  if (!latest) {
+    return res.status(503).json({
+      error: 'Holder data unavailable',
+      details: resolved.liveError ? String(resolved.liveError.message || resolved.liveError) : null,
+    });
+  }
+
+  let holders = getSnapshotHolders(latest);
+  let found =
     holders.find((holder) => holder.address === address) || null;
+
+  if (
+    !found &&
+    HOLDER_LIVE_MODE_ENABLED &&
+    HOLDER_LIVE_FORCE_REFRESH_ON_LOOKUP
+  ) {
+    const refreshed = await resolveHolderSnapshot({ requireFresh: true });
+    if (refreshed.snapshot) {
+      resolved = refreshed;
+      latest = refreshed.snapshot;
+      holders = getSnapshotHolders(latest);
+      found = holders.find((holder) => holder.address === address) || null;
+    }
+  }
 
   if (!found) {
     return res.status(404).json({
@@ -2422,6 +2997,10 @@ app.get('/api/holders/:address', (req, res) => {
 
   return res.json({
     generatedAt: latest.generatedAt || null,
+    source: {
+      ...(latest.source || {}),
+      mode: resolved.isLive ? 'live' : 'snapshot',
+    },
     address,
     balance: found.balance,
     rank,
@@ -3241,6 +3820,11 @@ async function runHolderSnapshotAutoRebuild(trigger) {
 }
 
 function startHolderSnapshotAutoRebuild() {
+  if (HOLDER_LIVE_MODE_ENABLED && !String(process.env.HOLDER_AUTO_REBUILD || '').trim()) {
+    console.log('[holders:auto] Live holder mode is enabled; snapshot auto-rebuild is skipped.');
+    return;
+  }
+
   if (!HOLDER_AUTO_REBUILD_ENABLED) {
     console.log('[holders:auto] Disabled (set HOLDER_AUTO_REBUILD=1 to enable).');
     return;
@@ -3278,6 +3862,22 @@ app.listen(PORT, () => {
       `Collection slug: ${COLLECTION_SLUG} | Chain: ${CHAIN} | Contract: ${CONTRACT}` +
       (MARKETPLACE_CONTRACT ? `\nMarketplace: ${MARKETPLACE_CONTRACT}` : '')
   );
+
+  if (HOLDER_LIVE_MODE_ENABLED) {
+    setTimeout(() => {
+      refreshLiveHolderSnapshot('startup')
+        .then((snapshot) => {
+          console.log(
+            `[holders:live] Startup refresh ready (${snapshot?.summary?.holderCount || 0} holders, ${
+              snapshot?.summary?.supplyAccounted || 0
+            } tokens).`
+          );
+        })
+        .catch((err) => {
+          console.error('[holders:live] Startup refresh failed:', err.message || err);
+        });
+    }, 1200);
+  }
 
   startHolderSnapshotAutoRebuild();
 });

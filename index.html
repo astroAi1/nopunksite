@@ -1541,25 +1541,17 @@
       .holder-grid-preview {
         display: grid;
         grid-template-columns: repeat(var(--holder-preview-columns, 10), minmax(0, 1fr));
-        gap: 0.38rem;
+        gap: var(--holder-preview-gap, 0.32rem);
         max-height: min(68vh, 920px);
         overflow-y: auto;
         min-height: 90px;
+        align-content: start;
       }
 
       .holder-grid-item {
         position: relative;
         border: 1px solid rgba(255,255,255,0.14);
-        background:
-          linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01)),
-          repeating-linear-gradient(
-            0deg,
-            rgba(255,255,255,0.03) 0px,
-            rgba(255,255,255,0.03) 1px,
-            rgba(0,0,0,0) 1px,
-            rgba(0,0,0,0) 6px
-          ),
-          #0e0e0e;
+        background: #05070b;
         overflow: hidden;
         aspect-ratio: 1 / 1;
         box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
@@ -1572,7 +1564,7 @@
         image-rendering: pixelated;
         object-fit: contain;
         object-position: center;
-        background: #090909;
+        background: #030507;
       }
 
       .holder-grid-id {
@@ -1586,6 +1578,10 @@
         background: rgba(0,0,0,0.55);
         border: 1px solid rgba(255,255,255,0.12);
         padding: 0.1rem 0.18rem;
+      }
+
+      .holder-grid-preview.compact .holder-grid-id {
+        display: none;
       }
 
       .holder-subgrid {
@@ -2278,7 +2274,10 @@
       }
 
       function getPunkImageOnErrorAttr(tokenId) {
-        return "this.onerror=null;this.style.opacity='0'";
+        const safeId = sanitizeTokenId(tokenId, 52);
+        const fallbackSrc = `${ONCHAIN_TOKEN_META_BASE}/${safeId}/image`;
+        const escapedFallback = fallbackSrc.replace(/'/g, "\\'");
+        return `if(!this.dataset.fallbackTried){this.dataset.fallbackTried='1';this.src='${escapedFallback}';return;}this.onerror=null;this.style.opacity='0'`;
       }
 
       function getPunkImageUrl(tokenId, preferredUrl = '') {
@@ -3712,14 +3711,14 @@
         normalizedIds.sort(compareTokenIds);
         return normalizedIds.map((tokenId) => {
           const safeTokenId = sanitizeTokenId(tokenId, 52);
+          const explorerImage = `${EXPLORER_IMAGE_BASE}/${safeTokenId}.svg`;
           const localFullImage = `/${safeTokenId}.png`;
           const onchainImage = `${ONCHAIN_TOKEN_META_BASE}/${safeTokenId}/image`;
-          const indexedImage = getPunkImageUrl(safeTokenId);
           return {
             tokenId,
-            src: localFullImage,
-            srcExport: localFullImage,
-            fallbackSrc: onchainImage || indexedImage,
+            src: explorerImage,
+            srcExport: explorerImage,
+            fallbackSrc: onchainImage || localFullImage,
           };
         });
       }
@@ -3762,7 +3761,9 @@
           if (randomizeBtn) randomizeBtn.disabled = true;
           metaEl.textContent = address ? '0 live holdings' : 'No wallet loaded';
           previewEl.innerHTML = '<div class="activity-empty">No holdings to preview.</div>';
+          previewEl.classList.remove('compact');
           previewEl.style.removeProperty('--holder-preview-columns');
+          previewEl.style.removeProperty('--holder-preview-gap');
           return;
         }
 
@@ -3775,13 +3776,27 @@
           metaEl.textContent =
             `${walletItems.length} held • 0 match filter (${filterLabel}) • ${selectedCanvas} x ${selectedCanvas} PNG`;
           previewEl.innerHTML = '<div class="activity-empty">No holdings match this trait filter.</div>';
+          previewEl.classList.remove('compact');
           previewEl.style.removeProperty('--holder-preview-columns');
+          previewEl.style.removeProperty('--holder-preview-gap');
           updateHolderTraitClearState();
           return;
         }
 
-        const previewColumns = Math.min(18, Math.max(1, composition.columns));
+        const previewColumns = Math.max(1, Number(composition.columns) || 1);
+        const compactPreview =
+          previewColumns >= 22 || composition.selectedItems.length >= 480;
+        const previewGap =
+          previewColumns >= 42
+            ? '0.14rem'
+            : previewColumns >= 30
+              ? '0.18rem'
+              : previewColumns >= 20
+                ? '0.24rem'
+                : '0.32rem';
         previewEl.style.setProperty('--holder-preview-columns', String(previewColumns));
+        previewEl.style.setProperty('--holder-preview-gap', previewGap);
+        previewEl.classList.toggle('compact', compactPreview);
         exportBtn.disabled = false;
         if (randomizeBtn) randomizeBtn.disabled = false;
 
@@ -3808,6 +3823,7 @@
           .join('');
 
         previewEl.innerHTML = html;
+        previewEl.scrollTop = 0;
 
         updateHolderTraitClearState();
       }

@@ -2342,9 +2342,9 @@
 
       function getPunkImageOnErrorAttr(tokenId) {
         const safeId = sanitizeTokenId(tokenId, 52);
-        const fallbackSrc = `${ONCHAIN_TOKEN_META_BASE}/${safeId}/image`;
-        const escapedFallback = fallbackSrc.replace(/'/g, "\\'");
-        return `if(!this.dataset.fallbackTried){this.dataset.fallbackTried='1';this.src='${escapedFallback}';return;}this.onerror=null;this.style.opacity='0'`;
+        const onchainSrc = `${ONCHAIN_TOKEN_META_BASE}/${safeId}/image`.replace(/'/g, "\\'");
+        const explorerSrc = `${EXPLORER_IMAGE_BASE}/${safeId}.svg`.replace(/'/g, "\\'");
+        return `const current=(this.currentSrc||this.src||'');if(!this.dataset.fallbackStage1){this.dataset.fallbackStage1='1';this.src=current.includes('/api/onchain/token/')?'${explorerSrc}':'${onchainSrc}';return;}if(!this.dataset.fallbackStage2){this.dataset.fallbackStage2='1';this.src=current.includes('/api/onchain/token/')?'${onchainSrc}':'${explorerSrc}';return;}this.onerror=null;this.style.opacity='0'`;
       }
 
       function getPunkImageUrl(tokenId, preferredUrl = '') {
@@ -3753,7 +3753,7 @@
           typeof window !== 'undefined' &&
           typeof window.matchMedia === 'function' &&
           window.matchMedia('(max-width: 760px)').matches;
-        return isMobile ? 120 : 320;
+        return isMobile ? 64 : 100;
       }
 
       function createSeededRandom(seed) {
@@ -3860,14 +3860,14 @@
         normalizedIds.sort(compareTokenIds);
         return normalizedIds.map((tokenId) => {
           const safeTokenId = sanitizeTokenId(tokenId, 52);
+          const onchainImage = `${ONCHAIN_TOKEN_META_BASE}/${safeTokenId}/image`;
           const explorerImage = `${EXPLORER_IMAGE_BASE}/${safeTokenId}.svg`;
           const localFullImage = `/${safeTokenId}.png`;
-          const onchainImage = `${ONCHAIN_TOKEN_META_BASE}/${safeTokenId}/image`;
           return {
             tokenId,
-            src: localFullImage,
+            src: onchainImage,
             srcExport: explorerImage,
-            fallbackSrc: onchainImage || explorerImage,
+            fallbackSrc: explorerImage || localFullImage,
           };
         });
       }

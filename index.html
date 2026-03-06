@@ -2251,11 +2251,12 @@
                 touch-action="pan-y"
                 shadow-intensity="0"
                 exposure="1"
-                poster="/0.png"
+                src="/api/3d/token/52/model"
+                poster="/52.png"
                 hidden
               ></model-viewer>
               <div id="world-3d-fallback" class="world3d-fallback">
-                <img id="world-3d-fallback-img" src="/api/onchain/token/0/image" alt="3D world preview" />
+                <img id="world-3d-fallback-img" src="/52.png" alt="3D world preview" />
                 <div id="world-3d-fallback-copy" class="world3d-fallback-copy">
                   Loading the first voxel GLB.
                 </div>
@@ -2662,6 +2663,8 @@
       const EXPLORER_IMAGE_BASE = '/explorer-data/images';
       const TOTAL_SUPPLY = 10000;
       const ONCHAIN_TOKEN_META_BASE = `${API_BASE}/onchain/token`;
+      const WORLD3D_BOOT_TOKEN_ID = 52;
+      const WORLD3D_WARM_TOKEN_COUNT = 6;
 
       const collectionState = {
         traitIndex: { traitToTokenIds: {}, typeValues: {}, traitTypes: [] },
@@ -2700,6 +2703,7 @@
         viewer: null,
         defaultOrbitRadius: null,
         pinchDistance: null,
+        warmedAssetUrls: new Set(),
       };
 
       // Noir de Noir - correct IDs
@@ -2718,6 +2722,26 @@
       function getWorld3dPosterUrl(tokenId) {
         const safeId = sanitizeTokenId(tokenId, 52);
         return `/${safeId}.png`;
+      }
+
+      function getWorld3dModelUrl(tokenId) {
+        const safeId = sanitizeTokenId(tokenId, WORLD3D_BOOT_TOKEN_ID);
+        return `${API_BASE}/3d/token/${safeId}/model`;
+      }
+
+      function buildWorld3dToken(tokenId) {
+        const safeId = sanitizeTokenId(tokenId, WORLD3D_BOOT_TOKEN_ID);
+        const posterUrl = getWorld3dPosterUrl(safeId);
+
+        return {
+          tokenId: safeId,
+          name: `No-Punk #${safeId}`,
+          available: true,
+          posterUrl,
+          modelUrl: getWorld3dModelUrl(safeId),
+          imageUrl: posterUrl,
+          openseaUrl: `${OPENSEA_ITEM_BASE}/${CONTRACT}/${safeId}`,
+        };
       }
 
       function normalizeImageSource(url) {
@@ -2872,6 +2896,21 @@
         const deltaX = touches[0].clientX - touches[1].clientX;
         const deltaY = touches[0].clientY - touches[1].clientY;
         return Math.hypot(deltaX, deltaY);
+      }
+
+      function warmWorld3dUrl(url) {
+        if (!url || world3dState.warmedAssetUrls.has(url)) return;
+
+        world3dState.warmedAssetUrls.add(url);
+        fetch(url, { cache: 'force-cache' }).catch(() => {
+          world3dState.warmedAssetUrls.delete(url);
+        });
+      }
+
+      function warmWorld3dTokenAssets(tokenId) {
+        const token = buildWorld3dToken(tokenId);
+        warmWorld3dUrl(token.posterUrl);
+        warmWorld3dUrl(token.modelUrl);
       }
 
       function syncWorld3dZoomBounds(viewer) {
@@ -3213,6 +3252,10 @@
           randomBtn.disabled = !world3dState.availableTokenIds.length;
         }
 
+        [WORLD3D_BOOT_TOKEN_ID, ...world3dState.suggestionTokenIds.slice(0, WORLD3D_WARM_TOKEN_COUNT)]
+          .filter((tokenId, index, list) => list.indexOf(tokenId) === index)
+          .forEach((tokenId) => warmWorld3dTokenAssets(tokenId));
+
         renderWorld3dSuggestions(manifest);
         return manifest;
       }
@@ -3292,8 +3335,14 @@
 
       async function initWorld3d() {
         try {
-          await loadWorld3dManifest();
-          await loadFeaturedWorld3d();
+          warmWorld3dTokenAssets(WORLD3D_BOOT_TOKEN_ID);
+          const manifestPromise = loadWorld3dManifest().catch((err) => {
+            console.error('World 3D manifest error:', err);
+            return null;
+          });
+
+          await renderWorld3dToken(buildWorld3dToken(WORLD3D_BOOT_TOKEN_ID), { source: 'featured' });
+          await manifestPromise;
         } catch (err) {
           console.error('World 3D init error:', err);
           setWorld3dStatus('unavailable', 'Unavailable');

@@ -1,5 +1,5 @@
-import * as THREE from 'https://unpkg.com/three@0.164.1/build/three.module.js';
-import { OrbitControls } from 'https://unpkg.com/three@0.164.1/examples/jsm/controls/OrbitControls.js';
+import * as THREE from 'https://esm.sh/three@0.164.1';
+import { OrbitControls } from 'https://esm.sh/three@0.164.1/examples/jsm/controls/OrbitControls.js';
 
 const PIXEL_SIZE = 24;
 const VOXEL_SIZE = 1;

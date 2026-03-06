@@ -2251,7 +2251,6 @@
                 touch-action="pan-y"
                 shadow-intensity="0"
                 exposure="1"
-                src="/api/3d/token/52/model"
                 poster="/52.png"
                 hidden
               ></model-viewer>
@@ -3074,7 +3073,7 @@
           fallbackEl.hidden = true;
         }
 
-        if (viewer.dataset.modelUrl === modelUrl) {
+        if (viewer.dataset.loadedModelUrl === modelUrl) {
           resetWorld3dCamera(autoRotate);
           if (typeof viewer.dismissPoster === 'function') {
             viewer.dismissPoster();
@@ -3086,6 +3085,7 @@
         viewer.dataset.modelUrl = modelUrl;
         viewer.src = modelUrl;
         await loadPromise;
+        viewer.dataset.loadedModelUrl = modelUrl;
         resetWorld3dCamera(autoRotate);
         syncWorld3dZoomBounds(viewer);
 
@@ -3099,7 +3099,7 @@
       function formatWorld3dCoverage(manifest) {
         const liveCount = Number(manifest?.generatedModelCount || 0);
         if (!liveCount) {
-          return 'NO-3D · VOXEL GLB BATCH IN PROGRESS';
+          return 'NO-3D · LIVE VOXEL WORLD';
         }
         return `NO-3D · ${liveCount.toLocaleString()} VOXEL GLBS LIVE`;
       }
@@ -3161,6 +3161,14 @@
         const mode = options?.source || 'search';
         const tokenId = Number.parseInt(String(token?.tokenId ?? ''), 10);
         if (!Number.isInteger(tokenId)) return;
+        const resolvedToken = {
+          ...buildWorld3dToken(tokenId),
+          ...(token || {}),
+        };
+        resolvedToken.posterUrl = resolvedToken.posterUrl || getWorld3dPosterUrl(tokenId);
+        resolvedToken.modelUrl = resolvedToken.modelUrl || getWorld3dModelUrl(tokenId);
+        resolvedToken.imageUrl = resolvedToken.imageUrl || resolvedToken.posterUrl;
+        resolvedToken.available = true;
 
         world3dState.currentTokenId = tokenId;
 
@@ -3175,33 +3183,17 @@
           kickerEl.textContent = mode === 'featured' ? 'Featured Now' : `Viewing #${tokenId}`;
         }
         if (idEl) {
-          idEl.textContent = token?.name || `No-Punk #${tokenId}`;
+          idEl.textContent = resolvedToken.name || `No-Punk #${tokenId}`;
         }
         if (openseaEl) {
-          openseaEl.href = token?.openseaUrl || `${OPENSEA_ITEM_BASE}/${CONTRACT}/${tokenId}`;
+          openseaEl.href = resolvedToken.openseaUrl || `${OPENSEA_ITEM_BASE}/${CONTRACT}/${tokenId}`;
         }
         if (searchMetaEl && mode !== 'featured') {
           searchMetaEl.textContent = `No-Punk #${tokenId} loads as a voxel GLB. Drag to orbit and scroll to zoom.`;
         }
 
-        if (!token?.available || !token?.modelUrl) {
-          setWorld3dStatus('building', 'Building');
-          setWorld3dFallback(
-            tokenId,
-            getWorld3dFallbackImage(token),
-            'This voxel GLB is still being exported. Transparent PNG shown until the model is ready.'
-          );
-          if (copyEl) {
-            copyEl.textContent =
-              'This token does not have a live GLB yet. The transparent PNG stays in place while the batch exporter catches up.';
-          }
-          if (resetBtn) resetBtn.disabled = true;
-          highlightWorld3dSuggestion(tokenId);
-          return;
-        }
-
         try {
-          await setWorld3dModel(token.modelUrl, getWorld3dFallbackImage(token), true);
+          await setWorld3dModel(resolvedToken.modelUrl, getWorld3dFallbackImage(resolvedToken), true);
           setWorld3dStatus('available', '3D Ready');
           if (copyEl) {
             copyEl.textContent = mode === 'featured'
@@ -3214,12 +3206,12 @@
           setWorld3dStatus('unavailable', '3D Not Ready');
           setWorld3dFallback(
             tokenId,
-            getWorld3dFallbackImage(token),
+            getWorld3dFallbackImage(resolvedToken),
             'The voxel GLB could not load right now. Transparent PNG shown instead.'
           );
           if (copyEl) {
             copyEl.textContent =
-              'The model file is unavailable right now. Search another token or retry once more GLBs have finished exporting.';
+              'The model file is unavailable right now. Search another token or retry in a moment.';
           }
           if (resetBtn) resetBtn.disabled = true;
         }
@@ -3281,13 +3273,7 @@
 
       async function loadFeaturedWorld3d() {
         if (!world3dState.availableTokenIds.length) {
-          setWorld3dStatus('building', 'Building');
-          setWorld3dFallback(
-            52,
-            getWorld3dPosterUrl(52),
-            'Voxel GLBs are still being exported. Transparent PNG shown until the first models land.'
-          );
-          return null;
+          return renderWorld3dToken(buildWorld3dToken(WORLD3D_BOOT_TOKEN_ID), { source: 'featured' });
         }
 
         setWorld3dStatus('loading', 'Loading');

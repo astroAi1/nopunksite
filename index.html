@@ -46,6 +46,7 @@
     <link rel="stylesheet" href="https://unpkg.com/@coinbase/onchainkit@latest/styles.css" />
     <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
     <script nomodule src="https://unpkg.com/@google/model-viewer/dist/model-viewer-legacy.js"></script>
+    <script type="module" src="/public/world3d-voxel-viewer.js"></script>
 
     <style>
       /* ========================================
@@ -2254,6 +2255,7 @@
                 poster="/52.png"
                 hidden
               ></model-viewer>
+              <div id="world-3d-runtime-viewer" class="world3d-viewer" hidden></div>
               <div id="world-3d-fallback" class="world3d-fallback">
                 <img id="world-3d-fallback-img" src="/52.png" alt="3D world preview" />
                 <div id="world-3d-fallback-copy" class="world3d-fallback-copy">
@@ -2302,7 +2304,7 @@
                 <button id="world-3d-search-btn" class="lookup-btn" type="button">Inspect</button>
               </div>
               <div id="world-3d-search-meta" class="world3d-search-meta">
-                Search any token. Transparent PNGs are used as posters while voxel GLBs stream in.
+                Search any token. Each No-Punk opens as a live voxel build in 3D.
               </div>
             </div>
 
@@ -2664,6 +2666,7 @@
       const ONCHAIN_TOKEN_META_BASE = `${API_BASE}/onchain/token`;
       const WORLD3D_BOOT_TOKEN_ID = 52;
       const WORLD3D_WARM_TOKEN_COUNT = 6;
+      const WORLD3D_FALLBACK_TOKENS = [52, 338, 615, 871, 1006, 1403, 2743, 3054];
 
       const collectionState = {
         traitIndex: { traitToTokenIds: {}, typeValues: {}, traitTypes: [] },
@@ -2700,6 +2703,8 @@
         availableTokenIds: [],
         suggestionTokenIds: [],
         viewer: null,
+        runtimeViewer: null,
+        activeViewer: '',
         defaultOrbitRadius: null,
         pinchDistance: null,
         warmedAssetUrls: new Set(),
@@ -2873,10 +2878,15 @@
         const fallbackImg = document.getElementById('world-3d-fallback-img');
         const fallbackCopy = document.getElementById('world-3d-fallback-copy');
         const viewerEl = document.getElementById('world-3d-viewer');
+        const runtimeEl = document.getElementById('world-3d-runtime-viewer');
 
         if (viewerEl) {
           viewerEl.hidden = true;
         }
+        if (runtimeEl) {
+          runtimeEl.hidden = true;
+        }
+        world3dState.activeViewer = '';
 
         if (fallbackImg) {
           fallbackImg.src = imageUrl || getPunkImageUrl(tokenId);
@@ -3005,6 +3015,7 @@
         await waitForWorld3dElement();
         const fallbackEl = document.getElementById('world-3d-fallback');
         const viewerEl = document.getElementById('world-3d-viewer');
+        const runtimeEl = document.getElementById('world-3d-runtime-viewer');
         if (!viewerEl) {
           throw new Error('3D viewer unavailable');
         }
@@ -3013,12 +3024,40 @@
         attachWorld3dZoomBoost(viewerEl);
 
         viewerEl.hidden = false;
+        if (runtimeEl) {
+          runtimeEl.hidden = true;
+        }
 
         if (fallbackEl) {
           fallbackEl.hidden = true;
         }
+        world3dState.activeViewer = 'glb';
 
         return world3dState.viewer;
+      }
+
+      async function ensureWorld3dRuntimeViewer() {
+        const fallbackEl = document.getElementById('world-3d-fallback');
+        const viewerEl = document.getElementById('world-3d-viewer');
+        const runtimeEl = document.getElementById('world-3d-runtime-viewer');
+        if (!runtimeEl || typeof window.NoPunkVoxelViewer !== 'function') {
+          throw new Error('Runtime voxel viewer unavailable');
+        }
+
+        if (!world3dState.runtimeViewer) {
+          world3dState.runtimeViewer = new window.NoPunkVoxelViewer(runtimeEl);
+        }
+
+        runtimeEl.hidden = false;
+        if (viewerEl) {
+          viewerEl.hidden = true;
+        }
+        if (fallbackEl) {
+          fallbackEl.hidden = true;
+        }
+        world3dState.activeViewer = 'runtime';
+
+        return world3dState.runtimeViewer;
       }
 
       function resetWorld3dCamera(autoRotate = true) {
@@ -3096,6 +3135,16 @@
         return viewer;
       }
 
+      async function setWorld3dRuntimeModel(tokenId, imageUrl, fallbackImageUrl = '') {
+        const viewer = await ensureWorld3dRuntimeViewer();
+        await viewer.loadToken({
+          tokenId,
+          imageUrl: imageUrl || getWorld3dPosterUrl(tokenId),
+          fallbackImageUrl: fallbackImageUrl || imageUrl || getWorld3dPosterUrl(tokenId),
+        });
+        return viewer;
+      }
+
       function formatWorld3dCoverage(manifest) {
         const liveCount = Number(manifest?.generatedModelCount || 0);
         if (!liveCount) {
@@ -3121,14 +3170,9 @@
         const rail = document.getElementById('world-3d-suggestions');
         if (!rail) return;
 
-        const tokens = Array.isArray(manifest?.suggestionTokenIds)
+        const tokens = Array.isArray(manifest?.suggestionTokenIds) && manifest.suggestionTokenIds.length
           ? manifest.suggestionTokenIds
-          : [];
-
-        if (!tokens.length) {
-          rail.innerHTML = '<div class="world3d-search-meta">Voxel GLBs are still building.</div>';
-          return;
-        }
+          : WORLD3D_FALLBACK_TOKENS;
 
         rail.innerHTML = tokens
           .map((tokenId) => {
@@ -3138,7 +3182,7 @@
                 <img src="${posterUrl}" alt="No-Punk #${tokenId}" loading="lazy" decoding="async" />
                 <span class="world3d-suggestion-text">
                   <strong>#${tokenId}</strong>
-                  <span>GLB Ready</span>
+                  <span>3D Ready</span>
                 </span>
               </button>
             `;
@@ -3161,6 +3205,8 @@
         const mode = options?.source || 'search';
         const tokenId = Number.parseInt(String(token?.tokenId ?? ''), 10);
         if (!Number.isInteger(tokenId)) return;
+        const preferRuntime = options?.preferRuntime === true
+          || (world3dState.manifest && !world3dState.availableTokenIds.length);
         const resolvedToken = {
           ...buildWorld3dToken(tokenId),
           ...(token || {}),
@@ -3193,27 +3239,57 @@
         }
 
         try {
-          await setWorld3dModel(resolvedToken.modelUrl, getWorld3dFallbackImage(resolvedToken), true);
-          setWorld3dStatus('available', '3D Ready');
-          if (copyEl) {
-            copyEl.textContent = mode === 'featured'
-              ? 'This featured NoPunk is a real voxel GLB with full depth. Drag to orbit, zoom to inspect, or search a specific token below.'
-              : 'This NoPunk is loaded as a real voxel GLB, not a poster render. Drag to orbit, zoom in, or jump to another token.';
+          if (preferRuntime) {
+            await setWorld3dRuntimeModel(
+              tokenId,
+              resolvedToken.posterUrl,
+              resolvedToken.imageUrl || resolvedToken.posterUrl
+            );
+            setWorld3dStatus('available', '3D Live');
+            if (copyEl) {
+              copyEl.textContent = mode === 'featured'
+                ? 'This featured NoPunk is rendered live as a voxel build from its PNG. Drag to orbit, zoom to inspect, or search a specific token below.'
+                : 'This NoPunk is rendered live as a voxel build in your browser. Drag to orbit, zoom in, or jump to another token.';
+            }
+            if (resetBtn) resetBtn.disabled = false;
+          } else {
+            await setWorld3dModel(resolvedToken.modelUrl, getWorld3dFallbackImage(resolvedToken), true);
+            setWorld3dStatus('available', '3D Ready');
+            if (copyEl) {
+              copyEl.textContent = mode === 'featured'
+                ? 'This featured NoPunk is a real voxel GLB with full depth. Drag to orbit, zoom to inspect, or search a specific token below.'
+                : 'This NoPunk is loaded as a real voxel GLB, not a poster render. Drag to orbit, zoom in, or jump to another token.';
+            }
+            if (resetBtn) resetBtn.disabled = false;
           }
-          if (resetBtn) resetBtn.disabled = false;
         } catch (err) {
           console.error('World 3D model load error:', err);
-          setWorld3dStatus('unavailable', '3D Not Ready');
-          setWorld3dFallback(
-            tokenId,
-            getWorld3dFallbackImage(resolvedToken),
-            'The voxel GLB could not load right now. Transparent PNG shown instead.'
-          );
-          if (copyEl) {
-            copyEl.textContent =
-              'The model file is unavailable right now. Search another token or retry in a moment.';
+          try {
+            await setWorld3dRuntimeModel(
+              tokenId,
+              resolvedToken.posterUrl,
+              resolvedToken.imageUrl || resolvedToken.posterUrl
+            );
+            setWorld3dStatus('available', '3D Live');
+            if (copyEl) {
+              copyEl.textContent =
+                'This NoPunk is rendered live as a voxel build in your browser. Drag to orbit, zoom in, or jump to another token.';
+            }
+            if (resetBtn) resetBtn.disabled = false;
+          } catch (runtimeErr) {
+            console.error('World 3D runtime load error:', runtimeErr);
+            setWorld3dStatus('unavailable', '3D Not Ready');
+            setWorld3dFallback(
+              tokenId,
+              getWorld3dFallbackImage(resolvedToken),
+              '3D could not load right now.'
+            );
+            if (copyEl) {
+              copyEl.textContent =
+                '3D is unavailable for this token right now. Search another token or retry in a moment.';
+            }
+            if (resetBtn) resetBtn.disabled = true;
           }
-          if (resetBtn) resetBtn.disabled = true;
         }
 
         highlightWorld3dSuggestion(tokenId);
@@ -3241,7 +3317,7 @@
 
         const randomBtn = document.getElementById('world-3d-random-btn');
         if (randomBtn) {
-          randomBtn.disabled = !world3dState.availableTokenIds.length;
+          randomBtn.disabled = false;
         }
 
         [WORLD3D_BOOT_TOKEN_ID, ...world3dState.suggestionTokenIds.slice(0, WORLD3D_WARM_TOKEN_COUNT)]
@@ -3289,7 +3365,7 @@
 
       function chooseRandomWorld3dToken() {
         if (!world3dState.availableTokenIds.length) {
-          return null;
+          return Math.floor(Math.random() * TOTAL_SUPPLY);
         }
 
         const tokenIds = world3dState.availableTokenIds;
@@ -3505,6 +3581,10 @@
         const world3dResetBtn = document.getElementById('world-3d-reset-btn');
         if (world3dResetBtn) {
           world3dResetBtn.addEventListener('click', () => {
+            if (world3dState.activeViewer === 'runtime' && world3dState.runtimeViewer) {
+              world3dState.runtimeViewer.reset();
+              return;
+            }
             resetWorld3dCamera(true);
           });
         }

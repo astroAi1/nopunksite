@@ -66,11 +66,11 @@ const BUCKED_BLOWN_CONTRACT =
 
 const NOPUNKS_3D_POSTERS_DIR =
   process.env.NOPUNKS_3D_POSTERS_DIR ||
-  '/Users/danriding/Desktop/nopunks-hq/3dnopunks';
+  path.join(__dirname, 'transparent');
 
 const NOPUNKS_3D_MODELS_DIR =
   process.env.NOPUNKS_3D_MODELS_DIR ||
-  path.join(NOPUNKS_3D_POSTERS_DIR, 'models');
+  path.join(__dirname, 'world3d-models');
 
 // Exact total supplies
 const NOPUNKS_SUPPLY = 10000;
@@ -1335,7 +1335,7 @@ function listTokenIdsForExtension(dirPath, ext) {
 }
 
 function build3dPosterPath(tokenId) {
-  return path.join(__dirname, `${tokenId}.png`);
+  return path.join(NOPUNKS_3D_POSTERS_DIR, `${tokenId}.png`);
 }
 
 function build3dModelPath(tokenId) {
@@ -1356,9 +1356,9 @@ function build3dTokenPayload(tokenId) {
     name: `No-Punk #${safeTokenId}`,
     available: modelAvailable,
     posterAvailable,
-    posterUrl: posterAvailable ? `/${safeTokenId}.png` : `/api/onchain/token/${safeTokenId}/image`,
-    modelUrl: modelAvailable ? `/api/3d/token/${safeTokenId}/model` : '',
-    imageUrl: posterAvailable ? `/${safeTokenId}.png` : `/api/onchain/token/${safeTokenId}/image`,
+    posterUrl: posterAvailable ? `/transparent/${safeTokenId}.png` : `/api/onchain/token/${safeTokenId}/image`,
+    modelUrl: modelAvailable ? `/world3d-models/${safeTokenId}.glb` : '',
+    imageUrl: posterAvailable ? `/transparent/${safeTokenId}.png` : `/api/onchain/token/${safeTokenId}/image`,
     openseaUrl: `https://opensea.io/item/base/${CONTRACT}/${safeTokenId}`,
   };
 }
@@ -1381,7 +1381,7 @@ function get3dManifest(forceRefresh = false) {
     return threeDManifestCache.payload;
   }
 
-  const posterTokenIds = listTokenIdsForExtension(__dirname, '.png');
+  const posterTokenIds = listTokenIdsForExtension(NOPUNKS_3D_POSTERS_DIR, '.png');
   const modelTokenIds = listTokenIdsForExtension(NOPUNKS_3D_MODELS_DIR, '.glb');
   const availableTokenIds = modelTokenIds;
 

@@ -853,7 +853,8 @@
         height: 34px;
         image-rendering: pixelated;
         object-fit: cover;
-        background: var(--void);
+        background: #000;
+        border: 1px solid rgba(255,255,255,0.08);
       }
 
       .world3d-suggestion-text {
@@ -2252,12 +2253,12 @@
                 touch-action="pan-y"
                 shadow-intensity="0"
                 exposure="1"
-                poster="/52.png"
+                poster="/transparent/52.png"
                 hidden
               ></model-viewer>
               <div id="world-3d-runtime-viewer" class="world3d-viewer" hidden></div>
               <div id="world-3d-fallback" class="world3d-fallback">
-                <img id="world-3d-fallback-img" src="/52.png" alt="3D world preview" />
+                <img id="world-3d-fallback-img" src="/transparent/52.png" alt="3D world preview" />
                 <div id="world-3d-fallback-copy" class="world3d-fallback-copy">
                   Loading the first voxel GLB.
                 </div>
@@ -2725,12 +2726,12 @@
 
       function getWorld3dPosterUrl(tokenId) {
         const safeId = sanitizeTokenId(tokenId, 52);
-        return `/${safeId}.png`;
+        return `/transparent/${safeId}.png`;
       }
 
       function getWorld3dModelUrl(tokenId) {
         const safeId = sanitizeTokenId(tokenId, WORLD3D_BOOT_TOKEN_ID);
-        return `${API_BASE}/3d/token/${safeId}/model`;
+        return `/world3d-models/${safeId}.glb`;
       }
 
       function buildWorld3dToken(tokenId) {
@@ -3211,9 +3212,9 @@
           ...buildWorld3dToken(tokenId),
           ...(token || {}),
         };
-        resolvedToken.posterUrl = resolvedToken.posterUrl || getWorld3dPosterUrl(tokenId);
+        resolvedToken.posterUrl = getWorld3dPosterUrl(tokenId);
         resolvedToken.modelUrl = resolvedToken.modelUrl || getWorld3dModelUrl(tokenId);
-        resolvedToken.imageUrl = resolvedToken.imageUrl || resolvedToken.posterUrl;
+        resolvedToken.imageUrl = getWorld3dPosterUrl(tokenId);
         resolvedToken.available = true;
 
         world3dState.currentTokenId = tokenId;
@@ -3234,10 +3235,6 @@
         if (openseaEl) {
           openseaEl.href = resolvedToken.openseaUrl || `${OPENSEA_ITEM_BASE}/${CONTRACT}/${tokenId}`;
         }
-        if (searchMetaEl && mode !== 'featured') {
-          searchMetaEl.textContent = `No-Punk #${tokenId} loads as a voxel GLB. Drag to orbit and scroll to zoom.`;
-        }
-
         try {
           if (preferRuntime) {
             await setWorld3dRuntimeModel(
@@ -3246,6 +3243,9 @@
               resolvedToken.imageUrl || resolvedToken.posterUrl
             );
             setWorld3dStatus('available', '3D Live');
+            if (searchMetaEl && mode !== 'featured') {
+              searchMetaEl.textContent = `No-Punk #${tokenId} is built live from the transparent sprite. Drag to orbit and scroll to zoom.`;
+            }
             if (copyEl) {
               copyEl.textContent = mode === 'featured'
                 ? 'This featured NoPunk is rendered live as a voxel build from its PNG. Drag to orbit, zoom to inspect, or search a specific token below.'
@@ -3255,6 +3255,9 @@
           } else {
             await setWorld3dModel(resolvedToken.modelUrl, getWorld3dFallbackImage(resolvedToken), true);
             setWorld3dStatus('available', '3D Ready');
+            if (searchMetaEl && mode !== 'featured') {
+              searchMetaEl.textContent = `No-Punk #${tokenId} loads as a voxel GLB. Drag to orbit and scroll to zoom.`;
+            }
             if (copyEl) {
               copyEl.textContent = mode === 'featured'
                 ? 'This featured NoPunk is a real voxel GLB with full depth. Drag to orbit, zoom to inspect, or search a specific token below.'
@@ -3271,6 +3274,9 @@
               resolvedToken.imageUrl || resolvedToken.posterUrl
             );
             setWorld3dStatus('available', '3D Live');
+            if (searchMetaEl && mode !== 'featured') {
+              searchMetaEl.textContent = `No-Punk #${tokenId} is built live from the transparent sprite. Drag to orbit and scroll to zoom.`;
+            }
             if (copyEl) {
               copyEl.textContent =
                 'This NoPunk is rendered live as a voxel build in your browser. Drag to orbit, zoom in, or jump to another token.';

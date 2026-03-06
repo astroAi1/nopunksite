@@ -64,6 +64,14 @@ const BUCKED_BLOWN_CONTRACT =
   process.env.BUCKED_BLOWN_CONTRACT ||
   '0x13E09Ef7046442B67dd45A4FA4Ca61feB2eB30Aa'; // Bucked Blown 1500
 
+const NOPUNKS_3D_POSTERS_DIR =
+  process.env.NOPUNKS_3D_POSTERS_DIR ||
+  '/Users/danriding/Desktop/nopunks-hq/3dnopunks';
+
+const NOPUNKS_3D_MODELS_DIR =
+  process.env.NOPUNKS_3D_MODELS_DIR ||
+  path.join(NOPUNKS_3D_POSTERS_DIR, 'models');
+
 // Exact total supplies
 const NOPUNKS_SUPPLY = 10000;
 const NOPNUK_SUPPLY = 2024;
@@ -1289,6 +1297,170 @@ app.use('/icons', express.static(path.join(__dirname, 'public', 'icons')));
 app.use('/no-meta', express.static(path.join(__dirname, 'public', 'no-meta')));
 app.use('/team', express.static(path.join(__dirname, 'public', 'team')));
 app.use('/marketplace', express.static(path.join(__dirname, 'public', 'marketplace')));
+
+// -----------------------------
+// 3D WORLD – public NoPunks models + posters
+// -----------------------------
+const THREE_D_CACHE_TTL_MS = 60 * 1000;
+let threeDManifestCache = {
+  expiresAt: 0,
+  payload: null,
+};
+
+function isExistingFile(filePath) {
+  if (!filePath) return false;
+  try {
+    return fs.existsSync(filePath) && fs.statSync(filePath).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function listTokenIdsForExtension(dirPath, ext) {
+  if (!dirPath || !ext) return [];
+  if (!fs.existsSync(dirPath)) return [];
+
+  try {
+    return fs
+      .readdirSync(dirPath)
+      .map((file) => String(file || '').trim())
+      .filter((file) => file.toLowerCase().endsWith(ext))
+      .map((file) => Number.parseInt(path.basename(file, ext), 10))
+      .filter((tokenId) => Number.isInteger(tokenId) && tokenId >= 0 && tokenId < NOPUNKS_SUPPLY)
+      .sort((a, b) => a - b);
+  } catch (err) {
+    console.warn(`[3d] Failed to read ${dirPath}:`, err.message || err);
+    return [];
+  }
+}
+
+function build3dPosterPath(tokenId) {
+  return path.join(__dirname, `${tokenId}.png`);
+}
+
+function build3dModelPath(tokenId) {
+  return path.join(NOPUNKS_3D_MODELS_DIR, `${tokenId}.glb`);
+}
+
+function build3dTokenPayload(tokenId) {
+  const safeTokenId = parseOnChainTokenId(tokenId);
+  if (safeTokenId == null) return null;
+
+  const posterPath = build3dPosterPath(safeTokenId);
+  const modelPath = build3dModelPath(safeTokenId);
+  const posterAvailable = isExistingFile(posterPath);
+  const modelAvailable = isExistingFile(modelPath);
+
+  return {
+    tokenId: safeTokenId,
+    name: `No-Punk #${safeTokenId}`,
+    available: modelAvailable,
+    posterAvailable,
+    posterUrl: posterAvailable ? `/${safeTokenId}.png` : `/api/onchain/token/${safeTokenId}/image`,
+    modelUrl: modelAvailable ? `/api/3d/token/${safeTokenId}/model` : '',
+    imageUrl: posterAvailable ? `/${safeTokenId}.png` : `/api/onchain/token/${safeTokenId}/image`,
+    openseaUrl: `https://opensea.io/item/base/${CONTRACT}/${safeTokenId}`,
+  };
+}
+
+function sampleTokenIds(tokenIds, maxCount = 8) {
+  const list = Array.isArray(tokenIds) ? tokenIds.slice() : [];
+  if (list.length <= maxCount) return list;
+
+  for (let i = list.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [list[i], list[j]] = [list[j], list[i]];
+  }
+
+  return list.slice(0, maxCount).sort((a, b) => a - b);
+}
+
+function get3dManifest(forceRefresh = false) {
+  const now = Date.now();
+  if (!forceRefresh && threeDManifestCache.payload && now < threeDManifestCache.expiresAt) {
+    return threeDManifestCache.payload;
+  }
+
+  const posterTokenIds = listTokenIdsForExtension(__dirname, '.png');
+  const modelTokenIds = listTokenIdsForExtension(NOPUNKS_3D_MODELS_DIR, '.glb');
+  const availableTokenIds = modelTokenIds;
+
+  const payload = {
+    totalSupply: NOPUNKS_SUPPLY,
+    posterCount: posterTokenIds.length,
+    generatedModelCount: availableTokenIds.length,
+    availableTokenIds,
+    suggestionTokenIds: sampleTokenIds(availableTokenIds, 8),
+    updatedAt: new Date().toISOString(),
+  };
+
+  threeDManifestCache = {
+    payload,
+    expiresAt: now + THREE_D_CACHE_TTL_MS,
+  };
+
+  return payload;
+}
+
+app.get('/api/3d/manifest', (req, res) => {
+  const manifest = get3dManifest();
+  res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+  return res.json(manifest);
+});
+
+app.get('/api/3d/featured', (req, res) => {
+  const manifest = get3dManifest();
+  if (!manifest.availableTokenIds.length) {
+    return res.status(404).json({ error: 'No public 3D models available yet' });
+  }
+
+  const tokenId =
+    manifest.availableTokenIds[Math.floor(Math.random() * manifest.availableTokenIds.length)];
+  const payload = build3dTokenPayload(tokenId);
+  res.setHeader('Cache-Control', 'public, max-age=30, stale-while-revalidate=120');
+  return res.json(payload);
+});
+
+app.get('/api/3d/token/:tokenId', (req, res) => {
+  const tokenId = parseOnChainTokenId(req.params.tokenId);
+  if (tokenId == null) {
+    return res.status(400).json({ error: 'Invalid tokenId' });
+  }
+
+  const payload = build3dTokenPayload(tokenId);
+  return res.json(payload);
+});
+
+app.get('/api/3d/token/:tokenId/poster', (req, res) => {
+  const tokenId = parseOnChainTokenId(req.params.tokenId);
+  if (tokenId == null) {
+    return res.status(400).json({ error: 'Invalid tokenId' });
+  }
+
+  const posterPath = build3dPosterPath(tokenId);
+  if (!isExistingFile(posterPath)) {
+    return res.status(404).json({ error: '3D poster unavailable' });
+  }
+
+  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  return res.sendFile(posterPath);
+});
+
+app.get('/api/3d/token/:tokenId/model', (req, res) => {
+  const tokenId = parseOnChainTokenId(req.params.tokenId);
+  if (tokenId == null) {
+    return res.status(400).json({ error: 'Invalid tokenId' });
+  }
+
+  const modelPath = build3dModelPath(tokenId);
+  if (!isExistingFile(modelPath)) {
+    return res.status(404).json({ error: '3D model unavailable' });
+  }
+
+  res.setHeader('Content-Type', 'model/gltf-binary');
+  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  return res.sendFile(modelPath);
+});
 
 // -----------------------------
 // HELPERS – OpenSea

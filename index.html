@@ -44,6 +44,8 @@
 
     <!-- OnchainKit Styles -->
     <link rel="stylesheet" href="https://unpkg.com/@coinbase/onchainkit@latest/styles.css" />
+    <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+    <script nomodule src="https://unpkg.com/@google/model-viewer/dist/model-viewer-legacy.js"></script>
 
     <style>
       /* ========================================
@@ -607,6 +609,293 @@
       .lookup-download:hover {
         color: var(--pure);
         border-color: var(--pure);
+      }
+
+      /* ========================================
+         3D WORLD - public viewer
+         ======================================== */
+
+      .world3d-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.3fr) minmax(320px, 0.7fr);
+        gap: 2rem;
+        align-items: stretch;
+      }
+
+      .world3d-stage,
+      .world3d-panel {
+        background: linear-gradient(180deg, rgba(20,20,20,0.94) 0%, rgba(7,7,7,0.98) 100%);
+        border: 1px solid var(--ghost);
+      }
+
+      .world3d-stage {
+        padding: 1.5rem;
+      }
+
+      .world3d-stage-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-bottom: 1rem;
+      }
+
+      .world3d-kicker,
+      .world3d-coverage {
+        font-size: 0.65rem;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }
+
+      .world3d-kicker {
+        color: var(--pure);
+      }
+
+      .world3d-coverage {
+        color: var(--mist);
+        text-align: right;
+      }
+
+      .world3d-viewer-shell {
+        position: relative;
+        min-height: 560px;
+        background:
+          radial-gradient(circle at 50% 35%, rgba(255,255,255,0.06), transparent 45%),
+          linear-gradient(180deg, rgba(17,17,17,0.95) 0%, rgba(0,0,0,1) 100%);
+        overflow: hidden;
+      }
+
+      .world3d-viewer-shell::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
+        background-size: 48px 48px;
+        opacity: 0.25;
+        pointer-events: none;
+      }
+
+      .world3d-viewer {
+        width: 100%;
+        height: 560px;
+        background: transparent;
+        --poster-color: transparent;
+        --progress-bar-color: #ffffff;
+        --progress-mask: rgba(255,255,255,0.08);
+      }
+
+      .world3d-fallback {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 1.25rem;
+        padding: 2rem;
+        text-align: center;
+      }
+
+      .world3d-fallback[hidden] {
+        display: none;
+      }
+
+      .world3d-fallback img {
+        width: min(360px, 72%);
+        aspect-ratio: 1 / 1;
+        object-fit: contain;
+        image-rendering: pixelated;
+        border: 1px solid rgba(255,255,255,0.08);
+        background: rgba(255,255,255,0.02);
+      }
+
+      .world3d-fallback-copy {
+        max-width: 420px;
+        font-size: 0.8rem;
+        line-height: 1.8;
+        color: var(--mist);
+      }
+
+      .world3d-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+        padding: 1.75rem;
+      }
+
+      .world3d-status {
+        align-self: flex-start;
+        font-size: 0.62rem;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        padding: 0.35rem 0.55rem;
+        border: 1px solid var(--ghost);
+        color: var(--mist);
+        background: rgba(255,255,255,0.04);
+      }
+
+      .world3d-status[data-state='available'] {
+        color: var(--pure);
+        border-color: rgba(255,255,255,0.22);
+      }
+
+      .world3d-status[data-state='unavailable'] {
+        color: #ffb1b1;
+        border-color: rgba(255,177,177,0.2);
+        background: rgba(120, 20, 20, 0.14);
+      }
+
+      .world3d-status[data-state='loading'] {
+        color: var(--mist);
+      }
+
+      .world3d-id {
+        font-family: var(--font-display);
+        font-size: clamp(2.25rem, 6vw, 4.5rem);
+        font-weight: 900;
+        line-height: 0.95;
+        letter-spacing: -0.04em;
+        color: var(--pure);
+      }
+
+      .world3d-copy,
+      .world3d-search-meta {
+        font-size: 0.78rem;
+        line-height: 1.9;
+        color: var(--mist);
+      }
+
+      .world3d-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+      }
+
+      .world3d-action-btn,
+      .world3d-link-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 44px;
+        padding: 0.85rem 1rem;
+        border: 1px solid var(--ghost);
+        background: transparent;
+        color: var(--pure);
+        font-family: var(--font-mono);
+        font-size: 0.65rem;
+        font-weight: 600;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .world3d-action-btn:hover,
+      .world3d-link-btn:hover {
+        border-color: var(--pure);
+        background: rgba(255,255,255,0.06);
+      }
+
+      .world3d-action-btn:disabled {
+        cursor: not-allowed;
+        color: var(--mist);
+        border-color: rgba(255,255,255,0.08);
+      }
+
+      .world3d-search label,
+      .world3d-suggestions-title {
+        display: block;
+        margin-bottom: 0.85rem;
+        font-size: 0.65rem;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--fog);
+      }
+
+      .world3d-search-wrap {
+        margin-bottom: 0.85rem;
+      }
+
+      .world3d-search-wrap .lookup-input,
+      .world3d-search-wrap .lookup-btn {
+        min-height: 52px;
+      }
+
+      .world3d-suggestions-rail {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+      }
+
+      .world3d-suggestion {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.65rem;
+        border: 1px solid var(--ghost);
+        background: rgba(255,255,255,0.02);
+        padding: 0.55rem 0.7rem;
+        color: var(--pure);
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .world3d-suggestion:hover,
+      .world3d-suggestion.is-active {
+        border-color: var(--pure);
+        background: rgba(255,255,255,0.06);
+      }
+
+      .world3d-suggestion img {
+        width: 34px;
+        height: 34px;
+        image-rendering: pixelated;
+        object-fit: cover;
+        background: var(--void);
+      }
+
+      .world3d-suggestion-text {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.15rem;
+      }
+
+      .world3d-suggestion-text strong {
+        font-size: 0.7rem;
+        letter-spacing: 0.06em;
+      }
+
+      .world3d-suggestion-text span {
+        font-size: 0.58rem;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--mist);
+      }
+
+      @media (max-width: 1080px) {
+        .world3d-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 700px) {
+        .world3d-stage,
+        .world3d-panel {
+          padding: 1rem;
+        }
+
+        .world3d-stage-head {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .world3d-viewer-shell,
+        .world3d-viewer {
+          min-height: 420px;
+          height: 420px;
+        }
       }
 
       /* ========================================
@@ -1897,6 +2186,7 @@
     <header class="header">
       <div class="logo">NO-PUNKS</div>
       <nav class="nav">
+        <a href="#world-3d">3D</a>
         <a href="#collection">Collection</a>
         <a href="#noir-de-noir">Noir</a>
         <a href="#holders">Holders</a>
@@ -1932,6 +2222,99 @@
         </p>
       </div>
       <div class="hero-scroll">Scroll</div>
+    </section>
+
+    <!-- 3D World -->
+    <section id="world-3d" class="section section-dark">
+      <div class="container">
+        <div class="section-header">
+          <h2 class="section-title">3D World</h2>
+          <p class="section-subtitle">Search a No-Punk and inspect it in 3D</p>
+        </div>
+
+        <div class="world3d-grid">
+          <div class="world3d-stage">
+            <div class="world3d-stage-head">
+              <div id="world-3d-kicker" class="world3d-kicker">Featured Now</div>
+              <div id="world-3d-coverage" class="world3d-coverage">NO-3D · LOADING LIVE COVERAGE…</div>
+            </div>
+            <div class="world3d-viewer-shell">
+              <model-viewer
+                id="world-3d-viewer"
+                class="world3d-viewer"
+                alt="No-Punk voxel model"
+                camera-controls
+                auto-rotate
+                auto-rotate-delay="0"
+                interaction-prompt="none"
+                rotation-per-second="42deg"
+                touch-action="pan-y"
+                shadow-intensity="0"
+                exposure="1"
+                poster="/0.png"
+                hidden
+              ></model-viewer>
+              <div id="world-3d-fallback" class="world3d-fallback">
+                <img id="world-3d-fallback-img" src="/api/onchain/token/0/image" alt="3D world preview" />
+                <div id="world-3d-fallback-copy" class="world3d-fallback-copy">
+                  Loading the first voxel GLB.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="world3d-panel">
+            <div id="world-3d-status" class="world3d-status" data-state="loading">Loading</div>
+            <div id="world-3d-id" class="world3d-id">No-Punk #--</div>
+            <p id="world-3d-copy" class="world3d-copy">
+              Every ready NoPunk loads here as a real voxel GLB with full depth. Drag to orbit, zoom in, and inspect the model from every angle.
+            </p>
+
+            <div class="world3d-actions">
+              <button id="world-3d-random-btn" class="world3d-action-btn" type="button">
+                Random 3D
+              </button>
+              <button id="world-3d-reset-btn" class="world3d-action-btn" type="button" disabled>
+                Reset View
+              </button>
+              <a
+                id="world-3d-opensea"
+                class="world3d-link-btn"
+                href="https://opensea.io/item/base/0xa62f65d503068684e7228df98090F94322b8ed54/0"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                View on OpenSea
+              </a>
+            </div>
+
+            <div class="world3d-search">
+              <label for="world-3d-input">Find your No-Punk in 3D</label>
+              <div class="lookup-input-wrap world3d-search-wrap">
+                <input
+                  type="text"
+                  id="world-3d-input"
+                  class="lookup-input"
+                  placeholder="Enter token ID 0-9999"
+                  inputmode="numeric"
+                  autocomplete="off"
+                />
+                <button id="world-3d-search-btn" class="lookup-btn" type="button">Inspect</button>
+              </div>
+              <div id="world-3d-search-meta" class="world3d-search-meta">
+                Search any token. Transparent PNGs are used as posters while voxel GLBs stream in.
+              </div>
+            </div>
+
+            <div class="world3d-suggestions">
+              <div class="world3d-suggestions-title">Try These</div>
+              <div id="world-3d-suggestions" class="world3d-suggestions-rail">
+                <div class="world3d-search-meta">Loading voxel GLB picks…</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- Stats -->
@@ -2254,6 +2637,7 @@
       <div class="footer-brand">NO-PUNKS</div>
       <div class="footer-tagline">Lights Out. Traits Stay.</div>
       <div class="footer-links">
+        <a href="#world-3d">3D World</a>
         <a href="https://opensea.io/collection/nopunkismv2" target="_blank">OpenSea</a>
         <a href="https://x.com/NoPunkism" target="_blank">X / Twitter</a>
         <a href="#noir-de-noir">Noir de Noir</a>
@@ -2308,6 +2692,16 @@
         previewContextKey: '',
       };
 
+      const world3dState = {
+        manifest: null,
+        currentTokenId: null,
+        availableTokenIds: [],
+        suggestionTokenIds: [],
+        viewer: null,
+        defaultOrbitRadius: null,
+        pinchDistance: null,
+      };
+
       // Noir de Noir - correct IDs
       const NOIR_DE_NOIR = [338, 615, 676, 871, 1006, 1403, 2743, 2752, 2801, 3054, 3065, 3665, 4873, 4991, 5058, 5152, 5706, 6006, 6980, 7117, 7254, 8185, 8623, 8739];
 
@@ -2319,6 +2713,11 @@
           if (!ids.includes(id)) ids.push(id);
         }
         return ids;
+      }
+
+      function getWorld3dPosterUrl(tokenId) {
+        const safeId = sanitizeTokenId(tokenId, 52);
+        return `/${safeId}.png`;
       }
 
       function normalizeImageSource(url) {
@@ -2437,6 +2836,469 @@
         }
 
         return false;
+      }
+
+      function setWorld3dStatus(state, text) {
+        const statusEl = document.getElementById('world-3d-status');
+        if (!statusEl) return;
+        statusEl.dataset.state = state || 'loading';
+        statusEl.textContent = text || 'Loading';
+      }
+
+      function setWorld3dFallback(tokenId, imageUrl, message) {
+        const fallbackEl = document.getElementById('world-3d-fallback');
+        const fallbackImg = document.getElementById('world-3d-fallback-img');
+        const fallbackCopy = document.getElementById('world-3d-fallback-copy');
+        const viewerEl = document.getElementById('world-3d-viewer');
+
+        if (viewerEl) {
+          viewerEl.hidden = true;
+        }
+
+        if (fallbackImg) {
+          fallbackImg.src = imageUrl || getPunkImageUrl(tokenId);
+          fallbackImg.alt = `No-Punk #${tokenId}`;
+        }
+        if (fallbackCopy) {
+          fallbackCopy.textContent = message || '3D preview unavailable.';
+        }
+        if (fallbackEl) {
+          fallbackEl.hidden = false;
+        }
+      }
+
+      function getWorld3dTouchDistance(touches) {
+        if (!touches || touches.length < 2) return 0;
+        const deltaX = touches[0].clientX - touches[1].clientX;
+        const deltaY = touches[0].clientY - touches[1].clientY;
+        return Math.hypot(deltaX, deltaY);
+      }
+
+      function syncWorld3dZoomBounds(viewer) {
+        if (!viewer || typeof viewer.getCameraOrbit !== 'function') return;
+        const orbit = viewer.getCameraOrbit();
+        if (!orbit || !Number.isFinite(orbit.radius)) return;
+        world3dState.defaultOrbitRadius = orbit.radius;
+      }
+
+      function applyWorld3dZoomScale(viewer, scale) {
+        if (!viewer || typeof viewer.getCameraOrbit !== 'function') return;
+        const orbit = viewer.getCameraOrbit();
+        if (!orbit || !Number.isFinite(orbit.radius)) return;
+
+        const baseRadius = Number.isFinite(world3dState.defaultOrbitRadius)
+          ? world3dState.defaultOrbitRadius
+          : orbit.radius;
+        const minRadius = baseRadius * 0.45;
+        const maxRadius = baseRadius * 2.6;
+        const nextRadius = Math.min(maxRadius, Math.max(minRadius, orbit.radius * scale));
+
+        viewer.cameraOrbit = `${orbit.theta}rad ${orbit.phi}rad ${nextRadius}m`;
+      }
+
+      function attachWorld3dZoomBoost(viewer) {
+        if (!viewer || viewer.dataset.zoomBoostAttached === '1') return;
+
+        viewer.dataset.zoomBoostAttached = '1';
+
+        viewer.addEventListener(
+          'wheel',
+          (event) => {
+            event.preventDefault();
+            const zoomScale = Math.exp(event.deltaY * 0.0024);
+            applyWorld3dZoomScale(viewer, zoomScale);
+          },
+          { passive: false }
+        );
+
+        viewer.addEventListener('touchstart', (event) => {
+          world3dState.pinchDistance = event.touches.length === 2
+            ? getWorld3dTouchDistance(event.touches)
+            : null;
+        });
+
+        viewer.addEventListener(
+          'touchmove',
+          (event) => {
+            if (event.touches.length !== 2) return;
+
+            const nextDistance = getWorld3dTouchDistance(event.touches);
+            const previousDistance = world3dState.pinchDistance;
+            world3dState.pinchDistance = nextDistance;
+
+            if (!previousDistance || !nextDistance) return;
+
+            const pinchRatio = nextDistance / previousDistance;
+            if (!Number.isFinite(pinchRatio) || pinchRatio === 1) return;
+
+            event.preventDefault();
+            const zoomScale = Math.pow(1 / pinchRatio, 1.75);
+            applyWorld3dZoomScale(viewer, zoomScale);
+          },
+          { passive: false }
+        );
+
+        const clearPinch = () => {
+          world3dState.pinchDistance = null;
+        };
+
+        viewer.addEventListener('touchend', clearPinch);
+        viewer.addEventListener('touchcancel', clearPinch);
+      }
+
+      function waitForWorld3dElement() {
+        if (window.customElements && customElements.get('model-viewer')) {
+          return Promise.resolve();
+        }
+
+        if (!window.customElements || typeof customElements.whenDefined !== 'function') {
+          return Promise.reject(new Error('model-viewer unavailable'));
+        }
+
+        return Promise.race([
+          customElements.whenDefined('model-viewer'),
+          new Promise((_, reject) => {
+            window.setTimeout(() => reject(new Error('model-viewer unavailable')), 4000);
+          }),
+        ]);
+      }
+
+      async function ensureWorld3dViewer() {
+        await waitForWorld3dElement();
+        const fallbackEl = document.getElementById('world-3d-fallback');
+        const viewerEl = document.getElementById('world-3d-viewer');
+        if (!viewerEl) {
+          throw new Error('3D viewer unavailable');
+        }
+
+        world3dState.viewer = viewerEl;
+        attachWorld3dZoomBoost(viewerEl);
+
+        viewerEl.hidden = false;
+
+        if (fallbackEl) {
+          fallbackEl.hidden = true;
+        }
+
+        return world3dState.viewer;
+      }
+
+      function resetWorld3dCamera(autoRotate = true) {
+        const viewer = world3dState.viewer || document.getElementById('world-3d-viewer');
+        if (!viewer) return;
+
+        viewer.cameraTarget = '0m 0m 0m';
+        viewer.cameraOrbit = '32deg 74deg 108%';
+        viewer.fieldOfView = '27deg';
+        viewer.autoRotate = autoRotate;
+        viewer.autoRotateDelay = 0;
+        viewer.setAttribute('rotation-per-second', '42deg');
+
+        if (typeof viewer.jumpCameraToGoal === 'function') {
+          viewer.jumpCameraToGoal();
+        }
+
+        window.requestAnimationFrame(() => {
+          syncWorld3dZoomBounds(viewer);
+        });
+      }
+
+      function waitForWorld3dLoad(viewer) {
+        return new Promise((resolve, reject) => {
+          const onLoad = () => {
+            cleanup();
+            resolve(viewer);
+          };
+          const onError = (event) => {
+            cleanup();
+            reject(new Error(event?.detail?.type || '3D model failed to load'));
+          };
+          const cleanup = () => {
+            viewer.removeEventListener('load', onLoad);
+            viewer.removeEventListener('error', onError);
+          };
+
+          viewer.addEventListener('load', onLoad);
+          viewer.addEventListener('error', onError);
+        });
+      }
+
+      async function setWorld3dModel(modelUrl, posterUrl, autoRotate = true) {
+        const viewer = await ensureWorld3dViewer();
+        const fallbackEl = document.getElementById('world-3d-fallback');
+        const safePoster = posterUrl || getWorld3dPosterUrl(0);
+
+        viewer.poster = safePoster;
+        viewer.setAttribute('poster', safePoster);
+
+        if (fallbackEl) {
+          fallbackEl.hidden = true;
+        }
+
+        if (viewer.dataset.modelUrl === modelUrl) {
+          resetWorld3dCamera(autoRotate);
+          if (typeof viewer.dismissPoster === 'function') {
+            viewer.dismissPoster();
+          }
+          return viewer;
+        }
+
+        const loadPromise = waitForWorld3dLoad(viewer);
+        viewer.dataset.modelUrl = modelUrl;
+        viewer.src = modelUrl;
+        await loadPromise;
+        resetWorld3dCamera(autoRotate);
+        syncWorld3dZoomBounds(viewer);
+
+        if (typeof viewer.dismissPoster === 'function') {
+          viewer.dismissPoster();
+        }
+
+        return viewer;
+      }
+
+      function formatWorld3dCoverage(manifest) {
+        const liveCount = Number(manifest?.generatedModelCount || 0);
+        if (!liveCount) {
+          return 'NO-3D · VOXEL GLB BATCH IN PROGRESS';
+        }
+        return `NO-3D · ${liveCount.toLocaleString()} VOXEL GLBS LIVE`;
+      }
+
+      function getWorld3dFallbackImage(token) {
+        if (token?.posterUrl) return token.posterUrl;
+        if (token?.imageUrl) return token.imageUrl;
+        return getWorld3dPosterUrl(token?.tokenId ?? 0);
+      }
+
+      function highlightWorld3dSuggestion(activeTokenId) {
+        document.querySelectorAll('[data-world3d-token]').forEach((el) => {
+          const tokenId = Number.parseInt(el.dataset.world3dToken || '', 10);
+          el.classList.toggle('is-active', tokenId === activeTokenId);
+        });
+      }
+
+      function renderWorld3dSuggestions(manifest) {
+        const rail = document.getElementById('world-3d-suggestions');
+        if (!rail) return;
+
+        const tokens = Array.isArray(manifest?.suggestionTokenIds)
+          ? manifest.suggestionTokenIds
+          : [];
+
+        if (!tokens.length) {
+          rail.innerHTML = '<div class="world3d-search-meta">Voxel GLBs are still building.</div>';
+          return;
+        }
+
+        rail.innerHTML = tokens
+          .map((tokenId) => {
+            const posterUrl = getWorld3dPosterUrl(tokenId);
+            return `
+              <button class="world3d-suggestion" type="button" data-world3d-token="${tokenId}">
+                <img src="${posterUrl}" alt="No-Punk #${tokenId}" loading="lazy" decoding="async" />
+                <span class="world3d-suggestion-text">
+                  <strong>#${tokenId}</strong>
+                  <span>GLB Ready</span>
+                </span>
+              </button>
+            `;
+          })
+          .join('');
+
+        rail.querySelectorAll('[data-world3d-token]').forEach((button) => {
+          button.addEventListener('click', () => {
+            const tokenId = Number.parseInt(button.dataset.world3dToken || '', 10);
+            if (Number.isInteger(tokenId)) {
+              loadWorld3dToken(tokenId, { source: 'suggestion' }).catch((err) => {
+                console.error('World 3D suggestion error:', err);
+              });
+            }
+          });
+        });
+      }
+
+      async function renderWorld3dToken(token, options = {}) {
+        const mode = options?.source || 'search';
+        const tokenId = Number.parseInt(String(token?.tokenId ?? ''), 10);
+        if (!Number.isInteger(tokenId)) return;
+
+        world3dState.currentTokenId = tokenId;
+
+        const kickerEl = document.getElementById('world-3d-kicker');
+        const idEl = document.getElementById('world-3d-id');
+        const copyEl = document.getElementById('world-3d-copy');
+        const openseaEl = document.getElementById('world-3d-opensea');
+        const resetBtn = document.getElementById('world-3d-reset-btn');
+        const searchMetaEl = document.getElementById('world-3d-search-meta');
+
+        if (kickerEl) {
+          kickerEl.textContent = mode === 'featured' ? 'Featured Now' : `Viewing #${tokenId}`;
+        }
+        if (idEl) {
+          idEl.textContent = token?.name || `No-Punk #${tokenId}`;
+        }
+        if (openseaEl) {
+          openseaEl.href = token?.openseaUrl || `${OPENSEA_ITEM_BASE}/${CONTRACT}/${tokenId}`;
+        }
+        if (searchMetaEl && mode !== 'featured') {
+          searchMetaEl.textContent = `No-Punk #${tokenId} loads as a voxel GLB. Drag to orbit and scroll to zoom.`;
+        }
+
+        if (!token?.available || !token?.modelUrl) {
+          setWorld3dStatus('building', 'Building');
+          setWorld3dFallback(
+            tokenId,
+            getWorld3dFallbackImage(token),
+            'This voxel GLB is still being exported. Transparent PNG shown until the model is ready.'
+          );
+          if (copyEl) {
+            copyEl.textContent =
+              'This token does not have a live GLB yet. The transparent PNG stays in place while the batch exporter catches up.';
+          }
+          if (resetBtn) resetBtn.disabled = true;
+          highlightWorld3dSuggestion(tokenId);
+          return;
+        }
+
+        try {
+          await setWorld3dModel(token.modelUrl, getWorld3dFallbackImage(token), true);
+          setWorld3dStatus('available', '3D Ready');
+          if (copyEl) {
+            copyEl.textContent = mode === 'featured'
+              ? 'This featured NoPunk is a real voxel GLB with full depth. Drag to orbit, zoom to inspect, or search a specific token below.'
+              : 'This NoPunk is loaded as a real voxel GLB, not a poster render. Drag to orbit, zoom in, or jump to another token.';
+          }
+          if (resetBtn) resetBtn.disabled = false;
+        } catch (err) {
+          console.error('World 3D model load error:', err);
+          setWorld3dStatus('unavailable', '3D Not Ready');
+          setWorld3dFallback(
+            tokenId,
+            getWorld3dFallbackImage(token),
+            'The voxel GLB could not load right now. Transparent PNG shown instead.'
+          );
+          if (copyEl) {
+            copyEl.textContent =
+              'The model file is unavailable right now. Search another token or retry once more GLBs have finished exporting.';
+          }
+          if (resetBtn) resetBtn.disabled = true;
+        }
+
+        highlightWorld3dSuggestion(tokenId);
+      }
+
+      async function loadWorld3dManifest() {
+        const response = await fetch(`${API_BASE}/3d/manifest`, { cache: 'no-store' });
+        if (!response.ok) {
+          throw new Error('3D manifest fetch failed');
+        }
+
+        const manifest = await response.json();
+        world3dState.manifest = manifest;
+        world3dState.availableTokenIds = Array.isArray(manifest?.availableTokenIds)
+          ? manifest.availableTokenIds
+          : [];
+        world3dState.suggestionTokenIds = Array.isArray(manifest?.suggestionTokenIds)
+          ? manifest.suggestionTokenIds
+          : [];
+
+        const coverageEl = document.getElementById('world-3d-coverage');
+        if (coverageEl) {
+          coverageEl.textContent = formatWorld3dCoverage(manifest);
+        }
+
+        const randomBtn = document.getElementById('world-3d-random-btn');
+        if (randomBtn) {
+          randomBtn.disabled = !world3dState.availableTokenIds.length;
+        }
+
+        renderWorld3dSuggestions(manifest);
+        return manifest;
+      }
+
+      async function loadWorld3dToken(tokenId, options = {}) {
+        const safeId = sanitizeTokenId(tokenId, NaN);
+        if (!Number.isInteger(safeId)) {
+          setWorld3dStatus('unavailable', 'Invalid Token');
+          setWorld3dFallback(0, getPunkImageUrl(0), 'Enter a valid token ID between 0 and 9999.');
+          return null;
+        }
+
+        setWorld3dStatus('loading', 'Loading');
+        const response = await fetch(`${API_BASE}/3d/token/${safeId}`, { cache: 'no-store' });
+        if (!response.ok) {
+          throw new Error('3D token fetch failed');
+        }
+
+        const token = await response.json();
+        await renderWorld3dToken(token, options);
+        return token;
+      }
+
+      async function loadFeaturedWorld3d() {
+        if (!world3dState.availableTokenIds.length) {
+          setWorld3dStatus('building', 'Building');
+          setWorld3dFallback(
+            52,
+            getWorld3dPosterUrl(52),
+            'Voxel GLBs are still being exported. Transparent PNG shown until the first models land.'
+          );
+          return null;
+        }
+
+        setWorld3dStatus('loading', 'Loading');
+        const response = await fetch(`${API_BASE}/3d/featured`, { cache: 'no-store' });
+        if (!response.ok) {
+          throw new Error('3D featured fetch failed');
+        }
+
+        const token = await response.json();
+        await renderWorld3dToken(token, { source: 'featured' });
+        return token;
+      }
+
+      function chooseRandomWorld3dToken() {
+        if (!world3dState.availableTokenIds.length) {
+          return null;
+        }
+
+        const tokenIds = world3dState.availableTokenIds;
+        return tokenIds[Math.floor(Math.random() * tokenIds.length)] ?? null;
+      }
+
+      async function handleWorld3dSearch() {
+        const input = document.getElementById('world-3d-input');
+        const raw = String(input?.value || '').trim().replace(/^#/, '');
+        if (!/^\d+$/.test(raw)) {
+          setWorld3dStatus('unavailable', 'Invalid Token');
+          setWorld3dFallback(0, getPunkImageUrl(0), 'Enter a valid token ID between 0 and 9999.');
+          const searchMetaEl = document.getElementById('world-3d-search-meta');
+          if (searchMetaEl) {
+            searchMetaEl.textContent = 'Token IDs must be a number between 0 and 9999.';
+          }
+          return;
+        }
+
+        const tokenId = Number.parseInt(raw, 10);
+        if (!Number.isInteger(tokenId) || tokenId < 0 || tokenId >= TOTAL_SUPPLY) {
+          setWorld3dStatus('unavailable', 'Invalid Token');
+          setWorld3dFallback(0, getPunkImageUrl(0), 'Enter a valid token ID between 0 and 9999.');
+          return;
+        }
+
+        await loadWorld3dToken(tokenId, { source: 'search' });
+      }
+
+      async function initWorld3d() {
+        try {
+          await loadWorld3dManifest();
+          await loadFeaturedWorld3d();
+        } catch (err) {
+          console.error('World 3D init error:', err);
+          setWorld3dStatus('unavailable', 'Unavailable');
+          setWorld3dFallback(0, getPunkImageUrl(0), '3D World could not load right now. Try refreshing in a moment.');
+        }
       }
 
       // ========================================
@@ -2574,6 +3436,44 @@
           });
         }
 
+        const world3dInput = document.getElementById('world-3d-input');
+        if (world3dInput) {
+          world3dInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+              handleWorld3dSearch().catch((err) => {
+                console.error('World 3D search error:', err);
+              });
+            }
+          });
+        }
+
+        const world3dSearchBtn = document.getElementById('world-3d-search-btn');
+        if (world3dSearchBtn) {
+          world3dSearchBtn.addEventListener('click', () => {
+            handleWorld3dSearch().catch((err) => {
+              console.error('World 3D search error:', err);
+            });
+          });
+        }
+
+        const world3dRandomBtn = document.getElementById('world-3d-random-btn');
+        if (world3dRandomBtn) {
+          world3dRandomBtn.addEventListener('click', () => {
+            const tokenId = chooseRandomWorld3dToken();
+            if (!Number.isInteger(tokenId)) return;
+            loadWorld3dToken(tokenId, { source: 'featured' }).catch((err) => {
+              console.error('World 3D random error:', err);
+            });
+          });
+        }
+
+        const world3dResetBtn = document.getElementById('world-3d-reset-btn');
+        if (world3dResetBtn) {
+          world3dResetBtn.addEventListener('click', () => {
+            resetWorld3dCamera(true);
+          });
+        }
+
         const holderAddressInput = document.getElementById('holder-address-input');
         if (holderAddressInput) {
           holderAddressInput.addEventListener('keypress', (e) => {
@@ -2708,6 +3608,7 @@
         try { loadStats(); } catch (err) { console.error('loadStats init error:', err); }
         try { loadRecentSales(); } catch (err) { console.error('loadRecentSales init error:', err); }
         try { loadListedPunks(); } catch (err) { console.error('loadListedPunks init error:', err); }
+        try { initWorld3d(); } catch (err) { console.error('initWorld3d init error:', err); }
         try { loadNoirDeNoir(); } catch (err) { console.error('loadNoirDeNoir init error:', err); }
         try { loadFeaturedPunks(); } catch (err) { console.error('loadFeaturedPunks init error:', err); }
         try { randomHeroPunks(); } catch (err) { console.error('randomHeroPunks init error:', err); }

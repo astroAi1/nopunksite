@@ -1697,7 +1697,7 @@ app.get('/api/3d/token/:tokenId/model', (req, res) => {
   return res.sendFile(modelPath);
 });
 
-app.post('/api/3d/export', (req, res) => {
+app.post('/api/3d/export', async (req, res) => {
   const tokenId = parseOnChainTokenId(req.body?.tokenId);
   const format = String(req.body?.format || '').trim().toLowerCase();
 
@@ -1729,6 +1729,40 @@ app.post('/api/3d/export', (req, res) => {
       error: '',
     });
     return res.json(serializeThreeDShareJob(readyJob));
+  }
+
+  if (format === 'gif') {
+    const job = createThreeDShareJob(tokenId, format);
+    updateThreeDShareJob(job, {
+      status: 'rendering',
+      stage: 'Preparing scene',
+      progressPct: 5,
+      error: '',
+    });
+
+    try {
+      const readyPaths = await ensureThreeDShareGif(tokenId, (progress) => {
+        updateThreeDShareJob(job, progress);
+      });
+
+      updateThreeDShareJob(job, {
+        status: 'ready',
+        stage: 'Ready',
+        progressPct: 100,
+        downloadUrl: readyPaths.gifUrl,
+        error: '',
+      });
+      return res.json(serializeThreeDShareJob(job));
+    } catch (err) {
+      const message = err?.message || 'Could not export 3D GIF';
+      updateThreeDShareJob(job, {
+        status: 'error',
+        stage: 'Error',
+        progressPct: 100,
+        error: message,
+      });
+      return res.status(500).json({ error: message });
+    }
   }
 
   const job = createThreeDShareJob(tokenId, format);

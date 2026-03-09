@@ -11,6 +11,7 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const { spawn } = require('child_process');
 const {
   renderWorld3dShareGif,
@@ -83,7 +84,7 @@ const NOPUNKS_3D_SHARE_EXPORT_VERSION =
 
 const NOPUNKS_3D_SHARE_EXPORT_ROOT_DIR =
   process.env.NOPUNKS_3D_SHARE_EXPORT_ROOT_DIR ||
-  path.join(__dirname, 'generated', 'world3d-share');
+  path.join(os.tmpdir(), 'nopunks-world3d-share');
 
 // Exact total supplies
 const NOPUNKS_SUPPLY = 10000;
@@ -1347,6 +1348,8 @@ function ensureDirSync(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
 }
 
+ensureDirSync(NOPUNKS_3D_SHARE_EXPORT_ROOT_DIR);
+
 function build3dShareAssetPaths(tokenId) {
   const safeTokenId = parseOnChainTokenId(tokenId);
   if (safeTokenId == null) return null;
@@ -1698,76 +1701,82 @@ app.get('/api/3d/token/:tokenId/model', (req, res) => {
 });
 
 app.post('/api/3d/export', async (req, res) => {
-  const tokenId = parseOnChainTokenId(req.body?.tokenId);
-  const format = String(req.body?.format || '').trim().toLowerCase();
+  try {
+    const tokenId = parseOnChainTokenId(req.body?.tokenId);
+    const format = String(req.body?.format || '').trim().toLowerCase();
 
-  if (tokenId == null) {
-    return res.status(400).json({ error: 'Invalid tokenId' });
-  }
+    if (tokenId == null) {
+      return res.status(400).json({ error: 'Invalid tokenId' });
+    }
 
-  if (format !== 'mp4' && format !== 'gif') {
-    return res.status(400).json({ error: 'Invalid format' });
-  }
+    if (format !== 'mp4' && format !== 'gif') {
+      return res.status(400).json({ error: 'Invalid format' });
+    }
 
-  const modelPath = build3dModelPath(tokenId);
-  if (!isExistingFile(modelPath)) {
-    return res.status(404).json({ error: '3D export not ready' });
-  }
+    const modelPath = build3dModelPath(tokenId);
+    if (!isExistingFile(modelPath)) {
+      return res.status(404).json({ error: '3D export not ready' });
+    }
 
-  const assetPaths = build3dShareAssetPaths(tokenId);
-  ensureDirSync(assetPaths.dirPath);
+    const assetPaths = build3dShareAssetPaths(tokenId);
+    ensureDirSync(assetPaths.dirPath);
 
-  const cachedDownloadUrl = format === 'gif' ? assetPaths.gifUrl : assetPaths.mp4Url;
-  const cachedFilePath = format === 'gif' ? assetPaths.gifPath : assetPaths.mp4Path;
-  if (isExistingFile(cachedFilePath)) {
-    const readyJob = createThreeDShareJob(tokenId, format, cachedDownloadUrl);
-    updateThreeDShareJob(readyJob, {
-      status: 'ready',
-      stage: 'Ready',
-      progressPct: 100,
-      downloadUrl: cachedDownloadUrl,
-      error: '',
-    });
-    return res.json(serializeThreeDShareJob(readyJob));
-  }
-
-  if (format === 'gif') {
-    const job = createThreeDShareJob(tokenId, format);
-    updateThreeDShareJob(job, {
-      status: 'rendering',
-      stage: 'Preparing scene',
-      progressPct: 5,
-      error: '',
-    });
-
-    try {
-      const readyPaths = await ensureThreeDShareGif(tokenId, (progress) => {
-        updateThreeDShareJob(job, progress);
-      });
-
-      updateThreeDShareJob(job, {
+    const cachedDownloadUrl = format === 'gif' ? assetPaths.gifUrl : assetPaths.mp4Url;
+    const cachedFilePath = format === 'gif' ? assetPaths.gifPath : assetPaths.mp4Path;
+    if (isExistingFile(cachedFilePath)) {
+      const readyJob = createThreeDShareJob(tokenId, format, cachedDownloadUrl);
+      updateThreeDShareJob(readyJob, {
         status: 'ready',
         stage: 'Ready',
         progressPct: 100,
-        downloadUrl: readyPaths.gifUrl,
+        downloadUrl: cachedDownloadUrl,
         error: '',
       });
-      return res.json(serializeThreeDShareJob(job));
-    } catch (err) {
-      const message = err?.message || 'Could not export 3D GIF';
-      updateThreeDShareJob(job, {
-        status: 'error',
-        stage: 'Error',
-        progressPct: 100,
-        error: message,
-      });
-      return res.status(500).json({ error: message });
+      return res.json(serializeThreeDShareJob(readyJob));
     }
-  }
 
-  const job = createThreeDShareJob(tokenId, format);
-  startThreeDShareJob(job);
-  return res.status(202).json(serializeThreeDShareJob(job));
+    if (format === 'gif') {
+      const job = createThreeDShareJob(tokenId, format);
+      updateThreeDShareJob(job, {
+        status: 'rendering',
+        stage: 'Preparing scene',
+        progressPct: 5,
+        error: '',
+      });
+
+      try {
+        const readyPaths = await ensureThreeDShareGif(tokenId, (progress) => {
+          updateThreeDShareJob(job, progress);
+        });
+
+        updateThreeDShareJob(job, {
+          status: 'ready',
+          stage: 'Ready',
+          progressPct: 100,
+          downloadUrl: readyPaths.gifUrl,
+          error: '',
+        });
+        return res.json(serializeThreeDShareJob(job));
+      } catch (err) {
+        const message = err?.message || 'Could not export 3D GIF';
+        updateThreeDShareJob(job, {
+          status: 'error',
+          stage: 'Error',
+          progressPct: 100,
+          error: message,
+        });
+        return res.status(500).json({ error: message });
+      }
+    }
+
+    const job = createThreeDShareJob(tokenId, format);
+    startThreeDShareJob(job);
+    return res.status(202).json(serializeThreeDShareJob(job));
+  } catch (err) {
+    const message = err?.message || 'Could not start 3D export';
+    console.error('[3d-share] Export route error:', message);
+    return res.status(500).json({ error: message });
+  }
 });
 
 app.get('/api/3d/export/:jobId', (req, res) => {

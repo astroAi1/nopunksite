@@ -3012,7 +3012,7 @@
 
       async function loadWorld3dGifencModule() {
         if (!world3dGifencModulePromise) {
-          world3dGifencModulePromise = import('https://unpkg.com/gifenc?module')
+          world3dGifencModulePromise = import('/public/vendor/gifenc.module.js?v=1')
             .then((mod) => {
               const gifModule =
                 mod && typeof mod.GIFEncoder === 'function'

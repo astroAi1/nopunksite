@@ -12,6 +12,10 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
+const {
+  renderWorld3dShareGif,
+  renderWorld3dShareMp4,
+} = require('./lib/world3d-share-export');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -21,13 +25,15 @@ const PORT = process.env.PORT || 3000;
 // -----------------------------
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Accept, Content-Type');
   if (req.method === 'OPTIONS') {
     return res.sendStatus(204);
   }
   next();
 });
+
+app.use(express.json({ limit: '64kb' }));
 
 // -----------------------------
 // CONFIG
@@ -71,6 +77,13 @@ const NOPUNKS_3D_POSTERS_DIR =
 const NOPUNKS_3D_MODELS_DIR =
   process.env.NOPUNKS_3D_MODELS_DIR ||
   path.join(__dirname, 'world3d-models');
+
+const NOPUNKS_3D_SHARE_EXPORT_VERSION =
+  process.env.NOPUNKS_3D_SHARE_EXPORT_VERSION || 'v2';
+
+const NOPUNKS_3D_SHARE_EXPORT_ROOT_DIR =
+  process.env.NOPUNKS_3D_SHARE_EXPORT_ROOT_DIR ||
+  path.join(__dirname, 'generated', 'world3d-share');
 
 // Exact total supplies
 const NOPUNKS_SUPPLY = 10000;
@@ -1297,6 +1310,15 @@ app.use('/icons', express.static(path.join(__dirname, 'public', 'icons')));
 app.use('/no-meta', express.static(path.join(__dirname, 'public', 'no-meta')));
 app.use('/team', express.static(path.join(__dirname, 'public', 'team')));
 app.use('/marketplace', express.static(path.join(__dirname, 'public', 'marketplace')));
+app.use(
+  '/generated/world3d-share',
+  express.static(NOPUNKS_3D_SHARE_EXPORT_ROOT_DIR, {
+    maxAge: ONE_YEAR_MS,
+    immutable: true,
+    etag: true,
+    fallthrough: true,
+  })
+);
 
 // -----------------------------
 // 3D WORLD – public NoPunks models + posters
@@ -1306,6 +1328,11 @@ let threeDManifestCache = {
   expiresAt: 0,
   payload: null,
 };
+let threeDShareJobCounter = 0;
+const threeDShareJobs = new Map();
+const threeDShareJobsByCacheKey = new Map();
+const threeDShareVideoBuilds = new Map();
+const threeDShareGifBuilds = new Map();
 
 function isExistingFile(filePath) {
   if (!filePath) return false;
@@ -1314,6 +1341,97 @@ function isExistingFile(filePath) {
   } catch {
     return false;
   }
+}
+
+function ensureDirSync(dirPath) {
+  fs.mkdirSync(dirPath, { recursive: true });
+}
+
+function build3dShareAssetPaths(tokenId) {
+  const safeTokenId = parseOnChainTokenId(tokenId);
+  if (safeTokenId == null) return null;
+
+  const version = NOPUNKS_3D_SHARE_EXPORT_VERSION;
+  const dirPath = path.join(NOPUNKS_3D_SHARE_EXPORT_ROOT_DIR, String(safeTokenId), version);
+  const mp4Filename = `nopunk-${safeTokenId}-3d.mp4`;
+  const gifFilename = `nopunk-${safeTokenId}-3d.gif`;
+
+  return {
+    tokenId: safeTokenId,
+    version,
+    dirPath,
+    mp4Filename,
+    gifFilename,
+    mp4Path: path.join(dirPath, mp4Filename),
+    gifPath: path.join(dirPath, gifFilename),
+    mp4Url: `/generated/world3d-share/${safeTokenId}/${version}/${mp4Filename}`,
+    gifUrl: `/generated/world3d-share/${safeTokenId}/${version}/${gifFilename}`,
+  };
+}
+
+function getThreeDShareBaseUrl() {
+  const explicit = String(process.env.NOPUNKS_3D_SHARE_BASE_URL || '').trim();
+  if (explicit) {
+    return explicit.replace(/\/$/, '');
+  }
+  return `http://127.0.0.1:${PORT}`;
+}
+
+function getThreeDShareJob(jobId) {
+  if (!jobId) return null;
+  return threeDShareJobs.get(jobId) || null;
+}
+
+function serializeThreeDShareJob(job) {
+  if (!job) return null;
+  return {
+    jobId: job.jobId,
+    tokenId: job.tokenId,
+    format: job.format,
+    status: job.status,
+    stage: job.stage,
+    progressPct: job.progressPct,
+    downloadUrl: job.downloadUrl || '',
+    error: job.error || '',
+  };
+}
+
+function updateThreeDShareJob(job, patch = {}) {
+  if (!job) return job;
+  Object.assign(job, patch);
+  job.updatedAt = Date.now();
+  return job;
+}
+
+function createThreeDShareJob(tokenId, format, downloadUrl = '') {
+  const cacheKey = `${NOPUNKS_3D_SHARE_EXPORT_VERSION}:${tokenId}:${format}`;
+  const existing = getThreeDShareJob(threeDShareJobsByCacheKey.get(cacheKey));
+  if (existing && ['queued', 'rendering', 'encoding'].includes(existing.status)) {
+    return existing;
+  }
+  if (existing) {
+    threeDShareJobs.delete(existing.jobId);
+    threeDShareJobsByCacheKey.delete(cacheKey);
+  }
+
+  const jobId = `share-${Date.now()}-${++threeDShareJobCounter}`;
+  const job = {
+    jobId,
+    cacheKey,
+    tokenId,
+    format,
+    status: 'queued',
+    stage: 'Queued',
+    progressPct: 0,
+    downloadUrl,
+    error: '',
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+
+  threeDShareJobs.set(jobId, job);
+  threeDShareJobsByCacheKey.set(cacheKey, jobId);
+  return job;
 }
 
 function listTokenIdsForExtension(dirPath, ext) {
@@ -1373,6 +1491,123 @@ function sampleTokenIds(tokenIds, maxCount = 8) {
   }
 
   return list.slice(0, maxCount).sort((a, b) => a - b);
+}
+
+async function ensureThreeDShareVideo(tokenId, onProgress = () => {}) {
+  const assetPaths = build3dShareAssetPaths(tokenId);
+  if (!assetPaths) {
+    throw new Error('Invalid tokenId');
+  }
+
+  ensureDirSync(assetPaths.dirPath);
+  if (isExistingFile(assetPaths.mp4Path)) {
+    onProgress({ status: 'ready', stage: 'Ready', progressPct: 100 });
+    return assetPaths;
+  }
+
+  const existingBuild = threeDShareVideoBuilds.get(assetPaths.tokenId);
+  if (existingBuild) {
+    onProgress({ status: 'rendering', stage: 'Preparing scene', progressPct: 5 });
+    await existingBuild;
+    return assetPaths;
+  }
+
+  const buildPromise = renderWorld3dShareMp4({
+    tokenId: assetPaths.tokenId,
+    outputPath: assetPaths.mp4Path,
+    baseUrl: getThreeDShareBaseUrl(),
+    onProgress,
+  });
+
+  threeDShareVideoBuilds.set(assetPaths.tokenId, buildPromise);
+
+  try {
+    await buildPromise;
+    return assetPaths;
+  } finally {
+    threeDShareVideoBuilds.delete(assetPaths.tokenId);
+  }
+}
+
+async function ensureThreeDShareGif(tokenId, onProgress = () => {}) {
+  const assetPaths = build3dShareAssetPaths(tokenId);
+  if (!assetPaths) {
+    throw new Error('Invalid tokenId');
+  }
+
+  ensureDirSync(assetPaths.dirPath);
+  if (isExistingFile(assetPaths.gifPath) && fs.statSync(assetPaths.gifPath).size <= 15 * 1024 * 1024) {
+    onProgress({ status: 'ready', stage: 'Ready', progressPct: 100 });
+    return assetPaths;
+  }
+
+  const existingBuild = threeDShareGifBuilds.get(assetPaths.tokenId);
+  if (existingBuild) {
+    onProgress({ status: 'encoding', stage: 'Encoding GIF', progressPct: 84 });
+    await existingBuild;
+    return assetPaths;
+  }
+
+  const buildPromise = renderWorld3dShareGif({
+    tokenId: assetPaths.tokenId,
+    outputPath: assetPaths.gifPath,
+    baseUrl: getThreeDShareBaseUrl(),
+    onProgress,
+    maxBytes: 15 * 1024 * 1024,
+  });
+
+  threeDShareGifBuilds.set(assetPaths.tokenId, buildPromise);
+
+  try {
+    await buildPromise;
+    return assetPaths;
+  } finally {
+    threeDShareGifBuilds.delete(assetPaths.tokenId);
+  }
+}
+
+function startThreeDShareJob(job) {
+  if (!job || job.promise) return job;
+
+  const run = async () => {
+    try {
+      if (job.format === 'gif') {
+        const assetPaths = await ensureThreeDShareGif(job.tokenId, (progress) => {
+          updateThreeDShareJob(job, progress);
+        });
+        updateThreeDShareJob(job, {
+          status: 'ready',
+          stage: 'Ready',
+          progressPct: 100,
+          downloadUrl: assetPaths.gifUrl,
+        });
+        return;
+      }
+
+      const assetPaths = await ensureThreeDShareVideo(job.tokenId, (progress) => {
+        updateThreeDShareJob(job, progress);
+      });
+      updateThreeDShareJob(job, {
+        status: 'ready',
+        stage: 'Ready',
+        progressPct: 100,
+        downloadUrl: assetPaths.mp4Url,
+      });
+    } catch (err) {
+      updateThreeDShareJob(job, {
+        status: 'error',
+        stage: 'Error',
+        progressPct: 100,
+        error: err?.message || String(err),
+      });
+    }
+  };
+
+  job.promise = run().finally(() => {
+    delete job.promise;
+  });
+
+  return job;
 }
 
 function get3dManifest(forceRefresh = false) {
@@ -1460,6 +1695,54 @@ app.get('/api/3d/token/:tokenId/model', (req, res) => {
   res.setHeader('Content-Type', 'model/gltf-binary');
   res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
   return res.sendFile(modelPath);
+});
+
+app.post('/api/3d/export', (req, res) => {
+  const tokenId = parseOnChainTokenId(req.body?.tokenId);
+  const format = String(req.body?.format || '').trim().toLowerCase();
+
+  if (tokenId == null) {
+    return res.status(400).json({ error: 'Invalid tokenId' });
+  }
+
+  if (format !== 'mp4' && format !== 'gif') {
+    return res.status(400).json({ error: 'Invalid format' });
+  }
+
+  const modelPath = build3dModelPath(tokenId);
+  if (!isExistingFile(modelPath)) {
+    return res.status(404).json({ error: '3D export not ready' });
+  }
+
+  const assetPaths = build3dShareAssetPaths(tokenId);
+  ensureDirSync(assetPaths.dirPath);
+
+  const cachedDownloadUrl = format === 'gif' ? assetPaths.gifUrl : assetPaths.mp4Url;
+  const cachedFilePath = format === 'gif' ? assetPaths.gifPath : assetPaths.mp4Path;
+  if (isExistingFile(cachedFilePath)) {
+    const readyJob = createThreeDShareJob(tokenId, format, cachedDownloadUrl);
+    updateThreeDShareJob(readyJob, {
+      status: 'ready',
+      stage: 'Ready',
+      progressPct: 100,
+      downloadUrl: cachedDownloadUrl,
+      error: '',
+    });
+    return res.json(serializeThreeDShareJob(readyJob));
+  }
+
+  const job = createThreeDShareJob(tokenId, format);
+  startThreeDShareJob(job);
+  return res.status(202).json(serializeThreeDShareJob(job));
+});
+
+app.get('/api/3d/export/:jobId', (req, res) => {
+  const job = getThreeDShareJob(req.params.jobId);
+  if (!job) {
+    return res.status(404).json({ error: 'Export job not found' });
+  }
+
+  return res.json(serializeThreeDShareJob(job));
 });
 
 // -----------------------------
@@ -1734,35 +2017,77 @@ async function resolveOpenSeaSvgFromNft(nft) {
 }
 
 async function fetchJsonFromOpenSea(url, label = 'OpenSea', timeoutMs = 20000) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const maxAttempts = 3;
 
-  try {
-    const res = await fetchFn(url, {
-      headers: {
-        accept: 'application/json',
-        'x-api-key': OPENSEA_API_KEY,
-      },
-      signal: controller.signal,
-    });
-
-    const text = await res.text();
-
-    if (!res.ok) {
-      const shortBody = text.slice(0, 200).replace(/\s+/g, ' ');
-      console.error(`${label} error ${res.status}: ${shortBody}`);
-      throw new Error(`${label} request failed with ${res.status}`);
-    }
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      return JSON.parse(text);
-    } catch (e) {
-      console.error(`${label} JSON parse error:`, e);
-      throw e;
+      const res = await fetchFn(url, {
+        headers: {
+          accept: 'application/json',
+          'x-api-key': OPENSEA_API_KEY,
+        },
+        signal: controller.signal,
+      });
+
+      const text = await res.text();
+
+      if (!res.ok) {
+        const shortBody = text.slice(0, 200).replace(/\s+/g, ' ');
+        const shouldRetry =
+          attempt < maxAttempts && [429, 500, 502, 503, 504].includes(res.status);
+
+        if (shouldRetry) {
+          const retryAfterHeader = res.headers.get('retry-after');
+          const retryAfterSeconds = Number.parseInt(String(retryAfterHeader || '').trim(), 10);
+          const retryDelayMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+            ? retryAfterSeconds * 1000
+            : 1000 * 2 ** (attempt - 1);
+          console.warn(
+            `${label} error ${res.status}, retrying in ${retryDelayMs}ms (attempt ${attempt}/${maxAttempts})`
+          );
+          await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+          continue;
+        }
+
+        console.error(`${label} error ${res.status}: ${shortBody}`);
+        const error = new Error(`${label} request failed with ${res.status}`);
+        error.noRetry = true;
+        throw error;
+      }
+
+      try {
+        return JSON.parse(text);
+      } catch (e) {
+        console.error(`${label} JSON parse error:`, e);
+        e.noRetry = true;
+        throw e;
+      }
+    } catch (err) {
+      if (err?.noRetry) {
+        throw err;
+      }
+
+      const shouldRetry = attempt < maxAttempts;
+      if (!shouldRetry) {
+        throw err;
+      }
+
+      const retryDelayMs = 1000 * 2 ** (attempt - 1);
+      console.warn(
+        `${label} transport error, retrying in ${retryDelayMs}ms (attempt ${attempt}/${maxAttempts}): ${
+          err?.message || err
+        }`
+      );
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+    } finally {
+      clearTimeout(timeout);
     }
-  } finally {
-    clearTimeout(timeout);
   }
+
+  throw new Error(`${label} request failed after ${maxAttempts} attempts`);
 }
 
 // -----------------------------
@@ -2667,12 +2992,16 @@ app.get('/api/recent-sales', async (req, res) => {
 // =======================
 app.get('/api/listed', async (req, res) => {
   try {
-    const maxPages = parseBoundedInt(
-      req.query.pages,
-      LISTED_DEFAULT_MAX_PAGES,
-      1,
-      LISTED_MAX_PAGES_CAP
-    );
+    const hasPagesOverride =
+      req.query.pages != null && String(req.query.pages).trim() !== '';
+    const maxPages = hasPagesOverride
+      ? parseBoundedInt(
+          req.query.pages,
+          LISTED_DEFAULT_MAX_PAGES,
+          1,
+          LISTED_MAX_PAGES_CAP
+        )
+      : null;
     const limit = parseBoundedInt(
       req.query.limit,
       LISTED_DEFAULT_RESULT_LIMIT,
@@ -2687,7 +3016,7 @@ app.get('/api/listed', async (req, res) => {
     );
 
     const cacheKey =
-      `listed:${CHAIN}:${COLLECTION_SLUG}:pages=${maxPages}:limit=${limit}:pageSize=${pageSize}`;
+      `listed:${CHAIN}:${COLLECTION_SLUG}:pages=${maxPages ?? 'all'}:limit=${limit}:pageSize=${pageSize}`;
 
     const payload = await getOrSetApiResponseCache(
       cacheKey,
@@ -2696,7 +3025,6 @@ app.get('/api/listed', async (req, res) => {
         let allListings = [];
         let nextCursor = null;
         let page = 0;
-        const fetchTarget = Math.max(limit * 2, pageSize);
 
         do {
           const url = nextCursor
@@ -2709,7 +3037,7 @@ app.get('/api/listed', async (req, res) => {
           allListings = allListings.concat(listings);
           nextCursor = data.next || null;
           page += 1;
-        } while (nextCursor && page < maxPages && allListings.length < fetchTarget);
+        } while (nextCursor && (maxPages == null || page < maxPages));
 
         const mapped = allListings.map((l) => {
           const nft = l.nft || {};
@@ -2789,6 +3117,7 @@ app.get('/api/listed', async (req, res) => {
           return a.price - b.price;
         });
 
+        const totalListed = deduped.length;
         const selected = deduped.slice(0, limit);
         const listingsWithImages = await Promise.all(
           selected.map(async (item) => {
@@ -2844,7 +3173,10 @@ app.get('/api/listed', async (req, res) => {
           })
         );
 
-        return { listings: listingsWithImages };
+        return {
+          listings: listingsWithImages,
+          totalListed,
+        };
       }
     );
 
@@ -2852,7 +3184,7 @@ app.get('/api/listed', async (req, res) => {
     res.json(payload);
   } catch (err) {
     console.error('Listings API error:', err.message || err);
-    res.status(502).json({ listings: [], error: 'Listings unavailable' });
+    res.status(502).json({ listings: [], totalListed: 0, error: 'Listings unavailable' });
   }
 });
 

@@ -2280,6 +2280,9 @@
               <button id="world-3d-reset-btn" class="world3d-action-btn" type="button" disabled>
                 Reset View
               </button>
+              <button id="world-3d-gif-btn" class="world3d-action-btn" type="button" disabled>
+                Save 3D GIF
+              </button>
               <a
                 id="world-3d-opensea"
                 class="world3d-link-btn"
@@ -2668,6 +2671,8 @@
       const WORLD3D_BOOT_TOKEN_ID = 52;
       const WORLD3D_WARM_TOKEN_COUNT = 6;
       const WORLD3D_FALLBACK_TOKENS = [52, 338, 615, 871, 1006, 1403, 2743, 3054];
+      const WORLD3D_SHARE_POLL_INTERVAL_MS = 1200;
+      const WORLD3D_EXPORT_UNAVAILABLE_MESSAGE = '3D export not ready';
 
       const collectionState = {
         traitIndex: { traitToTokenIds: {}, typeValues: {}, traitTypes: [] },
@@ -2709,6 +2714,8 @@
         defaultOrbitRadius: null,
         pinchDistance: null,
         warmedAssetUrls: new Set(),
+        shareExporting: false,
+        shareExportFormat: '',
       };
 
       // Noir de Noir - correct IDs
@@ -2899,6 +2906,7 @@
         if (fallbackEl) {
           fallbackEl.hidden = false;
         }
+        resetWorld3dExportButtons(false);
       }
 
       function getWorld3dTouchDistance(touches) {
@@ -2906,6 +2914,182 @@
         const deltaX = touches[0].clientX - touches[1].clientX;
         const deltaY = touches[0].clientY - touches[1].clientY;
         return Math.hypot(deltaX, deltaY);
+      }
+
+      function waitForAnimationFrames(count = 1) {
+        return new Promise((resolve) => {
+          let framesRemaining = Math.max(1, Number.parseInt(count, 10) || 1);
+
+          const step = () => {
+            framesRemaining -= 1;
+            if (framesRemaining <= 0) {
+              resolve();
+              return;
+            }
+            window.requestAnimationFrame(step);
+          };
+
+          window.requestAnimationFrame(step);
+        });
+      }
+
+      function waitForWorld3dMs(durationMs) {
+        return new Promise((resolve) => {
+          window.setTimeout(resolve, Math.max(0, Number(durationMs) || 0));
+        });
+      }
+
+      function getWorld3dExportButton(format) {
+        if (format === 'gif') {
+          return document.getElementById('world-3d-gif-btn');
+        }
+        return null;
+      }
+
+      function getWorld3dExportButtonLabel(format) {
+        return format === 'gif' ? 'Save 3D GIF' : 'Save 3D Export';
+      }
+
+      function resetWorld3dExportButtons(canExport = world3dState.activeViewer === 'glb') {
+        const gifBtn = getWorld3dExportButton('gif');
+        const shouldDisable = !canExport || world3dState.shareExporting;
+
+        if (gifBtn) {
+          gifBtn.disabled = shouldDisable;
+          if (!world3dState.shareExporting || world3dState.shareExportFormat !== 'gif') {
+            gifBtn.textContent = getWorld3dExportButtonLabel('gif');
+          }
+        }
+      }
+
+      function downloadWorld3dExport(url, filename) {
+        if (!url) return;
+        const link = document.createElement('a');
+        link.href = url;
+        if (filename) {
+          link.download = filename;
+        }
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      }
+
+      function buildWorld3dExportFilename(tokenId, format) {
+        const ext = format === 'gif' ? 'gif' : 'mp4';
+        return `nopunk-${tokenId}-3d.${ext}`;
+      }
+
+      function formatWorld3dExportStage(job, format) {
+        const stage = String(job?.stage || '').trim();
+        const progressPct = Number.isFinite(Number(job?.progressPct))
+          ? Number(job.progressPct)
+          : 0;
+
+        if (stage === 'Preparing scene') return 'Preparing GIF';
+        if (stage === 'Rendering rotation') return `Rendering ${Math.max(1, progressPct)}%`;
+        if (stage === 'Encoding video') return format === 'gif' ? 'Optimizing GIF' : 'Encoding video';
+        if (stage === 'Encoding GIF') return 'Encoding GIF';
+        if (stage === 'Ready') return 'Download starting';
+        if (stage === 'Error') return 'Export failed';
+        return stage || 'Preparing export';
+      }
+
+      async function pollWorld3dShareExport(jobId, format) {
+        if (!jobId) {
+          throw new Error('Export job did not return a jobId');
+        }
+
+        const button = getWorld3dExportButton(format);
+        while (true) {
+          await waitForWorld3dMs(WORLD3D_SHARE_POLL_INTERVAL_MS);
+
+          const response = await fetch(`${API_BASE}/3d/export/${jobId}`, {
+            cache: 'no-store',
+          });
+          const payload = await response.json().catch(() => ({}));
+
+          if (!response.ok) {
+            throw new Error(payload?.error || 'Could not fetch export status');
+          }
+
+          if (button) {
+            button.textContent = formatWorld3dExportStage(payload, format);
+          }
+
+          if (payload.status === 'ready' && payload.downloadUrl) {
+            return payload;
+          }
+
+          if (payload.status === 'error') {
+            throw new Error(payload.error || '3D export failed');
+          }
+        }
+      }
+
+      async function startWorld3dShareExport(format) {
+        if (world3dState.shareExporting) return;
+
+        const tokenId = world3dState.currentTokenId;
+        if (!Number.isInteger(tokenId)) {
+          alert('Load a No-Punk in 3D first.');
+          return;
+        }
+
+        if (world3dState.activeViewer !== 'glb') {
+          alert(WORLD3D_EXPORT_UNAVAILABLE_MESSAGE);
+          return;
+        }
+
+        const button = getWorld3dExportButton(format);
+        world3dState.shareExporting = true;
+        world3dState.shareExportFormat = format;
+        resetWorld3dExportButtons(false);
+        if (button) {
+          button.textContent = 'Preparing scene';
+        }
+
+        try {
+          const response = await fetch(`${API_BASE}/3d/export`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              tokenId,
+              format,
+            }),
+          });
+          const payload = await response.json().catch(() => ({}));
+
+          if (!response.ok) {
+            throw new Error(payload?.error || 'Could not start 3D export');
+          }
+
+          if (button) {
+            button.textContent = formatWorld3dExportStage(payload, format);
+          }
+
+          const finalPayload =
+            payload.status === 'ready' && payload.downloadUrl
+              ? payload
+              : await pollWorld3dShareExport(payload.jobId, format);
+
+          if (button) {
+            button.textContent = 'Download starting';
+          }
+
+          downloadWorld3dExport(
+            finalPayload.downloadUrl,
+            buildWorld3dExportFilename(tokenId, format)
+          );
+        } catch (err) {
+          console.error('World 3D share export error:', err);
+          alert(`Could not export the 3D share right now.${err?.message ? `\n${err.message}` : ''}`);
+        } finally {
+          world3dState.shareExporting = false;
+          world3dState.shareExportFormat = '';
+          resetWorld3dExportButtons(world3dState.activeViewer === 'glb');
+        }
       }
 
       function warmWorld3dUrl(url) {
@@ -3235,6 +3419,8 @@
         if (openseaEl) {
           openseaEl.href = resolvedToken.openseaUrl || `${OPENSEA_ITEM_BASE}/${CONTRACT}/${tokenId}`;
         }
+        if (resetBtn) resetBtn.disabled = true;
+        resetWorld3dExportButtons(false);
         try {
           if (preferRuntime) {
             await setWorld3dRuntimeModel(
@@ -3252,6 +3438,7 @@
                 : 'This NoPunk is rendered live as a voxel build in your browser. Drag to orbit, zoom in, or jump to another token.';
             }
             if (resetBtn) resetBtn.disabled = false;
+            resetWorld3dExportButtons(false);
           } else {
             await setWorld3dModel(resolvedToken.modelUrl, getWorld3dFallbackImage(resolvedToken), true);
             setWorld3dStatus('available', '3D Ready');
@@ -3264,6 +3451,7 @@
                 : 'This NoPunk is loaded as a real voxel GLB, not a poster render. Drag to orbit, zoom in, or jump to another token.';
             }
             if (resetBtn) resetBtn.disabled = false;
+            resetWorld3dExportButtons(true);
           }
         } catch (err) {
           console.error('World 3D model load error:', err);
@@ -3282,6 +3470,7 @@
                 'This NoPunk is rendered live as a voxel build in your browser. Drag to orbit, zoom in, or jump to another token.';
             }
             if (resetBtn) resetBtn.disabled = false;
+            resetWorld3dExportButtons(false);
           } catch (runtimeErr) {
             console.error('World 3D runtime load error:', runtimeErr);
             setWorld3dStatus('unavailable', '3D Not Ready');
@@ -3295,6 +3484,7 @@
                 '3D is unavailable for this token right now. Search another token or retry in a moment.';
             }
             if (resetBtn) resetBtn.disabled = true;
+            resetWorld3dExportButtons(false);
           }
         }
 
@@ -3595,6 +3785,15 @@
           });
         }
 
+        const world3dGifBtn = document.getElementById('world-3d-gif-btn');
+        if (world3dGifBtn) {
+          world3dGifBtn.addEventListener('click', () => {
+            startWorld3dShareExport('gif').catch((err) => {
+              console.error('World 3D GIF export error:', err);
+            });
+          });
+        }
+
         const holderAddressInput = document.getElementById('holder-address-input');
         if (holderAddressInput) {
           holderAddressInput.addEventListener('keypress', (e) => {
@@ -3745,21 +3944,17 @@
 
       async function loadStats() {
         try {
-          const [statsRes, holderSummaryRes] = await Promise.all([
-            fetch(`${API_BASE}/stats`),
-            fetch(`${API_BASE}/holders/summary`),
-          ]);
+          const statsRes = await fetch(`${API_BASE}/stats`);
 
           if (!statsRes.ok) throw new Error('Stats fetch failed');
           const data = await statsRes.json();
-          const holderData = holderSummaryRes.ok ? await holderSummaryRes.json() : null;
-          const holderCount = Number(holderData?.summary?.holderCount);
+          const ownerCount = Number(data.numOwners);
 
           document.getElementById('floor-price').textContent = data.floorPrice?.toFixed(5) || '--';
           document.getElementById('total-volume').textContent = data.totalVolume?.toFixed(1) || '--';
           document.getElementById('num-owners').textContent =
-            Number.isFinite(holderCount) && holderCount > 0
-              ? holderCount.toLocaleString()
+            Number.isFinite(ownerCount) && ownerCount > 0
+              ? ownerCount.toLocaleString()
               : data.numOwners || '--';
         } catch (err) {
           console.error('Stats error:', err);
@@ -3836,12 +4031,15 @@
         const countEl = document.getElementById('listings-count');
 
         try {
-          const res = await fetch(`${API_BASE}/listed`);
+          const res = await fetch(`${API_BASE}/listed?limit=8`);
           if (!res.ok) throw new Error('Listings fetch failed');
           const data = await res.json();
 
           const listings = data.listings || [];
-          countEl.textContent = `${listings.length} available`;
+          const totalListed = Number.isFinite(Number(data.totalListed))
+            ? Number(data.totalListed)
+            : listings.length;
+          countEl.textContent = `${totalListed} available`;
           container.innerHTML = '';
 
           listings.slice(0, 8).forEach((listing, index) => {

@@ -69,6 +69,8 @@ export class NoPunkVoxelViewer {
     this.cache = new Map();
     this.geometry = new THREE.BoxGeometry(BOX_SCALE, BOX_SCALE, VOXEL_SIZE);
     this.matrixHelper = new THREE.Object3D();
+    this.orbitOffset = new THREE.Vector3();
+    this.orbitState = new THREE.Spherical();
     this.scene = new THREE.Scene();
     this.modelRoot = new THREE.Group();
     this.scene.add(this.modelRoot);
@@ -77,6 +79,7 @@ export class NoPunkVoxelViewer {
     this.renderer = new THREE.WebGLRenderer({
       antialias: true,
       alpha: true,
+      preserveDrawingBuffer: true,
       powerPreference: 'high-performance',
     });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -134,6 +137,41 @@ export class NoPunkVoxelViewer {
     this.controls.target.copy(CAMERA_TARGET);
     this.controls.autoRotate = true;
     this.controls.update();
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  getCanvas() {
+    return this.renderer.domElement;
+  }
+
+  getOrbitState() {
+    this.orbitOffset.copy(this.camera.position).sub(this.controls.target);
+    this.orbitState.setFromVector3(this.orbitOffset);
+
+    return {
+      theta: this.orbitState.theta,
+      phi: this.orbitState.phi,
+      radius: this.orbitState.radius,
+    };
+  }
+
+  setAutoRotate(enabled) {
+    this.controls.autoRotate = Boolean(enabled);
+  }
+
+  setOrbit(theta, phi, radius) {
+    const dampingEnabled = this.controls.enableDamping;
+    this.controls.enableDamping = false;
+
+    this.orbitState.set(radius, phi, theta);
+    this.orbitOffset.setFromSpherical(this.orbitState);
+
+    this.camera.position.copy(this.controls.target).add(this.orbitOffset);
+    this.camera.lookAt(this.controls.target);
+    this.controls.update();
+    this.renderer.render(this.scene, this.camera);
+
+    this.controls.enableDamping = dampingEnabled;
   }
 
   async buildModelData(imageUrl) {

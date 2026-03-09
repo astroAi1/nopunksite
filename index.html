@@ -2663,6 +2663,8 @@
       const HOSTNAME = String(window.location.hostname || '').trim().toLowerCase();
       const API_BASE =
         HOSTNAME === 'nopunksite.onrender.com' ||
+        HOSTNAME === 'nopunks.xyz' ||
+        HOSTNAME === 'www.nopunks.xyz' ||
         HOSTNAME === 'localhost' ||
         HOSTNAME === '127.0.0.1'
           ? '/api'

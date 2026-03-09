@@ -86,6 +86,10 @@ const NOPUNKS_3D_SHARE_EXPORT_ROOT_DIR =
   process.env.NOPUNKS_3D_SHARE_EXPORT_ROOT_DIR ||
   path.join(os.tmpdir(), 'nopunks-world3d-share');
 
+const NOPUNKS_3D_SHARE_JOB_ROOT_DIR =
+  process.env.NOPUNKS_3D_SHARE_JOB_ROOT_DIR ||
+  path.join(os.tmpdir(), 'nopunks-world3d-share-jobs');
+
 // Exact total supplies
 const NOPUNKS_SUPPLY = 10000;
 const NOPNUK_SUPPLY = 2024;
@@ -1349,6 +1353,41 @@ function ensureDirSync(dirPath) {
 }
 
 ensureDirSync(NOPUNKS_3D_SHARE_EXPORT_ROOT_DIR);
+ensureDirSync(NOPUNKS_3D_SHARE_JOB_ROOT_DIR);
+
+function buildThreeDShareJobPath(jobId) {
+  if (!jobId) return '';
+  return path.join(NOPUNKS_3D_SHARE_JOB_ROOT_DIR, `${jobId}.json`);
+}
+
+function persistThreeDShareJob(job) {
+  if (!job?.jobId) return job;
+  try {
+    fs.writeFileSync(buildThreeDShareJobPath(job.jobId), JSON.stringify(job, null, 2));
+  } catch (err) {
+    console.warn('[3d-share] Failed to persist job:', err?.message || err);
+  }
+  return job;
+}
+
+function loadThreeDShareJob(jobId) {
+  if (!jobId) return null;
+  const jobPath = buildThreeDShareJobPath(jobId);
+  if (!isExistingFile(jobPath)) return null;
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(jobPath, 'utf8'));
+    if (!parsed?.jobId) return null;
+    threeDShareJobs.set(parsed.jobId, parsed);
+    if (parsed.cacheKey) {
+      threeDShareJobsByCacheKey.set(parsed.cacheKey, parsed.jobId);
+    }
+    return parsed;
+  } catch (err) {
+    console.warn('[3d-share] Failed to load job:', err?.message || err);
+    return null;
+  }
+}
 
 function build3dShareAssetPaths(tokenId) {
   const safeTokenId = parseOnChainTokenId(tokenId);
@@ -1382,7 +1421,7 @@ function getThreeDShareBaseUrl() {
 
 function getThreeDShareJob(jobId) {
   if (!jobId) return null;
-  return threeDShareJobs.get(jobId) || null;
+  return threeDShareJobs.get(jobId) || loadThreeDShareJob(jobId) || null;
 }
 
 function serializeThreeDShareJob(job) {
@@ -1403,7 +1442,7 @@ function updateThreeDShareJob(job, patch = {}) {
   if (!job) return job;
   Object.assign(job, patch);
   job.updatedAt = Date.now();
-  return job;
+  return persistThreeDShareJob(job);
 }
 
 function createThreeDShareJob(tokenId, format, downloadUrl = '') {
@@ -1434,7 +1473,7 @@ function createThreeDShareJob(tokenId, format, downloadUrl = '') {
 
   threeDShareJobs.set(jobId, job);
   threeDShareJobsByCacheKey.set(cacheKey, jobId);
-  return job;
+  return persistThreeDShareJob(job);
 }
 
 function listTokenIdsForExtension(dirPath, ext) {
@@ -1733,40 +1772,6 @@ app.post('/api/3d/export', async (req, res) => {
         error: '',
       });
       return res.json(serializeThreeDShareJob(readyJob));
-    }
-
-    if (format === 'gif') {
-      const job = createThreeDShareJob(tokenId, format);
-      updateThreeDShareJob(job, {
-        status: 'rendering',
-        stage: 'Preparing scene',
-        progressPct: 5,
-        error: '',
-      });
-
-      try {
-        const readyPaths = await ensureThreeDShareGif(tokenId, (progress) => {
-          updateThreeDShareJob(job, progress);
-        });
-
-        updateThreeDShareJob(job, {
-          status: 'ready',
-          stage: 'Ready',
-          progressPct: 100,
-          downloadUrl: readyPaths.gifUrl,
-          error: '',
-        });
-        return res.json(serializeThreeDShareJob(job));
-      } catch (err) {
-        const message = err?.message || 'Could not export 3D GIF';
-        updateThreeDShareJob(job, {
-          status: 'error',
-          stage: 'Error',
-          progressPct: 100,
-          error: message,
-        });
-        return res.status(500).json({ error: message });
-      }
     }
 
     const job = createThreeDShareJob(tokenId, format);

@@ -108,37 +108,6 @@
         viewer.setAttribute('rotation-per-second', ROTATION_PER_SECOND);
       }
 
-      function waitForViewerLoad(timeoutMs = 20000) {
-        return new Promise((resolve, reject) => {
-          if (viewer.loaded) {
-            resolve();
-            return;
-          }
-
-          const timeout = window.setTimeout(() => {
-            cleanup();
-            reject(new Error('3D model load timed out'));
-          }, timeoutMs);
-
-          const onLoad = () => {
-            cleanup();
-            resolve();
-          };
-          const onError = (event) => {
-            cleanup();
-            reject(new Error(event?.detail?.type || '3D model failed to load'));
-          };
-          const cleanup = () => {
-            window.clearTimeout(timeout);
-            viewer.removeEventListener('load', onLoad);
-            viewer.removeEventListener('error', onError);
-          };
-
-          viewer.addEventListener('load', onLoad);
-          viewer.addEventListener('error', onError);
-        });
-      }
-
       function getViewerCanvas() {
         const candidates = [
           viewer && viewer.renderRoot ? viewer.renderRoot.querySelector('canvas') : null,
@@ -153,6 +122,80 @@
         }
 
         return null;
+      }
+
+      function hasVisibleCanvasContent() {
+        const canvas = getViewerCanvas();
+        if (!canvas || canvas.width <= 1 || canvas.height <= 1) {
+          return false;
+        }
+
+        try {
+          const probeCanvas = document.createElement('canvas');
+          probeCanvas.width = 8;
+          probeCanvas.height = 8;
+          const probeCtx = probeCanvas.getContext('2d', { willReadFrequently: true });
+          if (!probeCtx) return false;
+
+          probeCtx.drawImage(canvas, 0, 0, probeCanvas.width, probeCanvas.height);
+          const { data } = probeCtx.getImageData(0, 0, probeCanvas.width, probeCanvas.height);
+
+          for (let index = 0; index < data.length; index += 4) {
+            const red = data[index];
+            const green = data[index + 1];
+            const blue = data[index + 2];
+            const alpha = data[index + 3];
+
+            if (alpha > 0 && (red > 8 || green > 8 || blue > 8)) {
+              return true;
+            }
+          }
+        } catch (_) {
+          return false;
+        }
+
+        return false;
+      }
+
+      function waitForViewerLoad(timeoutMs = 20000) {
+        return new Promise((resolve, reject) => {
+          if (viewer.loaded || hasVisibleCanvasContent()) {
+            resolve();
+            return;
+          }
+
+          const timeout = window.setTimeout(() => {
+            cleanup();
+            reject(new Error('3D model load timed out'));
+          }, timeoutMs);
+
+          let pollTimer = 0;
+
+          const onLoad = () => {
+            cleanup();
+            resolve();
+          };
+          const onError = (event) => {
+            cleanup();
+            reject(new Error(event?.detail?.type || '3D model failed to load'));
+          };
+          const cleanup = () => {
+            window.clearTimeout(timeout);
+            window.clearInterval(pollTimer);
+            viewer.removeEventListener('load', onLoad);
+            viewer.removeEventListener('error', onError);
+          };
+
+          viewer.addEventListener('load', onLoad);
+          viewer.addEventListener('error', onError);
+
+          pollTimer = window.setInterval(() => {
+            if (viewer.loaded || hasVisibleCanvasContent()) {
+              cleanup();
+              resolve();
+            }
+          }, 150);
+        });
       }
 
       async function loadToken(tokenId) {
@@ -214,6 +257,7 @@
             tokenId: exportState.tokenId,
             loaded: Boolean(viewer.loaded),
             canvasReady: Boolean(getViewerCanvas()),
+            visibleReady: hasVisibleCanvasContent(),
           };
         },
 

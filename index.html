@@ -2680,6 +2680,12 @@
       const WORLD3D_WARM_TOKEN_COUNT = 6;
       const WORLD3D_FALLBACK_TOKENS = [52, 338, 615, 871, 1006, 1403, 2743, 3054];
       const WORLD3D_SHARE_POLL_INTERVAL_MS = 1200;
+      const WORLD3D_SHARE_MAX_BYTES = 15 * 1024 * 1024;
+      const WORLD3D_BROWSER_EXPORT_VARIANTS = [
+        { size: 1024, frameCount: 24, fps: 12 },
+        { size: 1024, frameCount: 20, fps: 10 },
+        { size: 1024, frameCount: 16, fps: 8 },
+      ];
       const WORLD3D_EXPORT_UNAVAILABLE_MESSAGE = '3D export not ready';
 
       const collectionState = {
@@ -2725,6 +2731,8 @@
         shareExporting: false,
         shareExportFormat: '',
       };
+
+      let world3dGifencModulePromise = null;
 
       // Noir de Noir - correct IDs
       const NOIR_DE_NOIR = [338, 615, 676, 871, 1006, 1403, 2743, 2752, 2801, 3054, 3065, 3665, 4873, 4991, 5058, 5152, 5706, 6006, 6980, 7117, 7254, 8185, 8623, 8739];
@@ -2998,6 +3006,215 @@
         return value;
       }
 
+      function shouldUseWorld3dBrowserExport() {
+        return HOSTNAME === 'nopunks.xyz' || HOSTNAME === 'www.nopunks.xyz';
+      }
+
+      async function loadWorld3dGifencModule() {
+        if (!world3dGifencModulePromise) {
+          world3dGifencModulePromise = import('https://unpkg.com/gifenc?module')
+            .then((mod) => {
+              const gifModule =
+                mod && typeof mod.GIFEncoder === 'function'
+                  ? mod
+                  : mod && mod.default && typeof mod.default.GIFEncoder === 'function'
+                    ? mod.default
+                    : null;
+
+              if (
+                !gifModule ||
+                typeof gifModule.GIFEncoder !== 'function' ||
+                typeof gifModule.quantize !== 'function' ||
+                typeof gifModule.applyPalette !== 'function'
+              ) {
+                throw new Error('GIF encoder unavailable');
+              }
+
+              return gifModule;
+            })
+            .catch((err) => {
+              world3dGifencModulePromise = null;
+              throw err;
+            });
+        }
+
+        return world3dGifencModulePromise;
+      }
+
+      function createWorld3dBrowserExportFrame(tokenId) {
+        return new Promise((resolve, reject) => {
+          const frame = document.createElement('iframe');
+          const safeId = sanitizeTokenId(tokenId, WORLD3D_BOOT_TOKEN_ID);
+          const timeoutId = window.setTimeout(() => {
+            cleanup();
+            reject(new Error('Timed out preparing browser export'));
+          }, 25000);
+
+          const cleanup = () => {
+            window.clearTimeout(timeoutId);
+            frame.onload = null;
+            frame.onerror = null;
+          };
+
+          frame.width = '1024';
+          frame.height = '1024';
+          frame.setAttribute('aria-hidden', 'true');
+          frame.tabIndex = -1;
+          frame.style.position = 'fixed';
+          frame.style.left = '-2000px';
+          frame.style.top = '0';
+          frame.style.width = '1024px';
+          frame.style.height = '1024px';
+          frame.style.opacity = '0';
+          frame.style.pointerEvents = 'none';
+          frame.style.border = '0';
+          frame.src = `/public/world3d-export.html?tokenId=${safeId}`;
+
+          frame.onload = () => {
+            cleanup();
+            resolve(frame);
+          };
+
+          frame.onerror = () => {
+            cleanup();
+            reject(new Error('Browser export frame failed to load'));
+          };
+
+          document.body.appendChild(frame);
+        });
+      }
+
+      async function waitForWorld3dBrowserExportReady(frame, tokenId) {
+        const deadline = Date.now() + 25000;
+        const safeId = sanitizeTokenId(tokenId, WORLD3D_BOOT_TOKEN_ID);
+
+        while (Date.now() < deadline) {
+          const exportApi = frame?.contentWindow?.__nopunkExport;
+          const state =
+            exportApi && typeof exportApi.getState === 'function'
+              ? exportApi.getState()
+              : null;
+
+          if (state?.error) {
+            throw new Error(state.error);
+          }
+
+          if (state?.ready && state?.canvasReady) {
+            return exportApi;
+          }
+
+          if (exportApi && typeof exportApi.loadToken === 'function' && !state?.ready) {
+            await exportApi.loadToken(safeId);
+          }
+
+          await waitForWorld3dMs(150);
+        }
+
+        throw new Error('Browser export did not become ready');
+      }
+
+      function cleanupWorld3dBrowserExportFrame(frame) {
+        if (frame && frame.parentNode) {
+          frame.parentNode.removeChild(frame);
+        }
+      }
+
+      async function exportWorld3dGifInBrowser(tokenId, button) {
+        const gifenc = await loadWorld3dGifencModule();
+        const frame = await createWorld3dBrowserExportFrame(tokenId);
+        const targetCanvas = document.createElement('canvas');
+        const targetCtx = targetCanvas.getContext('2d', {
+          alpha: false,
+          willReadFrequently: true,
+        });
+
+        if (!targetCtx) {
+          cleanupWorld3dBrowserExportFrame(frame);
+          throw new Error('Browser export canvas unavailable');
+        }
+
+        try {
+          if (button) {
+            button.textContent = 'Preparing GIF';
+          }
+
+          const exportApi = await waitForWorld3dBrowserExportReady(frame, tokenId);
+          let finalBytes = null;
+
+          for (const variant of WORLD3D_BROWSER_EXPORT_VARIANTS) {
+            targetCanvas.width = variant.size;
+            targetCanvas.height = variant.size;
+
+            const encoder = gifenc.GIFEncoder();
+            const delay = Math.max(4, Math.round(100 / variant.fps));
+
+            for (let frameIndex = 0; frameIndex < variant.frameCount; frameIndex += 1) {
+              if (button) {
+                button.textContent = `Rendering ${Math.round(((frameIndex + 1) / variant.frameCount) * 78)}%`;
+              }
+
+              await exportApi.setFrame(frameIndex, variant.frameCount);
+              const sourceCanvas =
+                typeof exportApi.getCanvas === 'function' ? exportApi.getCanvas() : null;
+
+              if (!sourceCanvas) {
+                throw new Error('3D export canvas unavailable');
+              }
+
+              targetCtx.fillStyle = '#000000';
+              targetCtx.fillRect(0, 0, variant.size, variant.size);
+              targetCtx.drawImage(sourceCanvas, 0, 0, variant.size, variant.size);
+
+              const frameImage = targetCtx.getImageData(0, 0, variant.size, variant.size);
+              const palette = gifenc.quantize(frameImage.data, 256);
+              const indexed = gifenc.applyPalette(frameImage.data, palette);
+
+              encoder.writeFrame(indexed, variant.size, variant.size, {
+                palette,
+                delay,
+                repeat: frameIndex === 0 ? 0 : undefined,
+                dispose: 1,
+              });
+
+              await waitForWorld3dMs(0);
+            }
+
+            encoder.finish();
+            const bytes =
+              typeof encoder.bytesView === 'function'
+                ? encoder.bytesView()
+                : typeof encoder.bytes === 'function'
+                  ? encoder.bytes()
+                  : null;
+
+            if (!bytes || !bytes.byteLength) {
+              throw new Error('GIF encoder returned no data');
+            }
+
+            if (bytes.byteLength <= WORLD3D_SHARE_MAX_BYTES) {
+              finalBytes = bytes;
+              break;
+            }
+          }
+
+          if (!finalBytes) {
+            throw new Error('Could not fit the 3D GIF under 15 MB');
+          }
+
+          if (button) {
+            button.textContent = 'Saving GIF';
+          }
+
+          const objectUrl = URL.createObjectURL(new Blob([finalBytes], { type: 'image/gif' }));
+          downloadWorld3dExport(objectUrl, buildWorld3dExportFilename(tokenId, 'gif'));
+          window.setTimeout(() => {
+            URL.revokeObjectURL(objectUrl);
+          }, 30000);
+        } finally {
+          cleanupWorld3dBrowserExportFrame(frame);
+        }
+      }
+
       function buildWorld3dExportFilename(tokenId, format) {
         const ext = format === 'gif' ? 'gif' : 'mp4';
         return `nopunk-${tokenId}-3d.${ext}`;
@@ -3073,6 +3290,11 @@
         }
 
         try {
+          if (format === 'gif' && shouldUseWorld3dBrowserExport()) {
+            await exportWorld3dGifInBrowser(tokenId, button);
+            return;
+          }
+
           const response = await fetch(`${API_BASE}/3d/export`, {
             method: 'POST',
             headers: {

@@ -139,6 +139,22 @@
         });
       }
 
+      function getViewerCanvas() {
+        const candidates = [
+          viewer && viewer.renderRoot ? viewer.renderRoot.querySelector('canvas') : null,
+          viewer && viewer.shadowRoot ? viewer.shadowRoot.querySelector('canvas') : null,
+          viewer ? viewer.querySelector('canvas') : null,
+        ];
+
+        for (const candidate of candidates) {
+          if (candidate && typeof candidate.getContext === 'function') {
+            return candidate;
+          }
+        }
+
+        return null;
+      }
+
       async function loadToken(tokenId) {
         exportState.ready = false;
         exportState.error = '';
@@ -197,7 +213,12 @@
             error: exportState.error,
             tokenId: exportState.tokenId,
             loaded: Boolean(viewer.loaded),
+            canvasReady: Boolean(getViewerCanvas()),
           };
+        },
+
+        getCanvas() {
+          return getViewerCanvas();
         },
       };
 

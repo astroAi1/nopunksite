@@ -2660,7 +2660,13 @@
       // V2 Contract: 0xa62f65d503068684e7228df98090F94322b8ed54
       // ========================================
 
-      const API_BASE = '/api';
+      const HOSTNAME = String(window.location.hostname || '').trim().toLowerCase();
+      const API_BASE =
+        HOSTNAME === 'nopunksite.onrender.com' ||
+        HOSTNAME === 'localhost' ||
+        HOSTNAME === '127.0.0.1'
+          ? '/api'
+          : 'https://nopunksite.onrender.com/api';
       const CONTRACT = '0xa62f65d503068684e7228df98090F94322b8ed54';
       const OPENSEA_BASE = 'https://opensea.io/assets/base';
       const OPENSEA_ITEM_BASE = 'https://opensea.io/item/base';
@@ -2965,13 +2971,29 @@
       function downloadWorld3dExport(url, filename) {
         if (!url) return;
         const link = document.createElement('a');
-        link.href = url;
+        link.href = resolveApiAssetUrl(url);
         if (filename) {
           link.download = filename;
         }
         document.body.appendChild(link);
         link.click();
         link.remove();
+      }
+
+      function resolveApiAssetUrl(url) {
+        const value = String(url || '').trim();
+        if (!value) return '';
+        if (/^https?:\/\//i.test(value)) {
+          return value;
+        }
+        if (value.startsWith('/') && /^https?:\/\//i.test(API_BASE)) {
+          try {
+            return new URL(value, API_BASE).href;
+          } catch (_) {
+            return value;
+          }
+        }
+        return value;
       }
 
       function buildWorld3dExportFilename(tokenId, format) {

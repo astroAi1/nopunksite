@@ -2679,12 +2679,13 @@
       const WORLD3D_BOOT_TOKEN_ID = 52;
       const WORLD3D_WARM_TOKEN_COUNT = 6;
       const WORLD3D_FALLBACK_TOKENS = [52, 338, 615, 871, 1006, 1403, 2743, 3054];
-      const WORLD3D_SHARE_POLL_INTERVAL_MS = 1200;
       const WORLD3D_SHARE_MAX_BYTES = 15 * 1024 * 1024;
+      const WORLD3D_GIF_EXPORT_SIZE = 1024;
+      const WORLD3D_GIF_WORKER_URL = '/public/world3d-gif-worker.js?v=2';
       const WORLD3D_BROWSER_EXPORT_VARIANTS = [
-        { size: 1024, frameCount: 24, fps: 12 },
-        { size: 1024, frameCount: 20, fps: 10 },
-        { size: 1024, frameCount: 16, fps: 8 },
+        { frameCount: 24, fps: 12 },
+        { frameCount: 20, fps: 10 },
+        { frameCount: 16, fps: 8 },
       ];
       const WORLD3D_EXPORT_UNAVAILABLE_MESSAGE = '3D export not ready';
 
@@ -2731,8 +2732,6 @@
         shareExporting: false,
         shareExportFormat: '',
       };
-
-      let world3dGifencModulePromise = null;
 
       // Noir de Noir - correct IDs
       const NOIR_DE_NOIR = [338, 615, 676, 871, 1006, 1403, 2743, 2752, 2801, 3054, 3065, 3665, 4873, 4991, 5058, 5152, 5706, 6006, 6980, 7117, 7254, 8185, 8623, 8739];
@@ -3006,131 +3005,349 @@
         return value;
       }
 
-      function shouldUseWorld3dBrowserExport() {
-        return HOSTNAME === 'nopunks.xyz' || HOSTNAME === 'www.nopunks.xyz';
-      }
+      function getWorld3dViewerCanvas(viewer = world3dState.viewer) {
+        if (!viewer) return null;
 
-      async function loadWorld3dGifencModule() {
-        if (!world3dGifencModulePromise) {
-          world3dGifencModulePromise = import('/public/vendor/gifenc.module.js?v=1')
-            .then((mod) => {
-              const gifModule =
-                mod && typeof mod.GIFEncoder === 'function'
-                  ? mod
-                  : mod && mod.default && typeof mod.default.GIFEncoder === 'function'
-                    ? mod.default
-                    : null;
+        const candidates = [
+          viewer && viewer.renderRoot ? viewer.renderRoot.querySelector('canvas') : null,
+          viewer && viewer.shadowRoot ? viewer.shadowRoot.querySelector('canvas') : null,
+          viewer ? viewer.querySelector('canvas') : null,
+        ];
 
-              if (
-                !gifModule ||
-                typeof gifModule.GIFEncoder !== 'function' ||
-                typeof gifModule.quantize !== 'function' ||
-                typeof gifModule.applyPalette !== 'function'
-              ) {
-                throw new Error('GIF encoder unavailable');
-              }
-
-              return gifModule;
-            })
-            .catch((err) => {
-              world3dGifencModulePromise = null;
-              throw err;
-            });
+        for (const candidate of candidates) {
+          if (candidate && typeof candidate.getContext === 'function') {
+            return candidate;
+          }
         }
 
-        return world3dGifencModulePromise;
+        return null;
       }
 
-      function createWorld3dBrowserExportFrame(tokenId) {
+      function hasWorld3dViewerVisibleContent(viewer = world3dState.viewer) {
+        const canvas = getWorld3dViewerCanvas(viewer);
+        if (!canvas || canvas.width <= 1 || canvas.height <= 1) {
+          return false;
+        }
+
+        try {
+          const probeCanvas = document.createElement('canvas');
+          probeCanvas.width = 8;
+          probeCanvas.height = 8;
+          const probeCtx = probeCanvas.getContext('2d', { willReadFrequently: true });
+          if (!probeCtx) return false;
+
+          probeCtx.drawImage(canvas, 0, 0, probeCanvas.width, probeCanvas.height);
+          const { data } = probeCtx.getImageData(0, 0, probeCanvas.width, probeCanvas.height);
+
+          for (let index = 0; index < data.length; index += 4) {
+            const red = data[index];
+            const green = data[index + 1];
+            const blue = data[index + 2];
+            const alpha = data[index + 3];
+
+            if (alpha > 0 && (red > 8 || green > 8 || blue > 8)) {
+              return true;
+            }
+          }
+        } catch (_) {
+          return false;
+        }
+
+        return false;
+      }
+
+      function waitForWorld3dViewerReadyForExport(viewer, timeoutMs = 12000) {
         return new Promise((resolve, reject) => {
-          const frame = document.createElement('iframe');
-          const safeId = sanitizeTokenId(tokenId, WORLD3D_BOOT_TOKEN_ID);
+          if (!viewer) {
+            reject(new Error('3D viewer unavailable'));
+            return;
+          }
+
+          if (viewer.loaded || hasWorld3dViewerVisibleContent(viewer)) {
+            resolve(viewer);
+            return;
+          }
+
           const timeoutId = window.setTimeout(() => {
             cleanup();
-            reject(new Error('Timed out preparing browser export'));
-          }, 25000);
+            reject(new Error('3D viewer is not ready for export'));
+          }, timeoutMs);
+          let pollTimer = 0;
 
+          const onLoad = () => {
+            cleanup();
+            resolve(viewer);
+          };
+          const onError = (event) => {
+            cleanup();
+            reject(new Error(event?.detail?.type || '3D model failed to load'));
+          };
           const cleanup = () => {
             window.clearTimeout(timeoutId);
-            frame.onload = null;
-            frame.onerror = null;
+            window.clearInterval(pollTimer);
+            viewer.removeEventListener('load', onLoad);
+            viewer.removeEventListener('error', onError);
           };
 
-          frame.width = '1024';
-          frame.height = '1024';
-          frame.setAttribute('aria-hidden', 'true');
-          frame.tabIndex = -1;
-          frame.style.position = 'fixed';
-          frame.style.left = '-2000px';
-          frame.style.top = '0';
-          frame.style.width = '1024px';
-          frame.style.height = '1024px';
-          frame.style.opacity = '0';
-          frame.style.pointerEvents = 'none';
-          frame.style.border = '0';
-          frame.src = `/public/world3d-export.html?tokenId=${safeId}`;
+          viewer.addEventListener('load', onLoad);
+          viewer.addEventListener('error', onError);
 
-          frame.onload = () => {
-            cleanup();
-            resolve(frame);
-          };
-
-          frame.onerror = () => {
-            cleanup();
-            reject(new Error('Browser export frame failed to load'));
-          };
-
-          document.body.appendChild(frame);
+          pollTimer = window.setInterval(() => {
+            if (viewer.loaded || hasWorld3dViewerVisibleContent(viewer)) {
+              cleanup();
+              resolve(viewer);
+            }
+          }, 150);
         });
       }
 
-      async function waitForWorld3dBrowserExportReady(frame, tokenId) {
-        const deadline = Date.now() + 25000;
-        const safeId = sanitizeTokenId(tokenId, WORLD3D_BOOT_TOKEN_ID);
-
-        while (Date.now() < deadline) {
-          const exportApi = frame?.contentWindow?.__nopunkExport;
-          const state =
-            exportApi && typeof exportApi.getState === 'function'
-              ? exportApi.getState()
-              : null;
-
-          if (state?.error) {
-            throw new Error(state.error);
+      async function waitForWorld3dViewerFrame(viewer, count = 2) {
+        if (!viewer) return;
+        if (viewer.updateComplete && typeof viewer.updateComplete.then === 'function') {
+          try {
+            await viewer.updateComplete;
+          } catch (_) {
+            // Ignore updateComplete failures; the canvas probe below is the source of truth.
           }
-
-          if (state?.ready && state?.canvasReady) {
-            return exportApi;
-          }
-
-          if (exportApi && typeof exportApi.loadToken === 'function' && !state?.ready) {
-            await exportApi.loadToken(safeId);
-          }
-
-          await waitForWorld3dMs(150);
         }
-
-        throw new Error('Browser export did not become ready');
+        if (typeof viewer.jumpCameraToGoal === 'function') {
+          viewer.jumpCameraToGoal();
+        }
+        await waitForAnimationFrames(count);
       }
 
-      function cleanupWorld3dBrowserExportFrame(frame) {
-        if (frame && frame.parentNode) {
-          frame.parentNode.removeChild(frame);
+      function snapshotWorld3dViewerState(viewer) {
+        return {
+          src: viewer?.getAttribute('src') || viewer?.dataset.loadedModelUrl || viewer?.src || '',
+          cameraOrbit: viewer?.cameraOrbit || '32deg 74deg 108%',
+          cameraTarget: viewer?.cameraTarget || '0m 0m 0m',
+          fieldOfView: viewer?.fieldOfView || '27deg',
+          autoRotate: Boolean(viewer?.autoRotate),
+          autoRotateDelay: Number(viewer?.autoRotateDelay) || 0,
+          rotationPerSecond: viewer?.getAttribute('rotation-per-second') || '42deg',
+          touchAction: viewer?.getAttribute('touch-action') || 'pan-y',
+          pointerEvents: viewer?.style?.pointerEvents || '',
+        };
+      }
+
+      async function restoreWorld3dViewerState(viewer, state) {
+        if (!viewer || !state) return;
+
+        if (state.src && viewer.getAttribute('src') !== state.src) {
+          viewer.src = state.src;
+        }
+
+        viewer.cameraTarget = state.cameraTarget || '0m 0m 0m';
+        viewer.cameraOrbit = state.cameraOrbit || '32deg 74deg 108%';
+        viewer.fieldOfView = state.fieldOfView || '27deg';
+        viewer.autoRotate = Boolean(state.autoRotate);
+        viewer.autoRotateDelay = Number(state.autoRotateDelay) || 0;
+
+        if (state.rotationPerSecond) {
+          viewer.setAttribute('rotation-per-second', state.rotationPerSecond);
+        } else {
+          viewer.removeAttribute('rotation-per-second');
+        }
+
+        if (state.touchAction) {
+          viewer.setAttribute('touch-action', state.touchAction);
+        } else {
+          viewer.removeAttribute('touch-action');
+        }
+
+        viewer.style.pointerEvents = state.pointerEvents || '';
+        await waitForWorld3dViewerFrame(viewer, 2);
+      }
+
+      function setWorld3dExportUiLocked(viewer, activeButton, locked) {
+        const interactiveTargets = [
+          document.getElementById('world-3d-random-btn'),
+          document.getElementById('world-3d-reset-btn'),
+          document.getElementById('world-3d-search-btn'),
+          document.getElementById('world-3d-input'),
+          ...document.querySelectorAll('[data-world3d-token]'),
+        ].filter(Boolean);
+
+        if (locked) {
+          const state = {
+            controls: interactiveTargets.map((el) => ({
+              el,
+              disabled: 'disabled' in el ? Boolean(el.disabled) : null,
+              ariaDisabled: el.getAttribute('aria-disabled'),
+            })),
+            pointerEvents: viewer?.style?.pointerEvents || '',
+          };
+
+          interactiveTargets.forEach((el) => {
+            if (el === activeButton) return;
+            if ('disabled' in el) {
+              el.disabled = true;
+            } else {
+              el.setAttribute('aria-disabled', 'true');
+            }
+          });
+
+          if (viewer) {
+            viewer.style.pointerEvents = 'none';
+          }
+
+          return state;
+        }
+
+        const state = activeButton;
+        if (!state) return;
+
+        state.controls.forEach(({ el, disabled, ariaDisabled }) => {
+          if (!el) return;
+          if (disabled != null && 'disabled' in el) {
+            el.disabled = disabled;
+          }
+          if (ariaDisabled == null) {
+            el.removeAttribute('aria-disabled');
+          } else {
+            el.setAttribute('aria-disabled', ariaDisabled);
+          }
+        });
+
+        if (viewer) {
+          viewer.style.pointerEvents = state.pointerEvents || '';
         }
       }
 
-      async function exportWorld3dGifInBrowser(tokenId, button) {
-        const gifenc = await loadWorld3dGifencModule();
-        const frame = await createWorld3dBrowserExportFrame(tokenId);
-        const targetCanvas = document.createElement('canvas');
-        const targetCtx = targetCanvas.getContext('2d', {
+      function applyWorld3dFrameToStagingCanvas(sourceCanvas, targetCtx, size = WORLD3D_GIF_EXPORT_SIZE) {
+        if (!sourceCanvas || !targetCtx) {
+          throw new Error('3D export canvas unavailable');
+        }
+
+        const sourceWidth = sourceCanvas.width;
+        const sourceHeight = sourceCanvas.height;
+        if (!sourceWidth || !sourceHeight) {
+          throw new Error('3D export canvas unavailable');
+        }
+
+        targetCtx.fillStyle = '#000000';
+        targetCtx.fillRect(0, 0, size, size);
+
+        const scale = Math.max(size / sourceWidth, size / sourceHeight);
+        const drawWidth = sourceWidth * scale;
+        const drawHeight = sourceHeight * scale;
+        const offsetX = (size - drawWidth) / 2;
+        const offsetY = (size - drawHeight) / 2;
+
+        targetCtx.drawImage(sourceCanvas, offsetX, offsetY, drawWidth, drawHeight);
+      }
+
+      function logWorld3dGifExportTelemetry(level, payload) {
+        const entry = {
+          ...payload,
+          path: 'visible-viewer',
+          userAgent: navigator.userAgent,
+          at: new Date().toISOString(),
+        };
+        const logger = level === 'error' ? console.error : console.info;
+        logger(`[world3d-gif-export:${level}]`, entry);
+      }
+
+      async function createWorld3dGifWorkerSession(variant) {
+        const worker = new Worker(WORLD3D_GIF_WORKER_URL, { type: 'module' });
+        let pending = null;
+        let closed = false;
+
+        const rejectPending = (error) => {
+          if (!pending) return;
+          pending.reject(error);
+          pending = null;
+        };
+
+        const cleanup = () => {
+          if (closed) return;
+          closed = true;
+          worker.terminate();
+        };
+
+        const waitForType = (expectedType) =>
+          new Promise((resolve, reject) => {
+            pending = { expectedType, resolve, reject };
+          });
+
+        worker.addEventListener('message', (event) => {
+          const payload = event.data || {};
+          if (payload.type === 'error') {
+            rejectPending(new Error(payload.error || 'GIF worker failed'));
+            cleanup();
+            return;
+          }
+
+          if (!pending || payload.type !== pending.expectedType) return;
+
+          const { resolve } = pending;
+          pending = null;
+          resolve(payload);
+        });
+
+        worker.addEventListener('error', (event) => {
+          rejectPending(new Error(event?.message || 'GIF worker failed'));
+          cleanup();
+        });
+
+        worker.postMessage({
+          type: 'start',
+          width: WORLD3D_GIF_EXPORT_SIZE,
+          height: WORLD3D_GIF_EXPORT_SIZE,
+          fps: variant.fps,
+          repeat: 0,
+        });
+        await waitForType('ready');
+
+        return {
+          async writeFrame(frameIndex, imageData) {
+            const ackPromise = waitForType('frame-ack');
+            worker.postMessage(
+              {
+                type: 'frame',
+                frameIndex,
+                rgbaBuffer: imageData.data.buffer,
+              },
+              [imageData.data.buffer]
+            );
+            await ackPromise;
+          },
+          async finish() {
+            const resultPromise = waitForType('result');
+            worker.postMessage({ type: 'finish' });
+            const result = await resultPromise;
+            cleanup();
+            return result;
+          },
+          destroy() {
+            rejectPending(new Error('GIF worker terminated'));
+            cleanup();
+          },
+        };
+      }
+
+      async function exportWorld3dGifFromVisibleViewer(tokenId, button) {
+        const viewer = world3dState.viewer || document.getElementById('world-3d-viewer');
+        if (!viewer) {
+          throw new Error('3D viewer unavailable');
+        }
+
+        const startedAt = performance.now();
+        let telemetryStage = 'prepare';
+        let workerSession = null;
+        const viewerState = snapshotWorld3dViewerState(viewer);
+        const uiLockState = setWorld3dExportUiLocked(viewer, button, true);
+        const stagingCanvas = document.createElement('canvas');
+        stagingCanvas.width = WORLD3D_GIF_EXPORT_SIZE;
+        stagingCanvas.height = WORLD3D_GIF_EXPORT_SIZE;
+        const stagingCtx = stagingCanvas.getContext('2d', {
           alpha: false,
           willReadFrequently: true,
         });
 
-        if (!targetCtx) {
-          cleanupWorld3dBrowserExportFrame(frame);
-          throw new Error('Browser export canvas unavailable');
+        if (!stagingCtx) {
+          setWorld3dExportUiLocked(viewer, uiLockState, false);
+          throw new Error('GIF export staging canvas unavailable');
         }
 
         try {
@@ -3138,80 +3355,92 @@
             button.textContent = 'Preparing GIF';
           }
 
-          const exportApi = await waitForWorld3dBrowserExportReady(frame, tokenId);
-          let finalBytes = null;
+          await waitForWorld3dViewerReadyForExport(viewer);
+          viewer.autoRotate = false;
+          viewer.autoRotateDelay = 0;
+          viewer.setAttribute('rotation-per-second', '42deg');
+          viewer.cameraTarget = '0m 0m 0m';
+          viewer.fieldOfView = '27deg';
+          if (typeof viewer.dismissPoster === 'function') {
+            viewer.dismissPoster();
+          }
+          await waitForWorld3dViewerFrame(viewer, 3);
 
           for (const variant of WORLD3D_BROWSER_EXPORT_VARIANTS) {
-            targetCanvas.width = variant.size;
-            targetCanvas.height = variant.size;
-
-            const encoder = gifenc.GIFEncoder();
-            const delay = Math.max(4, Math.round(100 / variant.fps));
+            workerSession = await createWorld3dGifWorkerSession(variant);
 
             for (let frameIndex = 0; frameIndex < variant.frameCount; frameIndex += 1) {
+              telemetryStage = 'rendering';
               if (button) {
                 button.textContent = `Rendering ${Math.round(((frameIndex + 1) / variant.frameCount) * 78)}%`;
               }
 
-              await exportApi.setFrame(frameIndex, variant.frameCount);
-              const sourceCanvas =
-                typeof exportApi.getCanvas === 'function' ? exportApi.getCanvas() : null;
+              const thetaDeg = 32 - ((360 * frameIndex) / variant.frameCount);
+              viewer.cameraOrbit = `${thetaDeg}deg 74deg 108%`;
+              await waitForWorld3dViewerFrame(viewer, 2);
 
-              if (!sourceCanvas) {
-                throw new Error('3D export canvas unavailable');
+              const sourceCanvas = getWorld3dViewerCanvas(viewer);
+              if (!sourceCanvas || !hasWorld3dViewerVisibleContent(viewer)) {
+                throw new Error('3D viewer frame unavailable');
               }
 
-              targetCtx.fillStyle = '#000000';
-              targetCtx.fillRect(0, 0, variant.size, variant.size);
-              targetCtx.drawImage(sourceCanvas, 0, 0, variant.size, variant.size);
+              applyWorld3dFrameToStagingCanvas(sourceCanvas, stagingCtx, WORLD3D_GIF_EXPORT_SIZE);
+              const frameImage = stagingCtx.getImageData(
+                0,
+                0,
+                WORLD3D_GIF_EXPORT_SIZE,
+                WORLD3D_GIF_EXPORT_SIZE
+              );
+              await workerSession.writeFrame(frameIndex, frameImage);
+            }
 
-              const frameImage = targetCtx.getImageData(0, 0, variant.size, variant.size);
-              const palette = gifenc.quantize(frameImage.data, 256);
-              const indexed = gifenc.applyPalette(frameImage.data, palette);
+            telemetryStage = 'encoding';
+            if (button) {
+              button.textContent = 'Encoding GIF';
+            }
 
-              encoder.writeFrame(indexed, variant.size, variant.size, {
-                palette,
-                delay,
-                repeat: frameIndex === 0 ? 0 : undefined,
-                dispose: 1,
+            const result = await workerSession.finish();
+            workerSession = null;
+
+            if (result?.size > 0 && result.size <= WORLD3D_SHARE_MAX_BYTES && result.buffer) {
+              telemetryStage = 'saving';
+              if (button) {
+                button.textContent = 'Saving GIF';
+              }
+
+              const blob = new Blob([result.buffer], { type: 'image/gif' });
+              const objectUrl = URL.createObjectURL(blob);
+              downloadWorld3dExport(objectUrl, buildWorld3dExportFilename(tokenId, 'gif'));
+              window.setTimeout(() => {
+                URL.revokeObjectURL(objectUrl);
+              }, 30000);
+
+              logWorld3dGifExportTelemetry('info', {
+                tokenId,
+                frameCount: variant.frameCount,
+                fps: variant.fps,
+                durationMs: Math.round(performance.now() - startedAt),
+                bytes: result.size,
               });
-
-              await waitForWorld3dMs(0);
-            }
-
-            encoder.finish();
-            const bytes =
-              typeof encoder.bytesView === 'function'
-                ? encoder.bytesView()
-                : typeof encoder.bytes === 'function'
-                  ? encoder.bytes()
-                  : null;
-
-            if (!bytes || !bytes.byteLength) {
-              throw new Error('GIF encoder returned no data');
-            }
-
-            if (bytes.byteLength <= WORLD3D_SHARE_MAX_BYTES) {
-              finalBytes = bytes;
-              break;
+              return;
             }
           }
 
-          if (!finalBytes) {
-            throw new Error('Could not fit the 3D GIF under 15 MB');
-          }
-
-          if (button) {
-            button.textContent = 'Saving GIF';
-          }
-
-          const objectUrl = URL.createObjectURL(new Blob([finalBytes], { type: 'image/gif' }));
-          downloadWorld3dExport(objectUrl, buildWorld3dExportFilename(tokenId, 'gif'));
-          window.setTimeout(() => {
-            URL.revokeObjectURL(objectUrl);
-          }, 30000);
+          throw new Error('Could not fit the 3D GIF under 15 MB');
+        } catch (err) {
+          logWorld3dGifExportTelemetry('error', {
+            tokenId,
+            stage: telemetryStage,
+            durationMs: Math.round(performance.now() - startedAt),
+            error: err?.message || String(err),
+          });
+          throw err;
         } finally {
-          cleanupWorld3dBrowserExportFrame(frame);
+          if (workerSession) {
+            workerSession.destroy();
+          }
+          await restoreWorld3dViewerState(viewer, viewerState);
+          setWorld3dExportUiLocked(viewer, uiLockState, false);
         }
       }
 
@@ -3286,12 +3515,12 @@
         world3dState.shareExportFormat = format;
         resetWorld3dExportButtons(false);
         if (button) {
-          button.textContent = 'Preparing scene';
+          button.textContent = format === 'gif' ? 'Preparing GIF' : 'Preparing scene';
         }
 
         try {
-          if (format === 'gif' && shouldUseWorld3dBrowserExport()) {
-            await exportWorld3dGifInBrowser(tokenId, button);
+          if (format === 'gif') {
+            await exportWorld3dGifFromVisibleViewer(tokenId, button);
             return;
           }
 

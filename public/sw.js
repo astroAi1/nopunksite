@@ -1,5 +1,5 @@
-// NO-PUNKS Service Worker v1.1
-const CACHE_NAME = 'nopunks-v2';
+// NO-PUNKS Service Worker v1.2
+const CACHE_NAME = 'nopunks-v3';
 const STATIC_ASSETS = [
   '/manifest.json',
   '/icons/52.png',
@@ -41,6 +41,15 @@ self.addEventListener('fetch', (event) => {
   // Skip non-GET requests
   if (event.request.method !== 'GET') return;
   if (event.request.mode === 'navigate') return;
+
+  const url = new URL(event.request.url);
+  if (
+    url.pathname === '/public/world3d-gif-worker.js' ||
+    url.pathname === '/public/vendor/gifenc.module.js' ||
+    url.pathname === '/public/world3d-export.html'
+  ) {
+    return;
+  }
 
   // Skip dynamic data requests - always go to network.
   if (

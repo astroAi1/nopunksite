@@ -2955,6 +2955,17 @@
         });
       }
 
+      function withWorld3dTimeout(promise, timeoutMs, message) {
+        return Promise.race([
+          promise,
+          new Promise((_, reject) => {
+            window.setTimeout(() => {
+              reject(new Error(message || 'Operation timed out'));
+            }, Math.max(0, Number(timeoutMs) || 0));
+          }),
+        ]);
+      }
+
       function getWorld3dExportButton(format) {
         if (format === 'gif') {
           return document.getElementById('world-3d-gif-btn');
@@ -3327,14 +3338,18 @@
         targetCtx.drawImage(sourceCanvas, offsetX, offsetY, drawWidth, drawHeight);
       }
 
-      function loadWorld3dImage(src) {
-        return new Promise((resolve, reject) => {
-          const img = new Image();
-          img.decoding = 'async';
-          img.onload = () => resolve(img);
-          img.onerror = () => reject(new Error('Snapshot decode failed'));
-          img.src = src;
-        });
+      function loadWorld3dImage(src, timeoutMs = 800) {
+        return withWorld3dTimeout(
+          new Promise((resolve, reject) => {
+            const img = new Image();
+            img.decoding = 'async';
+            img.onload = () => resolve(img);
+            img.onerror = () => reject(new Error('Snapshot decode failed'));
+            img.src = src;
+          }),
+          timeoutMs,
+          'Snapshot decode timed out'
+        );
       }
 
       async function getWorld3dViewerSnapshotUrl(viewer) {
@@ -3342,12 +3357,16 @@
 
         if (viewer && typeof viewer.toBlob === 'function') {
           try {
-            const blob = await new Promise((resolve, reject) => {
-              viewer.toBlob(
-                (result) => (result ? resolve(result) : reject(new Error('Snapshot failed'))),
-                'image/png'
-              );
-            });
+            const blob = await withWorld3dTimeout(
+              new Promise((resolve, reject) => {
+                viewer.toBlob(
+                  (result) => (result ? resolve(result) : reject(new Error('Snapshot failed'))),
+                  'image/png'
+                );
+              }),
+              600,
+              'Snapshot timed out'
+            );
             const objectUrl = URL.createObjectURL(blob);
             return { url: objectUrl, revoke: () => URL.revokeObjectURL(objectUrl) };
           } catch (err) {
@@ -3357,7 +3376,11 @@
 
         if (viewer && typeof viewer.toDataURL === 'function') {
           try {
-            const dataUrl = viewer.toDataURL('image/png');
+            const dataUrl = await withWorld3dTimeout(
+              Promise.resolve(viewer.toDataURL('image/png')),
+              400,
+              'Snapshot timed out'
+            );
             if (dataUrl && typeof dataUrl === 'string' && dataUrl.startsWith('data:image')) {
               return { url: dataUrl, revoke: null };
             }
@@ -3374,7 +3397,13 @@
         return null;
       }
 
-      async function captureWorld3dFrame(viewer, stagingCtx, orbit, size = WORLD3D_GIF_EXPORT_SIZE) {
+      async function captureWorld3dFrame(
+        viewer,
+        stagingCtx,
+        orbit,
+        size = WORLD3D_GIF_EXPORT_SIZE,
+        options = {}
+      ) {
         if (orbit) {
           viewer.cameraOrbit = orbit;
         }
@@ -3389,24 +3418,26 @@
         await waitForWorld3dCameraSettle(viewer, 260);
 
         let snapshotMeta = null;
-        try {
-          const snapshot = await getWorld3dViewerSnapshotUrl(viewer);
-          if (snapshot) {
-            const image = await loadWorld3dImage(snapshot.url);
-            try {
-              applyWorld3dFrameToStagingCanvas(image, stagingCtx, size);
-            } finally {
-              if (snapshot.revoke) snapshot.revoke();
+        if (options.allowSnapshot !== false) {
+          try {
+            const snapshot = await getWorld3dViewerSnapshotUrl(viewer);
+            if (snapshot) {
+              const image = await loadWorld3dImage(snapshot.url);
+              try {
+                applyWorld3dFrameToStagingCanvas(image, stagingCtx, size);
+              } finally {
+                if (snapshot.revoke) snapshot.revoke();
+              }
+              snapshotMeta = {
+                method: 'snapshot',
+                sourceWidth: image.naturalWidth || image.width,
+                sourceHeight: image.naturalHeight || image.height,
+              };
+              return snapshotMeta;
             }
-            snapshotMeta = {
-              method: 'snapshot',
-              sourceWidth: image.naturalWidth || image.width,
-              sourceHeight: image.naturalHeight || image.height,
-            };
-            return snapshotMeta;
+          } catch (err) {
+            snapshotMeta = { method: 'snapshot', error: err?.message || String(err) };
           }
-        } catch (err) {
-          snapshotMeta = { method: 'snapshot', error: err?.message || String(err) };
         }
 
         const sourceCanvas = getWorld3dViewerCanvas(viewer);
@@ -3530,6 +3561,7 @@
         let telemetryStage = 'prepare';
         let workerSession = null;
         let lastFrameMeta = null;
+        let snapshotAllowed = true;
         const viewerState = snapshotWorld3dViewerState(viewer);
         const uiLockState = setWorld3dExportUiLocked(viewer, button, true);
         const stagingCanvas = document.createElement('canvas');
@@ -3597,8 +3629,12 @@
                 viewer,
                 stagingCtx,
                 orbit,
-                WORLD3D_GIF_EXPORT_SIZE
+                WORLD3D_GIF_EXPORT_SIZE,
+                { allowSnapshot: snapshotAllowed }
               );
+              if (lastFrameMeta?.method === 'canvas' && lastFrameMeta.snapshotError) {
+                snapshotAllowed = false;
+              }
 
               const frameImage = stagingCtx.getImageData(
                 0,

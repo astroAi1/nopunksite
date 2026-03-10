@@ -2683,10 +2683,14 @@
       const WORLD3D_SHARE_MIN_BYTES = 5 * 1024 * 1024;
       const WORLD3D_SHARE_MAX_BYTES = 15 * 1024 * 1024;
       const WORLD3D_GIF_EXPORT_SIZE = 1024;
-      const WORLD3D_GIF_WORKER_URL = '/public/world3d-gif-worker.js?v=2';
-      const WORLD3D_BROWSER_EXPORT_VARIANTS = [
-        { frameCount: 120 },
-      ];
+      const WORLD3D_GIF_WORKER_URL = '/public/world3d-gif-worker.js?v=3';
+      const WORLD3D_GIF_DELAY_CS = 8;
+      const WORLD3D_GIF_FPS = 100 / WORLD3D_GIF_DELAY_CS;
+      const WORLD3D_GIF_FRAME_MIN = 96;
+      const WORLD3D_GIF_FRAME_MAX = 120;
+      const WORLD3D_GIF_SIZE_BOOST_FRAMES = 24;
+      const WORLD3D_GIF_PALETTE_SAMPLE_COUNT = 8;
+      const WORLD3D_GIF_PALETTE_SAMPLE_SIZE = 128;
       const WORLD3D_EXPORT_UNAVAILABLE_MESSAGE = '3D export not ready';
 
       const collectionState = {
@@ -3523,7 +3527,7 @@
         logger(`[world3d-gif-export:${level}]`, entry);
       }
 
-      async function createWorld3dGifWorkerSession(variant) {
+      async function createWorld3dGifWorkerSession(options) {
         const worker = new Worker(WORLD3D_GIF_WORKER_URL, { type: 'module' });
         let pending = null;
         let closed = false;
@@ -3547,6 +3551,10 @@
 
         worker.addEventListener('message', (event) => {
           const payload = event.data || {};
+          if (payload.type === 'warn') {
+            console.warn('[world3d-gif-worker]', payload.message || payload.warning || payload);
+            return;
+          }
           if (payload.type === 'error') {
             rejectPending(new Error(payload.error || 'GIF worker failed'));
             cleanup();
@@ -3569,19 +3577,34 @@
           type: 'start',
           width: WORLD3D_GIF_EXPORT_SIZE,
           height: WORLD3D_GIF_EXPORT_SIZE,
-          fps: variant.fps,
+          fps: options.fps,
+          delayCs: options.delayCs,
           repeat: 0,
-          paletteSize: variant.paletteSize || 256,
-          quantizeFormat: variant.quantizeFormat || 'rgb565',
-          prequantizeOptions: typeof variant.prequantizeOptions === 'undefined'
+          paletteSize: options.paletteSize || 256,
+          quantizeFormat: options.quantizeFormat || 'rgb565',
+          prequantizeOptions: typeof options.prequantizeOptions === 'undefined'
             ? { roundRGB: 1, roundAlpha: 1 }
-            : variant.prequantizeOptions,
-          minBytes: WORLD3D_SHARE_MIN_BYTES,
-          maxBytes: WORLD3D_SHARE_MAX_BYTES,
+            : options.prequantizeOptions,
+          useGlobalPalette: options.useGlobalPalette !== false,
+          orderedDither: Boolean(options.orderedDither),
         });
         await waitForType('ready');
 
         return {
+          async initPalette(sampleBuffer, sampleWidth, sampleHeight) {
+            if (!sampleBuffer) return null;
+            const ackPromise = waitForType('palette-ready');
+            worker.postMessage(
+              {
+                type: 'initPalette',
+                rgbaBuffer: sampleBuffer,
+                sampleWidth,
+                sampleHeight,
+              },
+              [sampleBuffer]
+            );
+            return ackPromise;
+          },
           async writeFrame(frameIndex, imageData) {
             const ackPromise = waitForType('frame-ack');
             worker.postMessage(
@@ -3661,7 +3684,7 @@
           await waitForWorld3dCameraSettle(viewer, 260);
 
           const rotationPerSecondDeg = getWorld3dRotationSpeedDeg(viewer);
-          const rotationDurationSec = Math.max(1, 360 / Math.max(6, rotationPerSecondDeg));
+          const safeRotationPerSecond = Math.max(6, rotationPerSecondDeg || 0);
           const rotationDirection = await detectWorld3dAutoRotateDirection(viewer, -1);
 
           const baseOrbit =
@@ -3673,32 +3696,87 @@
           const basePhiDeg = canUseOrbit ? (baseOrbit.phi * 180) / Math.PI : 74;
           const baseRadius = canUseOrbit ? baseOrbit.radius : null;
 
-          const totalPasses = WORLD3D_BROWSER_EXPORT_VARIANTS.length;
-          for (let passIndex = 0; passIndex < totalPasses; passIndex += 1) {
-            const variant = WORLD3D_BROWSER_EXPORT_VARIANTS[passIndex];
-            const targetFps = Math.max(
-              1,
-              Math.round((variant.frameCount / rotationDurationSec) * 100) / 100
+          const clampFrameCount = (value) =>
+            Math.min(WORLD3D_GIF_FRAME_MAX, Math.max(WORLD3D_GIF_FRAME_MIN, value));
+          const baseFrameCount = clampFrameCount(
+            Math.round((360 / safeRotationPerSecond) * WORLD3D_GIF_FPS)
+          );
+
+          const sampleCanvas = document.createElement('canvas');
+          sampleCanvas.width = WORLD3D_GIF_PALETTE_SAMPLE_SIZE;
+          sampleCanvas.height = WORLD3D_GIF_PALETTE_SAMPLE_SIZE;
+          const sampleCtx = sampleCanvas.getContext('2d', {
+            alpha: false,
+            willReadFrequently: true,
+          });
+
+          if (!sampleCtx) {
+            throw new Error('GIF export palette canvas unavailable');
+          }
+
+          const buildOrbit = (frameIndex, frameCount) => {
+            const theta = baseThetaDeg + (rotationDirection * (360 * frameIndex) / frameCount);
+            return canUseOrbit && baseRadius != null
+              ? `${theta}deg ${basePhiDeg}deg ${baseRadius}m`
+              : `${theta}deg 74deg 108%`;
+          };
+
+          telemetryStage = 'palette';
+          const samplePixels =
+            WORLD3D_GIF_PALETTE_SAMPLE_SIZE * WORLD3D_GIF_PALETTE_SAMPLE_SIZE * 4;
+          const paletteSamples = new Uint8ClampedArray(
+            WORLD3D_GIF_PALETTE_SAMPLE_COUNT * samplePixels
+          );
+
+          for (let sampleIndex = 0; sampleIndex < WORLD3D_GIF_PALETTE_SAMPLE_COUNT; sampleIndex += 1) {
+            if (button) {
+              button.textContent = `Preparing palette ${sampleIndex + 1}/${WORLD3D_GIF_PALETTE_SAMPLE_COUNT}`;
+            }
+
+            const orbit = buildOrbit(sampleIndex, WORLD3D_GIF_PALETTE_SAMPLE_COUNT);
+            lastFrameMeta = await captureWorld3dFrame(
+              viewer,
+              sampleCtx,
+              orbit,
+              WORLD3D_GIF_PALETTE_SAMPLE_SIZE,
+              { allowSnapshot: snapshotAllowed, preferCanvas: true }
             );
+
+            const sampleImage = sampleCtx.getImageData(
+              0,
+              0,
+              WORLD3D_GIF_PALETTE_SAMPLE_SIZE,
+              WORLD3D_GIF_PALETTE_SAMPLE_SIZE
+            );
+            paletteSamples.set(sampleImage.data, sampleIndex * samplePixels);
+          }
+
+          const runGifEncode = async ({ frameCount, orderedDither, label }) => {
             workerSession = await createWorld3dGifWorkerSession({
-              frameCount: variant.frameCount,
-              fps: targetFps,
-              paletteStrategy: 'global',
+              fps: WORLD3D_GIF_FPS,
+              delayCs: WORLD3D_GIF_DELAY_CS,
+              frameCount,
+              useGlobalPalette: true,
+              orderedDither,
+              paletteSize: 256,
               quantizeFormat: 'rgb565',
               prequantizeOptions: { roundRGB: 1, roundAlpha: 1 },
             });
 
-            for (let frameIndex = 0; frameIndex < variant.frameCount; frameIndex += 1) {
+            await workerSession.initPalette(
+              paletteSamples.slice().buffer,
+              WORLD3D_GIF_PALETTE_SAMPLE_SIZE,
+              WORLD3D_GIF_PALETTE_SAMPLE_SIZE
+            );
+
+            for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
               telemetryStage = 'rendering';
               if (button) {
-                const passLabel = totalPasses > 1 ? ` (${passIndex + 1}/${totalPasses})` : '';
-                button.textContent = `Rendering${passLabel} ${Math.round(((frameIndex + 1) / variant.frameCount) * 78)}%`;
+                const percent = Math.round(((frameIndex + 1) / frameCount) * 80);
+                button.textContent = `${label} ${percent}%`;
               }
 
-              const orbit = canUseOrbit && baseRadius != null
-                ? `${baseThetaDeg + (rotationDirection * (360 * frameIndex) / variant.frameCount)}deg ${basePhiDeg}deg ${baseRadius}m`
-                : `${32 + (rotationDirection * (360 * frameIndex) / variant.frameCount)}deg 74deg 108%`;
-
+              const orbit = buildOrbit(frameIndex, frameCount);
               lastFrameMeta = await captureWorld3dFrame(
                 viewer,
                 stagingCtx,
@@ -3706,9 +3784,6 @@
                 WORLD3D_GIF_EXPORT_SIZE,
                 { allowSnapshot: snapshotAllowed, preferCanvas: true }
               );
-              if (lastFrameMeta?.method === 'canvas' && lastFrameMeta.snapshotError) {
-                snapshotAllowed = false;
-              }
 
               const frameImage = stagingCtx.getImageData(
                 0,
@@ -3726,38 +3801,76 @@
 
             const result = await workerSession.finish();
             workerSession = null;
+            return result;
+          };
 
-            if (result?.size > 0 && result.buffer) {
-              if (result.size > WORLD3D_SHARE_MAX_BYTES) {
-                continue;
-              }
-              telemetryStage = 'saving';
-              if (button) {
-                button.textContent = 'Saving GIF';
-              }
+          const baseResult = await runGifEncode({
+            frameCount: baseFrameCount,
+            orderedDither: false,
+            label: 'Rendering',
+          });
 
-              const blob = new Blob([result.buffer], { type: 'image/gif' });
-              const objectUrl = URL.createObjectURL(blob);
-              downloadWorld3dExport(objectUrl, buildWorld3dExportFilename(tokenId, 'gif'));
-              window.setTimeout(() => {
-                URL.revokeObjectURL(objectUrl);
-              }, 30000);
+          if (baseResult?.size > WORLD3D_SHARE_MAX_BYTES) {
+            throw new Error('Could not fit the 3D GIF under 15 MB');
+          }
 
-              logWorld3dGifExportTelemetry('info', {
-                tokenId,
-                frameCount: variant.frameCount,
-                fps: targetFps,
-                durationMs: Math.round(performance.now() - startedAt),
-                bytes: result.size,
-                rotationPerSecondDeg,
-                rotationDirection,
-                capture: lastFrameMeta,
-              });
-              return;
+          let finalResult = baseResult;
+          let boosted = false;
+          let finalFrameCount = baseFrameCount;
+
+          if (baseResult?.size && baseResult.size < WORLD3D_SHARE_MIN_BYTES) {
+            boosted = true;
+            const boostFrameCount = baseFrameCount + WORLD3D_GIF_SIZE_BOOST_FRAMES;
+            const boostResult = await runGifEncode({
+              frameCount: boostFrameCount,
+              orderedDither: true,
+              label: 'Boosting GIF',
+            });
+
+            if (boostResult?.size && boostResult.size <= WORLD3D_SHARE_MAX_BYTES) {
+              finalResult = boostResult;
+              finalFrameCount = boostFrameCount;
             }
           }
 
-          throw new Error('Could not fit the 3D GIF under 15 MB');
+          if (!finalResult?.size || !finalResult.buffer) {
+            throw new Error('Could not render the 3D GIF');
+          }
+
+          telemetryStage = 'saving';
+          if (button) {
+            button.textContent = 'Saving GIF';
+          }
+
+          const blob = new Blob([finalResult.buffer], { type: 'image/gif' });
+          const objectUrl = URL.createObjectURL(blob);
+          downloadWorld3dExport(objectUrl, buildWorld3dExportFilename(tokenId, 'gif'));
+          window.setTimeout(() => {
+            URL.revokeObjectURL(objectUrl);
+          }, 30000);
+
+          const sizeWarning = finalResult.size < WORLD3D_SHARE_MIN_BYTES;
+          if (sizeWarning) {
+            console.warn(
+              `3D GIF below target size (${(finalResult.size / (1024 * 1024)).toFixed(2)} MB)`
+            );
+          }
+
+          logWorld3dGifExportTelemetry('info', {
+            tokenId,
+            frameCount: finalFrameCount,
+            fps: WORLD3D_GIF_FPS,
+            delayCs: WORLD3D_GIF_DELAY_CS,
+            durationMs: Math.round(performance.now() - startedAt),
+            bytes: finalResult.size,
+            rotationPerSecondDeg,
+            rotationDirection,
+            paletteSamples: WORLD3D_GIF_PALETTE_SAMPLE_COUNT,
+            sizeBoosted: boosted,
+            sizeWarning,
+            capture: lastFrameMeta,
+          });
+          return;
         } catch (err) {
           logWorld3dGifExportTelemetry('error', {
             tokenId,

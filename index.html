@@ -3007,20 +3007,49 @@
 
       function getWorld3dViewerCanvas(viewer = world3dState.viewer) {
         if (!viewer) return null;
+        const seen = new Set();
+        const candidates = [];
 
-        const candidates = [
-          viewer && viewer.renderRoot ? viewer.renderRoot.querySelector('canvas') : null,
-          viewer && viewer.shadowRoot ? viewer.shadowRoot.querySelector('canvas') : null,
-          viewer ? viewer.querySelector('canvas') : null,
-        ];
-
-        for (const candidate of candidates) {
-          if (candidate && typeof candidate.getContext === 'function') {
-            return candidate;
-          }
+        if (viewer.renderRoot && typeof viewer.renderRoot.querySelectorAll === 'function') {
+          viewer.renderRoot.querySelectorAll('canvas').forEach((canvas) => {
+            if (!seen.has(canvas)) {
+              seen.add(canvas);
+              candidates.push(canvas);
+            }
+          });
         }
 
-        return null;
+        if (viewer.shadowRoot && typeof viewer.shadowRoot.querySelectorAll === 'function') {
+          viewer.shadowRoot.querySelectorAll('canvas').forEach((canvas) => {
+            if (!seen.has(canvas)) {
+              seen.add(canvas);
+              candidates.push(canvas);
+            }
+          });
+        }
+
+        if (typeof viewer.querySelectorAll === 'function') {
+          viewer.querySelectorAll('canvas').forEach((canvas) => {
+            if (!seen.has(canvas)) {
+              seen.add(canvas);
+              candidates.push(canvas);
+            }
+          });
+        }
+
+        let best = null;
+        let bestArea = 0;
+
+        candidates.forEach((canvas) => {
+          if (!canvas || typeof canvas.getContext !== 'function') return;
+          const area = Math.max(0, canvas.width) * Math.max(0, canvas.height);
+          if (area > bestArea) {
+            bestArea = area;
+            best = canvas;
+          }
+        });
+
+        return best;
       }
 
       function hasWorld3dViewerVisibleContent(viewer = world3dState.viewer) {
@@ -3114,6 +3143,33 @@
           viewer.jumpCameraToGoal();
         }
         await waitForAnimationFrames(count);
+      }
+
+      function waitForWorld3dCameraSettle(viewer, timeoutMs = 240) {
+        if (!viewer || typeof viewer.addEventListener !== 'function') {
+          return waitForAnimationFrames(2);
+        }
+
+        return new Promise((resolve) => {
+          let settled = false;
+          const finish = () => {
+            if (settled) return;
+            settled = true;
+            viewer.removeEventListener('camera-change', onChange);
+            resolve();
+          };
+          const onChange = () => {
+            window.requestAnimationFrame(() => {
+              window.requestAnimationFrame(finish);
+            });
+          };
+
+          viewer.addEventListener('camera-change', onChange);
+          window.setTimeout(finish, Math.max(60, Number(timeoutMs) || 240));
+          window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(finish);
+          });
+        });
       }
 
       function snapshotWorld3dViewerState(viewer) {
@@ -3360,11 +3416,19 @@
           viewer.autoRotateDelay = 0;
           viewer.setAttribute('rotation-per-second', '42deg');
           viewer.cameraTarget = '0m 0m 0m';
+          viewer.cameraOrbit = '32deg 74deg 108%';
           viewer.fieldOfView = '27deg';
           if (typeof viewer.dismissPoster === 'function') {
             viewer.dismissPoster();
           }
           await waitForWorld3dViewerFrame(viewer, 3);
+          await waitForWorld3dCameraSettle(viewer, 240);
+
+          const baseOrbit =
+            viewer && typeof viewer.getCameraOrbit === 'function' ? viewer.getCameraOrbit() : null;
+          const canUseRadians =
+            baseOrbit && Number.isFinite(baseOrbit.theta) && Number.isFinite(baseOrbit.phi)
+            && Number.isFinite(baseOrbit.radius);
 
           for (const variant of WORLD3D_BROWSER_EXPORT_VARIANTS) {
             workerSession = await createWorld3dGifWorkerSession(variant);
@@ -3375,9 +3439,19 @@
                 button.textContent = `Rendering ${Math.round(((frameIndex + 1) / variant.frameCount) * 78)}%`;
               }
 
-              const thetaDeg = 32 - ((360 * frameIndex) / variant.frameCount);
-              viewer.cameraOrbit = `${thetaDeg}deg 74deg 108%`;
-              await waitForWorld3dViewerFrame(viewer, 2);
+              if (canUseRadians) {
+                const theta =
+                  baseOrbit.theta + ((Math.PI * 2 * frameIndex) / variant.frameCount);
+                viewer.cameraOrbit = `${theta}rad ${baseOrbit.phi}rad ${baseOrbit.radius}m`;
+              } else {
+                const thetaDeg = 32 - ((360 * frameIndex) / variant.frameCount);
+                viewer.cameraOrbit = `${thetaDeg}deg 74deg 108%`;
+              }
+
+              if (typeof viewer.jumpCameraToGoal === 'function') {
+                viewer.jumpCameraToGoal();
+              }
+              await waitForWorld3dCameraSettle(viewer, 240);
 
               const sourceCanvas = getWorld3dViewerCanvas(viewer);
               if (!sourceCanvas || !hasWorld3dViewerVisibleContent(viewer)) {

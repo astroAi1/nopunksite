@@ -2685,7 +2685,7 @@
       const WORLD3D_GIF_EXPORT_SIZE = 1024;
       const WORLD3D_GIF_WORKER_URL = '/public/world3d-gif-worker.js?v=2';
       const WORLD3D_BROWSER_EXPORT_VARIANTS = [
-        { frameCount: 96 },
+        { frameCount: 120 },
       ];
       const WORLD3D_EXPORT_UNAVAILABLE_MESSAGE = '3D export not ready';
 
@@ -3683,7 +3683,8 @@
             workerSession = await createWorld3dGifWorkerSession({
               frameCount: variant.frameCount,
               fps: targetFps,
-              prequantizeOptions: { roundRGB: 1, roundAlpha: 1 },
+              quantizeFormat: 'rgba4444',
+              prequantizeOptions: false,
             });
 
             for (let frameIndex = 0; frameIndex < variant.frameCount; frameIndex += 1) {

@@ -2685,6 +2685,10 @@
       const WORLD3D_GIF_EXPORT_SIZE = 1024;
       const WORLD3D_GIF_WORKER_URL = '/public/world3d-gif-worker.js?v=2';
       const WORLD3D_BROWSER_EXPORT_VARIANTS = [
+        { frameCount: 144 },
+        { frameCount: 120 },
+        { frameCount: 96 },
+        { frameCount: 80 },
         { frameCount: 64 },
         { frameCount: 48 },
         { frameCount: 36 },
@@ -3574,6 +3578,11 @@
           height: WORLD3D_GIF_EXPORT_SIZE,
           fps: variant.fps,
           repeat: 0,
+          paletteSize: variant.paletteSize || 256,
+          quantizeFormat: variant.quantizeFormat || 'rgb565',
+          prequantizeOptions: typeof variant.prequantizeOptions === 'undefined'
+            ? { roundRGB: 1, roundAlpha: 1 }
+            : variant.prequantizeOptions,
         });
         await waitForType('ready');
 
@@ -3669,7 +3678,9 @@
           const basePhiDeg = canUseOrbit ? (baseOrbit.phi * 180) / Math.PI : 74;
           const baseRadius = canUseOrbit ? baseOrbit.radius : null;
 
-          for (const variant of WORLD3D_BROWSER_EXPORT_VARIANTS) {
+          const totalPasses = WORLD3D_BROWSER_EXPORT_VARIANTS.length;
+          for (let passIndex = 0; passIndex < totalPasses; passIndex += 1) {
+            const variant = WORLD3D_BROWSER_EXPORT_VARIANTS[passIndex];
             const targetFps = Math.max(
               1,
               Math.round((variant.frameCount / rotationDurationSec) * 100) / 100
@@ -3677,12 +3688,14 @@
             workerSession = await createWorld3dGifWorkerSession({
               frameCount: variant.frameCount,
               fps: targetFps,
+              prequantizeOptions: { roundRGB: 1, roundAlpha: 1 },
             });
 
             for (let frameIndex = 0; frameIndex < variant.frameCount; frameIndex += 1) {
               telemetryStage = 'rendering';
               if (button) {
-                button.textContent = `Rendering ${Math.round(((frameIndex + 1) / variant.frameCount) * 78)}%`;
+                const passLabel = totalPasses > 1 ? ` (${passIndex + 1}/${totalPasses})` : '';
+                button.textContent = `Rendering${passLabel} ${Math.round(((frameIndex + 1) / variant.frameCount) * 78)}%`;
               }
 
               const orbit = canUseOrbit && baseRadius != null
@@ -3726,7 +3739,7 @@
                   ...(lastFrameMeta || {}),
                   note: `GIF below minimum size (${result.size} bytes)`,
                 };
-                continue;
+                break;
               }
               telemetryStage = 'saving';
               if (button) {

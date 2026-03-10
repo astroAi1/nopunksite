@@ -16,6 +16,10 @@ function startSession(payload) {
   const height = Number(payload?.height);
   const fps = Number(payload?.fps);
   const repeat = Number.isFinite(Number(payload?.repeat)) ? Number(payload.repeat) : 0;
+  const paletteSize = Number(payload?.paletteSize) || 256;
+  const quantizeFormat = payload?.quantizeFormat || 'rgb565';
+  const prequantizeOptions =
+    typeof payload?.prequantizeOptions === 'undefined' ? { roundRGB: 1, roundAlpha: 1 } : payload.prequantizeOptions;
 
   if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
     throw new Error('Invalid GIF dimensions');
@@ -30,6 +34,9 @@ function startSession(payload) {
     fps: safeFps,
     delayMs,
     repeat,
+    paletteSize,
+    quantizeFormat,
+    prequantizeOptions,
     frameIndex: 0,
     encoder: GIFEncoder({ auto: true }),
   };
@@ -54,14 +61,16 @@ function handleFrame(payload) {
     throw new Error('Unexpected frame buffer size');
   }
 
-  prequantize(rgba);
-  const palette = quantize(rgba, 256, {
-    format: 'rgb565',
+  if (session.prequantizeOptions !== false) {
+    prequantize(rgba, session.prequantizeOptions || { roundRGB: 1, roundAlpha: 1 });
+  }
+  const palette = quantize(rgba, session.paletteSize, {
+    format: session.quantizeFormat || 'rgb565',
     clearAlpha: true,
     clearAlphaColor: 0,
     clearAlphaThreshold: 0,
   });
-  const indexed = applyPalette(rgba, palette, 'rgb565');
+  const indexed = applyPalette(rgba, palette, session.quantizeFormat || 'rgb565');
 
   session.encoder.writeFrame(indexed, session.width, session.height, {
     palette,

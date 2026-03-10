@@ -3583,6 +3583,8 @@
           prequantizeOptions: typeof variant.prequantizeOptions === 'undefined'
             ? { roundRGB: 1, roundAlpha: 1 }
             : variant.prequantizeOptions,
+          minBytes: WORLD3D_SHARE_MIN_BYTES,
+          maxBytes: WORLD3D_SHARE_MAX_BYTES,
         });
         await waitForType('ready');
 
@@ -3734,13 +3736,6 @@
               if (result.size > WORLD3D_SHARE_MAX_BYTES) {
                 continue;
               }
-              if (result.size < WORLD3D_SHARE_MIN_BYTES) {
-                lastFrameMeta = {
-                  ...(lastFrameMeta || {}),
-                  note: `GIF below minimum size (${result.size} bytes)`,
-                };
-                break;
-              }
               telemetryStage = 'saving';
               if (button) {
                 button.textContent = 'Saving GIF';
@@ -3767,7 +3762,7 @@
             }
           }
 
-          throw new Error('Could not hit the 3D GIF size target (5-15 MB)');
+          throw new Error('Could not fit the 3D GIF under 15 MB');
         } catch (err) {
           logWorld3dGifExportTelemetry('error', {
             tokenId,

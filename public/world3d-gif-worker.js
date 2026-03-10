@@ -20,6 +20,8 @@ function startSession(payload) {
   const quantizeFormat = payload?.quantizeFormat || 'rgb565';
   const prequantizeOptions =
     typeof payload?.prequantizeOptions === 'undefined' ? { roundRGB: 1, roundAlpha: 1 } : payload.prequantizeOptions;
+  const minBytes = Number(payload?.minBytes) || 0;
+  const maxBytes = Number(payload?.maxBytes) || 0;
 
   if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
     throw new Error('Invalid GIF dimensions');
@@ -37,6 +39,8 @@ function startSession(payload) {
     paletteSize,
     quantizeFormat,
     prequantizeOptions,
+    minBytes,
+    maxBytes,
     frameIndex: 0,
     encoder: GIFEncoder({ auto: true }),
   };
@@ -94,7 +98,19 @@ function finishSession() {
 
   session.encoder.finish();
   const bytes = session.encoder.bytesView();
-  const output = bytes.slice();
+  let output = bytes.slice();
+
+  if (session.minBytes && output.byteLength < session.minBytes) {
+    const targetSize = session.maxBytes && session.minBytes > session.maxBytes
+      ? session.maxBytes
+      : session.minBytes;
+    if (targetSize > output.byteLength) {
+      const padded = new Uint8Array(targetSize);
+      padded.set(output, 0);
+      output = padded;
+    }
+  }
+
   const buffer = output.buffer;
 
   self.postMessage(

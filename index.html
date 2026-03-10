@@ -2680,13 +2680,17 @@
       const WORLD3D_BOOT_TOKEN_ID = 52;
       const WORLD3D_WARM_TOKEN_COUNT = 6;
       const WORLD3D_FALLBACK_TOKENS = [52, 338, 615, 871, 1006, 1403, 2743, 3054];
+      const WORLD3D_SHARE_MIN_BYTES = 5 * 1024 * 1024;
       const WORLD3D_SHARE_MAX_BYTES = 15 * 1024 * 1024;
       const WORLD3D_GIF_EXPORT_SIZE = 1024;
       const WORLD3D_GIF_WORKER_URL = '/public/world3d-gif-worker.js?v=2';
       const WORLD3D_BROWSER_EXPORT_VARIANTS = [
-        { frameCount: 24, fps: 12 },
-        { frameCount: 20, fps: 10 },
-        { frameCount: 16, fps: 8 },
+        { frameCount: 64 },
+        { frameCount: 48 },
+        { frameCount: 36 },
+        { frameCount: 24 },
+        { frameCount: 20 },
+        { frameCount: 16 },
       ];
       const WORLD3D_EXPORT_UNAVAILABLE_MESSAGE = '3D export not ready';
 
@@ -3713,7 +3717,17 @@
             const result = await workerSession.finish();
             workerSession = null;
 
-            if (result?.size > 0 && result.size <= WORLD3D_SHARE_MAX_BYTES && result.buffer) {
+            if (result?.size > 0 && result.buffer) {
+              if (result.size > WORLD3D_SHARE_MAX_BYTES) {
+                continue;
+              }
+              if (result.size < WORLD3D_SHARE_MIN_BYTES) {
+                lastFrameMeta = {
+                  ...(lastFrameMeta || {}),
+                  note: `GIF below minimum size (${result.size} bytes)`,
+                };
+                continue;
+              }
               telemetryStage = 'saving';
               if (button) {
                 button.textContent = 'Saving GIF';
@@ -3740,7 +3754,7 @@
             }
           }
 
-          throw new Error('Could not fit the 3D GIF under 15 MB');
+          throw new Error('Could not hit the 3D GIF size target (5-15 MB)');
         } catch (err) {
           logWorld3dGifExportTelemetry('error', {
             tokenId,

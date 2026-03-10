@@ -3039,17 +3039,33 @@
 
         let best = null;
         let bestArea = 0;
+        let bestWebgl = null;
+        let bestWebglArea = 0;
 
         candidates.forEach((canvas) => {
           if (!canvas || typeof canvas.getContext !== 'function') return;
-          const area = Math.max(0, canvas.width) * Math.max(0, canvas.height);
+          const width = Math.max(0, canvas.width);
+          const height = Math.max(0, canvas.height);
+          if (width < 2 || height < 2) return;
+          const area = width * height;
           if (area > bestArea) {
             bestArea = area;
             best = canvas;
           }
+
+          let webglContext = null;
+          try {
+            webglContext = canvas.getContext('webgl2') || canvas.getContext('webgl');
+          } catch (_) {
+            webglContext = null;
+          }
+          if (webglContext && area > bestWebglArea) {
+            bestWebglArea = area;
+            bestWebgl = canvas;
+          }
         });
 
-        return best;
+        return bestWebgl || best;
       }
 
       function hasWorld3dViewerVisibleContent(viewer = world3dState.viewer) {
@@ -3156,6 +3172,7 @@
             if (settled) return;
             settled = true;
             viewer.removeEventListener('camera-change', onChange);
+            viewer.removeEventListener('render', onRender);
             resolve();
           };
           const onChange = () => {
@@ -3163,8 +3180,17 @@
               window.requestAnimationFrame(finish);
             });
           };
+          const onRender = () => {
+            window.requestAnimationFrame(() => {
+              window.requestAnimationFrame(finish);
+            });
+          };
 
           viewer.addEventListener('camera-change', onChange);
+          viewer.addEventListener('render', onRender);
+          if (typeof viewer.requestRender === 'function') {
+            viewer.requestRender();
+          }
           window.setTimeout(finish, Math.max(60, Number(timeoutMs) || 240));
           window.requestAnimationFrame(() => {
             window.requestAnimationFrame(finish);
@@ -3426,9 +3452,12 @@
 
           const baseOrbit =
             viewer && typeof viewer.getCameraOrbit === 'function' ? viewer.getCameraOrbit() : null;
-          const canUseRadians =
+          const canUseOrbit =
             baseOrbit && Number.isFinite(baseOrbit.theta) && Number.isFinite(baseOrbit.phi)
             && Number.isFinite(baseOrbit.radius);
+          const baseThetaDeg = canUseOrbit ? (baseOrbit.theta * 180) / Math.PI : 32;
+          const basePhiDeg = canUseOrbit ? (baseOrbit.phi * 180) / Math.PI : 74;
+          const baseRadius = canUseOrbit ? baseOrbit.radius : null;
 
           for (const variant of WORLD3D_BROWSER_EXPORT_VARIANTS) {
             workerSession = await createWorld3dGifWorkerSession(variant);
@@ -3439,10 +3468,9 @@
                 button.textContent = `Rendering ${Math.round(((frameIndex + 1) / variant.frameCount) * 78)}%`;
               }
 
-              if (canUseRadians) {
-                const theta =
-                  baseOrbit.theta + ((Math.PI * 2 * frameIndex) / variant.frameCount);
-                viewer.cameraOrbit = `${theta}rad ${baseOrbit.phi}rad ${baseOrbit.radius}m`;
+              if (canUseOrbit && baseRadius != null) {
+                const thetaDeg = baseThetaDeg + ((360 * frameIndex) / variant.frameCount);
+                viewer.cameraOrbit = `${thetaDeg}deg ${basePhiDeg}deg ${baseRadius}m`;
               } else {
                 const thetaDeg = 32 - ((360 * frameIndex) / variant.frameCount);
                 viewer.cameraOrbit = `${thetaDeg}deg 74deg 108%`;
@@ -3450,6 +3478,9 @@
 
               if (typeof viewer.jumpCameraToGoal === 'function') {
                 viewer.jumpCameraToGoal();
+              }
+              if (typeof viewer.requestRender === 'function') {
+                viewer.requestRender();
               }
               await waitForWorld3dCameraSettle(viewer, 240);
 

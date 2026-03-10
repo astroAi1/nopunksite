@@ -2955,6 +2955,55 @@
         });
       }
 
+      function parseWorld3dRotationSpeedDeg(value, fallback = 42) {
+        if (value == null) return fallback;
+        const raw = String(value).trim().toLowerCase();
+        if (!raw) return fallback;
+        const numeric = Number.parseFloat(raw);
+        if (!Number.isFinite(numeric)) return fallback;
+        if (raw.includes('rad')) {
+          return (numeric * 180) / Math.PI;
+        }
+        return numeric;
+      }
+
+      function getWorld3dRotationSpeedDeg(viewer) {
+        const attr = viewer?.getAttribute ? viewer.getAttribute('rotation-per-second') : '';
+        return parseWorld3dRotationSpeedDeg(attr, 42);
+      }
+
+      function normalizeWorld3dAngleDeltaRad(delta) {
+        let value = delta;
+        while (value > Math.PI) value -= Math.PI * 2;
+        while (value < -Math.PI) value += Math.PI * 2;
+        return value;
+      }
+
+      async function detectWorld3dAutoRotateDirection(viewer, fallback = -1) {
+        if (!viewer || typeof viewer.getCameraOrbit !== 'function') return fallback;
+        const before = viewer.getCameraOrbit();
+        if (!before || !Number.isFinite(before.theta)) return fallback;
+
+        const previousAutoRotate = Boolean(viewer.autoRotate);
+        const previousDelay = Number(viewer.autoRotateDelay) || 0;
+
+        viewer.autoRotate = true;
+        viewer.autoRotateDelay = 0;
+        if (typeof viewer.requestRender === 'function') {
+          viewer.requestRender();
+        }
+        await waitForWorld3dCameraSettle(viewer, 220);
+
+        const after = viewer.getCameraOrbit();
+        viewer.autoRotate = previousAutoRotate;
+        viewer.autoRotateDelay = previousDelay;
+
+        if (!after || !Number.isFinite(after.theta)) return fallback;
+        const delta = normalizeWorld3dAngleDeltaRad(after.theta - before.theta);
+        if (!Number.isFinite(delta) || Math.abs(delta) < 0.0005) return fallback;
+        return delta > 0 ? 1 : -1;
+      }
+
       function withWorld3dTimeout(promise, timeoutMs, message) {
         return Promise.race([
           promise,
@@ -3603,6 +3652,10 @@
           await waitForWorld3dViewerFrame(viewer, 3);
           await waitForWorld3dCameraSettle(viewer, 260);
 
+          const rotationPerSecondDeg = getWorld3dRotationSpeedDeg(viewer);
+          const rotationDurationSec = Math.max(1, 360 / Math.max(6, rotationPerSecondDeg));
+          const rotationDirection = await detectWorld3dAutoRotateDirection(viewer, -1);
+
           const baseOrbit =
             viewer && typeof viewer.getCameraOrbit === 'function' ? viewer.getCameraOrbit() : null;
           const canUseOrbit =
@@ -3613,7 +3666,14 @@
           const baseRadius = canUseOrbit ? baseOrbit.radius : null;
 
           for (const variant of WORLD3D_BROWSER_EXPORT_VARIANTS) {
-            workerSession = await createWorld3dGifWorkerSession(variant);
+            const targetFps = Math.max(
+              1,
+              Math.round((variant.frameCount / rotationDurationSec) * 100) / 100
+            );
+            workerSession = await createWorld3dGifWorkerSession({
+              frameCount: variant.frameCount,
+              fps: targetFps,
+            });
 
             for (let frameIndex = 0; frameIndex < variant.frameCount; frameIndex += 1) {
               telemetryStage = 'rendering';
@@ -3622,8 +3682,8 @@
               }
 
               const orbit = canUseOrbit && baseRadius != null
-                ? `${baseThetaDeg + ((360 * frameIndex) / variant.frameCount)}deg ${basePhiDeg}deg ${baseRadius}m`
-                : `${32 - ((360 * frameIndex) / variant.frameCount)}deg 74deg 108%`;
+                ? `${baseThetaDeg + (rotationDirection * (360 * frameIndex) / variant.frameCount)}deg ${basePhiDeg}deg ${baseRadius}m`
+                : `${32 + (rotationDirection * (360 * frameIndex) / variant.frameCount)}deg 74deg 108%`;
 
               lastFrameMeta = await captureWorld3dFrame(
                 viewer,
@@ -3669,9 +3729,11 @@
               logWorld3dGifExportTelemetry('info', {
                 tokenId,
                 frameCount: variant.frameCount,
-                fps: variant.fps,
+                fps: targetFps,
                 durationMs: Math.round(performance.now() - startedAt),
                 bytes: result.size,
+                rotationPerSecondDeg,
+                rotationDirection,
                 capture: lastFrameMeta,
               });
               return;

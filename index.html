@@ -3683,8 +3683,9 @@
             workerSession = await createWorld3dGifWorkerSession({
               frameCount: variant.frameCount,
               fps: targetFps,
-              quantizeFormat: 'rgba4444',
-              prequantizeOptions: false,
+              paletteStrategy: 'global',
+              quantizeFormat: 'rgb565',
+              prequantizeOptions: { roundRGB: 1, roundAlpha: 1 },
             });
 
             for (let frameIndex = 0; frameIndex < variant.frameCount; frameIndex += 1) {

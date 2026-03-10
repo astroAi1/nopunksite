@@ -20,6 +20,7 @@ function startSession(payload) {
   const quantizeFormat = payload?.quantizeFormat || 'rgb565';
   const prequantizeOptions =
     typeof payload?.prequantizeOptions === 'undefined' ? { roundRGB: 1, roundAlpha: 1 } : payload.prequantizeOptions;
+  const paletteStrategy = payload?.paletteStrategy || 'global';
   const minBytes = Number(payload?.minBytes) || 0;
   const maxBytes = Number(payload?.maxBytes) || 0;
 
@@ -39,6 +40,8 @@ function startSession(payload) {
     paletteSize,
     quantizeFormat,
     prequantizeOptions,
+    paletteStrategy,
+    globalPalette: null,
     minBytes,
     maxBytes,
     frameIndex: 0,
@@ -68,16 +71,31 @@ function handleFrame(payload) {
   if (session.prequantizeOptions !== false) {
     prequantize(rgba, session.prequantizeOptions || { roundRGB: 1, roundAlpha: 1 });
   }
-  const palette = quantize(rgba, session.paletteSize, {
-    format: session.quantizeFormat || 'rgb565',
-    clearAlpha: true,
-    clearAlphaColor: 0,
-    clearAlphaThreshold: 0,
-  });
+
+  let palette = null;
+  if (session.paletteStrategy === 'global') {
+    if (!session.globalPalette) {
+      session.globalPalette = quantize(rgba, session.paletteSize, {
+        format: session.quantizeFormat || 'rgb565',
+        clearAlpha: true,
+        clearAlphaColor: 0,
+        clearAlphaThreshold: 0,
+      });
+    }
+    palette = session.globalPalette;
+  } else {
+    palette = quantize(rgba, session.paletteSize, {
+      format: session.quantizeFormat || 'rgb565',
+      clearAlpha: true,
+      clearAlphaColor: 0,
+      clearAlphaThreshold: 0,
+    });
+  }
+
   const indexed = applyPalette(rgba, palette, session.quantizeFormat || 'rgb565');
 
   session.encoder.writeFrame(indexed, session.width, session.height, {
-    palette,
+    palette: session.paletteStrategy === 'global' && session.frameIndex > 0 ? null : palette,
     delay: session.delayMs,
     repeat: session.repeat,
     dispose: 1,

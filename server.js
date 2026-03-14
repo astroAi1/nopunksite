@@ -1852,6 +1852,21 @@ app.use('/public/data/explorer/images', express.static(explorerPublicImagesDir, 
 app.use('/public/data/explorer', express.static(explorerPublicDir, explorerDataStaticOptions));
 app.use('/public/data/explorer/images', express.static(explorerPublishedImagesDir, immutableImageStaticOptions));
 app.use('/public/data/explorer', express.static(explorerPublishedDir, explorerDataStaticOptions));
+app.get('/public/data/explorer/images', (req, res) => {
+  res.redirect(302, `/explorer-data/images/${PUBLIC_SAMPLE_TOKEN_ID}.svg`);
+});
+app.get('/public/data/explorer/images/', (req, res) => {
+  res.redirect(302, `/explorer-data/images/${PUBLIC_SAMPLE_TOKEN_ID}.svg`);
+});
+app.get('/public/data/explorer/onchain_traits.json', (req, res) => {
+  res.redirect(302, '/explorer-data/onchain_traits.json');
+});
+app.get('/public/data/explorer/token_trait_blob.json', (req, res) => {
+  res.redirect(302, '/explorer-data/token_trait_blob.json');
+});
+app.get('/public/data/explorer/trait_to_token_ids.json', (req, res) => {
+  res.redirect(302, '/explorer-data/trait_to_token_ids.json');
+});
 
 // Expose service worker at root while keeping source under /public.
 app.get('/sw.js', (req, res) => {

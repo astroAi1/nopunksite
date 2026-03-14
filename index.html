@@ -3044,6 +3044,8 @@
         warmedAssetUrls: new Set(),
         warmedExportKeys: new Set(),
         exportWarmTimers: new Map(),
+        exportAvailable: false,
+        exportUnavailableMessage: WORLD3D_EXPORT_UNAVAILABLE_MESSAGE,
         shareExporting: false,
         shareExportFormat: '',
       };
@@ -3079,11 +3081,17 @@
           tokenId: safeId,
           name: `No-Punk #${safeId}`,
           available: true,
+          exportAvailable: false,
+          exportUnavailableReason: WORLD3D_EXPORT_UNAVAILABLE_MESSAGE,
           posterUrl,
           modelUrl: getWorld3dModelUrl(safeId),
           imageUrl: posterUrl,
           openseaUrl: `${OPENSEA_ITEM_BASE}/${CONTRACT}/${safeId}`,
         };
+      }
+
+      function getWorld3dExportUnavailableMessage() {
+        return world3dState.exportUnavailableMessage || WORLD3D_EXPORT_UNAVAILABLE_MESSAGE;
       }
 
       function normalizeImageSource(url) {
@@ -3345,13 +3353,17 @@
         return 'Save Export';
       }
 
-      function resetWorld3dExportButtons(canExport = world3dState.activeViewer === 'glb') {
+      function resetWorld3dExportButtons(
+        canExport = world3dState.activeViewer === 'glb' && world3dState.exportAvailable === true
+      ) {
         const gifBtn = getWorld3dExportButton('gif');
         const videoBtn = getWorld3dExportButton('mp4');
         const shouldDisable = !canExport || world3dState.shareExporting;
+        const unavailableMessage = getWorld3dExportUnavailableMessage();
 
         if (gifBtn) {
           gifBtn.disabled = shouldDisable;
+          gifBtn.title = shouldDisable && !world3dState.shareExporting ? unavailableMessage : '';
           if (!world3dState.shareExporting || world3dState.shareExportFormat !== 'gif') {
             gifBtn.textContent = getWorld3dExportButtonLabel('gif');
           }
@@ -3359,6 +3371,7 @@
 
         if (videoBtn) {
           videoBtn.disabled = shouldDisable;
+          videoBtn.title = shouldDisable && !world3dState.shareExporting ? unavailableMessage : '';
           if (!world3dState.shareExporting || world3dState.shareExportFormat !== 'mp4') {
             videoBtn.textContent = getWorld3dExportButtonLabel('mp4');
           }
@@ -4275,7 +4288,7 @@
         }
 
         if (world3dState.activeViewer !== 'glb') {
-          alert(WORLD3D_EXPORT_UNAVAILABLE_MESSAGE);
+          alert(getWorld3dExportUnavailableMessage());
           return;
         }
 
@@ -4419,6 +4432,7 @@
 
       function maybeWarmCurrentWorld3dExport(format, delayMs = 0) {
         if (world3dState.activeViewer !== 'glb') return;
+        if (world3dState.exportAvailable !== true) return;
         const tokenId = world3dState.currentTokenId;
         if (!Number.isInteger(tokenId)) return;
         queueWorld3dExportWarm(tokenId, format, delayMs);
@@ -4723,8 +4737,14 @@
         resolvedToken.modelUrl = resolvedToken.modelUrl || getWorld3dModelUrl(tokenId);
         resolvedToken.imageUrl = getWorld3dPosterUrl(tokenId);
         resolvedToken.available = true;
+        resolvedToken.exportAvailable = resolvedToken.exportAvailable === true;
+        resolvedToken.exportUnavailableReason =
+          String(resolvedToken.exportUnavailableReason || '').trim() ||
+          WORLD3D_EXPORT_UNAVAILABLE_MESSAGE;
 
         world3dState.currentTokenId = tokenId;
+        world3dState.exportAvailable = false;
+        world3dState.exportUnavailableMessage = resolvedToken.exportUnavailableReason;
         clearAllWorld3dExportWarmTimers();
 
         const kickerEl = document.getElementById('world-3d-kicker');
@@ -4747,6 +4767,8 @@
         resetWorld3dExportButtons(false);
         try {
           if (preferRuntime) {
+            world3dState.exportAvailable = false;
+            world3dState.exportUnavailableMessage = WORLD3D_EXPORT_UNAVAILABLE_MESSAGE;
             await setWorld3dRuntimeModel(
               tokenId,
               resolvedToken.posterUrl,
@@ -4765,21 +4787,29 @@
             resetWorld3dExportButtons(false);
           } else {
             await setWorld3dModel(resolvedToken.modelUrl, getWorld3dFallbackImage(resolvedToken), true);
+            world3dState.exportAvailable = resolvedToken.exportAvailable;
+            world3dState.exportUnavailableMessage = resolvedToken.exportUnavailableReason;
             setWorld3dStatus('available', '3D Ready');
             if (searchMetaEl && mode !== 'featured') {
               searchMetaEl.textContent = `No-Punk #${tokenId} loads as a voxel GLB. Drag to orbit and scroll to zoom.`;
             }
             if (copyEl) {
-              copyEl.textContent = mode === 'featured'
-                ? 'This featured NoPunk is a real voxel GLB with full depth. Drag to orbit, zoom to inspect, save a GIF for sharing, or download an HD video for the closest match to the live viewer.'
-                : 'This NoPunk is loaded as a real voxel GLB, not a poster render. Drag to orbit, zoom in, save a GIF for sharing, or download an HD video for the closest match to the live viewer.';
+              copyEl.textContent = resolvedToken.exportAvailable
+                ? (mode === 'featured'
+                    ? 'This featured NoPunk is a real voxel GLB with full depth. Drag to orbit, zoom to inspect, save a GIF for sharing, or download an HD video for the closest match to the live viewer.'
+                    : 'This NoPunk is loaded as a real voxel GLB, not a poster render. Drag to orbit, zoom in, save a GIF for sharing, or download an HD video for the closest match to the live viewer.')
+                : (mode === 'featured'
+                    ? 'This featured NoPunk is a real voxel GLB with full depth. Drag to orbit and zoom to inspect it. 3D export is temporarily unavailable on this deployment.'
+                    : 'This NoPunk is loaded as a real voxel GLB, not a poster render. Drag to orbit and zoom in to inspect it. 3D export is temporarily unavailable on this deployment.');
             }
             if (resetBtn) resetBtn.disabled = false;
-            resetWorld3dExportButtons(true);
+            resetWorld3dExportButtons(resolvedToken.exportAvailable);
           }
         } catch (err) {
           console.error('World 3D model load error:', err);
           try {
+            world3dState.exportAvailable = false;
+            world3dState.exportUnavailableMessage = WORLD3D_EXPORT_UNAVAILABLE_MESSAGE;
             await setWorld3dRuntimeModel(
               tokenId,
               resolvedToken.posterUrl,
@@ -4798,6 +4828,8 @@
             clearAllWorld3dExportWarmTimers();
           } catch (runtimeErr) {
             console.error('World 3D runtime load error:', runtimeErr);
+            world3dState.exportAvailable = false;
+            world3dState.exportUnavailableMessage = WORLD3D_EXPORT_UNAVAILABLE_MESSAGE;
             setWorld3dStatus('unavailable', '3D Not Ready');
             setWorld3dFallback(
               tokenId,
@@ -4831,6 +4863,10 @@
         world3dState.suggestionTokenIds = Array.isArray(manifest?.suggestionTokenIds)
           ? manifest.suggestionTokenIds
           : [];
+        world3dState.exportAvailable = manifest?.exportAvailable === true;
+        world3dState.exportUnavailableMessage =
+          String(manifest?.exportUnavailableReason || '').trim() ||
+          WORLD3D_EXPORT_UNAVAILABLE_MESSAGE;
 
         const coverageEl = document.getElementById('world-3d-coverage');
         if (coverageEl) {

@@ -14,6 +14,7 @@ const fs = require('fs');
 const os = require('os');
 const { spawn } = require('child_process');
 const {
+  getWorld3dShareSupportStatus,
   renderWorld3dShareGif,
   renderWorld3dShareMp4,
 } = require('./lib/world3d-share-export');
@@ -103,6 +104,8 @@ const NOPUNKS_3D_SHARE_JOB_ROOT_DIR =
   process.env.NOPUNKS_3D_SHARE_JOB_ROOT_DIR ||
   path.join(os.tmpdir(), 'nopunks-world3d-share-jobs');
 
+const THREE_D_SHARE_SUPPORT = getWorld3dShareSupportStatus();
+
 // Exact total supplies
 const NOPUNKS_SUPPLY = 10000;
 const NOPNUK_SUPPLY = 2024;
@@ -166,12 +169,7 @@ if (!OPENSEA_API_KEY) {
 
 // Etherscan/Basescan API key (for on-chain data)
 const ETHERSCAN_API_KEY = String(process.env.ETHERSCAN_API_KEY || '').trim();
-
-if (!ETHERSCAN_API_KEY) {
-  console.warn(
-    'WARNING: ETHERSCAN_API_KEY is not set. Etherscan/Basescan requests will be disabled.'
-  );
-}
+let hasWarnedAboutMissingEtherscanKey = false;
 
 // Use Node 18 global fetch if available, otherwise lazy-load node-fetch (ESM)
 const fetchFn = global.fetch
@@ -2610,11 +2608,19 @@ function build3dTokenPayload(tokenId) {
   const modelPath = build3dModelPath(safeTokenId);
   const posterAvailable = isExistingFile(posterPath);
   const modelAvailable = isExistingFile(modelPath);
+  const exportAvailable = modelAvailable && THREE_D_SHARE_SUPPORT.available;
+  const exportUnavailableReason = exportAvailable
+    ? ''
+    : modelAvailable
+      ? THREE_D_SHARE_SUPPORT.reason
+      : '3D export is available only for GLB-ready tokens.';
 
   return {
     tokenId: safeTokenId,
     name: `No-Punk #${safeTokenId}`,
     available: modelAvailable,
+    exportAvailable,
+    exportUnavailableReason,
     posterAvailable,
     posterUrl: posterAvailable ? `/transparent/${safeTokenId}.png` : `/api/onchain/token/${safeTokenId}/image`,
     modelUrl: modelAvailable ? `/world3d-models/${safeTokenId}.glb` : '',
@@ -2771,6 +2777,10 @@ function get3dManifest(forceRefresh = false) {
     generatedModelCount: availableTokenIds.length,
     availableTokenIds,
     suggestionTokenIds: sampleTokenIds(availableTokenIds, 8),
+    exportAvailable: THREE_D_SHARE_SUPPORT.available,
+    exportUnavailableReason: THREE_D_SHARE_SUPPORT.available
+      ? ''
+      : THREE_D_SHARE_SUPPORT.reason,
     updatedAt: new Date().toISOString(),
   };
 
@@ -2853,6 +2863,12 @@ app.post('/api/3d/export', async (req, res) => {
 
     if (format !== 'mp4' && format !== 'gif') {
       return res.status(400).json({ error: 'Invalid format' });
+    }
+
+    if (!THREE_D_SHARE_SUPPORT.available) {
+      return res.status(503).json({
+        error: THREE_D_SHARE_SUPPORT.reason || '3D export is currently unavailable.',
+      });
     }
 
     const modelPath = build3dModelPath(tokenId);
@@ -3256,6 +3272,12 @@ function getEtherscanBaseUrl() {
 
 async function fetchJsonFromEtherscan(params, label = 'Etherscan', timeoutMs = 20000) {
   if (!ETHERSCAN_API_KEY) {
+    if (!hasWarnedAboutMissingEtherscanKey) {
+      console.warn(
+        'ETHERSCAN_API_KEY is not set. Etherscan/Basescan requests are disabled until a key is configured.'
+      );
+      hasWarnedAboutMissingEtherscanKey = true;
+    }
     throw new Error('ETHERSCAN_API_KEY not configured');
   }
 

@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: nopunks-site
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NOPUNKS_CHROME_PATH
+        value: /usr/bin/chromium
+      - key: NOPUNKS_FFMPEG_PATH
+        value: /usr/bin/ffmpeg
+      - key: OPENSEA_API_KEY
+        sync: false
+      - key: ETHERSCAN_API_KEY
+        sync: false

@@ -36,9 +36,9 @@
           <div class="docs-kicker">Public Onchain Collection Infrastructure</div>
           <h1>No-Punks API</h1>
           <p class="docs-lede">
-            Canonical token metadata, images, traits, search, datasets, and holder data for the
-            No-Punks V2 contract on Base. The core collection routes are onchain or chain-derived,
-            and the market routes are kept separate and clearly labeled as derived data.
+            Canonical token metadata, images, traits, search, and datasets for the No-Punks V2
+            contract on Base. The core collection routes are onchain or snapshot-derived, and the
+            market routes are kept separate and clearly labeled as derived data.
           </p>
           <p class="docs-hero-note">
             We opened it so builders, collectors, artists, and community projects can work from
@@ -128,7 +128,7 @@
             <div class="docs-kicker">Quickstart</div>
             <h2>Copy, paste, build</h2>
           </div>
-          <p>Examples below point at token <code>9967</code> on the current host.</p>
+          <p>Examples below use token <code>9967</code>. Replace it with any token ID from <code>0</code> to <code>9999</code>.</p>
         </div>
 
         <div class="docs-split">
@@ -271,30 +271,6 @@
 
           <article class="docs-surface docs-reference-group">
             <div class="docs-group-head">
-              <div class="docs-card-kicker">Holders</div>
-              <h3>Chain-derived holder data</h3>
-            </div>
-            <div class="docs-route-list">
-              <div class="docs-route-row">
-                <div class="docs-method">GET</div>
-                <code>/api/v2/holders/summary</code>
-                <p>Holder summary built from snapshot data and live owner reads.</p>
-              </div>
-              <div class="docs-route-row">
-                <div class="docs-method">GET</div>
-                <code>/api/v2/holders/top</code>
-                <p>Top holder rankings from the same owner-derived holder data.</p>
-              </div>
-              <div class="docs-route-row">
-                <div class="docs-method">GET</div>
-                <code>/api/v2/holders/:address</code>
-                <p>Per-wallet holdings from snapshot/live owner data.</p>
-              </div>
-            </div>
-          </article>
-
-          <article class="docs-surface docs-reference-group">
-            <div class="docs-group-head">
               <div class="docs-card-kicker">Derived Market</div>
               <h3>Non-canonical market data</h3>
             </div>
@@ -411,14 +387,13 @@
             <div class="docs-kicker">Reference Notes</div>
             <h2>What lives here</h2>
           </div>
-          <p>Core collection data is canonical here. Live market data stays published, but it is clearly labeled as derived.</p>
+          <p>Core collection data is canonical here. Market data stays published, but it is clearly labeled as derived.</p>
         </div>
 
         <div class="docs-note-grid">
           <div class="docs-note">V2 contract only.</div>
           <div class="docs-note">Public GET routes with open CORS.</div>
           <div class="docs-note">Core metadata is served from published local snapshots.</div>
-          <div class="docs-note">Holder routes are chain-derived from owner data on Base.</div>
           <div class="docs-note">Market routes are clearly labeled and derived from OpenSea.</div>
           <div class="docs-note">CC0 / CCO friendly public use.</div>
           <div class="docs-note">OpenAPI and llms.txt stay published.</div>

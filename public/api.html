@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>No-Punks API</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta
+      name="description"
+      content="Official public collection API for the No-Punks V2 contract on Base."
+    />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/52.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Darker+Grotesque:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/assets/css/api-docs.css" />
+    <script defer src="/assets/js/api-docs.js"></script>
+  </head>
+  <body class="docs-body">
+    <div class="docs-noise" aria-hidden="true"></div>
+    <header class="docs-header">
+      <a class="docs-logo" href="/">NO-PUNKS</a>
+      <nav class="docs-nav">
+        <a href="#quickstart">Quickstart</a>
+        <a href="#reference">Reference</a>
+        <a href="#datasets">Datasets</a>
+        <a href="/">Site</a>
+      </nav>
+    </header>
+
+    <main class="docs-main">
+      <section class="docs-hero">
+        <div class="docs-hero-copy">
+          <div class="docs-kicker">Public Onchain Collection Infrastructure</div>
+          <h1>No-Punks API</h1>
+          <p class="docs-lede">
+            Canonical token metadata, images, traits, search, datasets, and holder data for the
+            No-Punks V2 contract on Base. The core collection routes are onchain or chain-derived,
+            and the market routes are kept separate and clearly labeled as derived data.
+          </p>
+          <p class="docs-hero-note">
+            We opened it so builders, collectors, artists, and community projects can work from
+            the same stable public source the site uses itself. Use it to query tokens directly,
+            mirror datasets, power indexes and tools, or reference the collection cleanly without
+            scraping pages or depending on closed intermediaries.
+          </p>
+          <div class="docs-actions">
+            <a class="docs-button docs-button-solid" href="#quickstart">Start With Token 9967</a>
+            <a
+              class="docs-button"
+              data-origin-href="__ORIGIN__/api/v2/tokens/9967"
+              href="/api/v2/tokens/9967"
+            >Open Token JSON</a>
+          </div>
+        </div>
+
+        <aside class="docs-summary-panel">
+          <div class="docs-summary-head">
+            <div class="docs-card-kicker">No-Punks V2 Only</div>
+            <h2>Onchain reference</h2>
+          </div>
+
+          <div class="docs-summary-rows">
+            <div class="docs-summary-row">
+              <div class="docs-summary-label">Contract</div>
+              <div class="docs-summary-value docs-mono docs-break">
+                0xa62f65d503068684e7228df98090F94322b8ed54
+              </div>
+            </div>
+            <div class="docs-summary-row">
+              <div class="docs-summary-label">Chain</div>
+              <div class="docs-summary-value">Base</div>
+            </div>
+            <div class="docs-summary-row">
+              <div class="docs-summary-label">Route Prefix</div>
+              <div class="docs-summary-value docs-mono">/api/v2</div>
+            </div>
+            <div class="docs-summary-row">
+              <div class="docs-summary-label">Supply</div>
+              <div class="docs-summary-value">10,000</div>
+            </div>
+          </div>
+
+          <div class="docs-preview-frame">
+            <img
+              class="docs-preview-image"
+              data-origin-src="__ORIGIN__/api/v2/tokens/9967/image"
+              src="/api/v2/tokens/9967/image"
+              alt="No-Punk #9967"
+            />
+            <div class="docs-preview-meta">No-Punk #9967</div>
+          </div>
+
+          <div class="docs-summary-links">
+            <a
+              class="docs-inline-link"
+              data-origin-href="__ORIGIN__/api/openapi.json"
+              href="/api/openapi.json"
+            >OpenAPI</a>
+            <a class="docs-inline-link" data-origin-href="__ORIGIN__/llms.txt" href="/llms.txt">llms.txt</a>
+          </div>
+        </aside>
+      </section>
+
+      <section class="docs-overview">
+        <article class="docs-surface docs-overview-card">
+          <div class="docs-card-kicker">Canonical</div>
+          <h3>Token JSON and image routes</h3>
+          <p>Stable public endpoints for canonical token metadata and the hosted SVG image route.</p>
+        </article>
+        <article class="docs-surface docs-overview-card">
+          <div class="docs-card-kicker">Searchable</div>
+          <h3>Traits, indexes, and search</h3>
+          <p>Trait pages and search are built from No-Punks V2 snapshots published for public reuse.</p>
+        </article>
+        <article class="docs-surface docs-overview-card">
+          <div class="docs-card-kicker">Open</div>
+          <h3>Raw datasets stay downloadable</h3>
+          <p>Mirror them, index them, remix them, or build your own views of the collection.</p>
+        </article>
+      </section>
+
+      <section class="docs-section" id="quickstart">
+        <div class="docs-section-header">
+          <div>
+            <div class="docs-kicker">Quickstart</div>
+            <h2>Copy, paste, build</h2>
+          </div>
+          <p>Examples below point at token <code>9967</code> on the current host.</p>
+        </div>
+
+        <div class="docs-split">
+          <div class="docs-code-stack">
+            <article class="docs-surface docs-code-card">
+              <div class="docs-code-head">
+                <div>
+                  <div class="docs-card-kicker">curl</div>
+                  <h3>Fetch token metadata</h3>
+                </div>
+                <button class="docs-copy-button" type="button" data-copy-target="curl-token">Copy</button>
+              </div>
+              <pre class="docs-code-block"><code id="curl-token" data-origin-template="curl __ORIGIN__/api/v2/tokens/9967"></code></pre>
+            </article>
+
+            <article class="docs-surface docs-code-card">
+              <div class="docs-code-head">
+                <div>
+                  <div class="docs-card-kicker">fetch</div>
+                  <h3>Use it from JavaScript</h3>
+                </div>
+                <button class="docs-copy-button" type="button" data-copy-target="fetch-token">Copy</button>
+              </div>
+              <pre class="docs-code-block"><code id="fetch-token" data-origin-template="const res = await fetch('__ORIGIN__/api/v2/tokens/9967');&#10;const token = await res.json();&#10;console.log(token.name, token.attributes);"></code></pre>
+            </article>
+
+            <article class="docs-surface docs-code-card">
+              <div class="docs-code-head">
+                <div>
+                  <div class="docs-card-kicker">traits</div>
+                  <h3>Inspect a trait value</h3>
+                </div>
+                <button class="docs-copy-button" type="button" data-copy-target="trait-value">Copy</button>
+              </div>
+              <pre class="docs-code-block"><code id="trait-value" data-origin-template="curl '__ORIGIN__/api/v2/traits/Hair/Knitted%20Cap?limit=25'"></code></pre>
+            </article>
+
+            <article class="docs-surface docs-code-card">
+              <div class="docs-code-head">
+                <div>
+                  <div class="docs-card-kicker">image</div>
+                  <h3>Open the canonical image route</h3>
+                </div>
+                <button class="docs-copy-button" type="button" data-copy-target="token-image">Copy</button>
+              </div>
+              <pre class="docs-code-block"><code id="token-image" data-origin-template="__ORIGIN__/api/v2/tokens/9967/image"></code></pre>
+            </article>
+          </div>
+
+          <article class="docs-surface docs-sample-card">
+            <div class="docs-card-kicker">Sample Response</div>
+            <h3>No-Punk #9967</h3>
+            <p>
+              Canonical token metadata returns a hosted image route and onchain-style attributes.
+            </p>
+            <pre class="docs-code-block"><code id="sample-response">{
+  "tokenId": 9967,
+  "name": "No-Punk #9967",
+  "collection": "No-Punks V2",
+  "contract": "0xa62f65d503068684e7228df98090F94322b8ed54",
+  "chain": "base",
+  "image": "/api/v2/tokens/9967/image",
+  "attributes": [
+    { "trait_type": "Hair", "value": "Knitted Cap" },
+    { "trait_type": "Eyes", "value": "Green Eye Shadow" },
+    { "trait_type": "Type", "value": "Female" }
+  ]
+}</code></pre>
+          </article>
+        </div>
+      </section>
+
+      <section class="docs-section" id="reference">
+        <div class="docs-section-header">
+          <div>
+            <div class="docs-kicker">Reference</div>
+            <h2>Public routes</h2>
+          </div>
+          <p>The documented collection namespace is <code>/api/v2</code>.</p>
+        </div>
+
+        <div class="docs-reference">
+          <article class="docs-surface docs-reference-group">
+            <div class="docs-group-head">
+              <div class="docs-card-kicker">Collection</div>
+              <h3>Canonical entry points</h3>
+            </div>
+            <div class="docs-route-list">
+              <div class="docs-route-row">
+                <div class="docs-method">GET</div>
+                <code>/api/v2/status</code>
+                <p>Readiness, timestamps, and dataset availability.</p>
+              </div>
+              <div class="docs-route-row">
+                <div class="docs-method">GET</div>
+                <code>/api/v2/collection</code>
+                <p>Contract, chain, supply, docs, and dataset manifest.</p>
+              </div>
+              <div class="docs-route-row">
+                <div class="docs-method">GET</div>
+                <code>/api/v2/tokens/:tokenId</code>
+                <p>Canonical token JSON for token IDs <code>0</code> through <code>9999</code>.</p>
+              </div>
+              <div class="docs-route-row">
+                <div class="docs-method">GET</div>
+                <code>/api/v2/tokens/:tokenId/image</code>
+                <p>Canonical hosted SVG image route for a token.</p>
+              </div>
+            </div>
+          </article>
+
+          <article class="docs-surface docs-reference-group">
+            <div class="docs-group-head">
+              <div class="docs-card-kicker">Traits</div>
+              <h3>Discovery routes</h3>
+            </div>
+            <div class="docs-route-list">
+              <div class="docs-route-row">
+                <div class="docs-method">GET</div>
+                <code>/api/v2/traits</code>
+                <p>List public trait types and counts.</p>
+              </div>
+              <div class="docs-route-row">
+                <div class="docs-method">GET</div>
+                <code>/api/v2/traits/:traitType</code>
+                <p>List values and counts for one trait type.</p>
+              </div>
+              <div class="docs-route-row">
+                <div class="docs-method">GET</div>
+                <code>/api/v2/traits/:traitType/:value</code>
+                <p>Token IDs for one exact trait value.</p>
+              </div>
+              <div class="docs-route-row">
+                <div class="docs-method">GET</div>
+                <code>/api/v2/search?q=...</code>
+                <p>Search by token ID, name, trait type, or trait value text.</p>
+              </div>
+            </div>
+          </article>
+
+          <article class="docs-surface docs-reference-group">
+            <div class="docs-group-head">
+              <div class="docs-card-kicker">Holders</div>
+              <h3>Chain-derived holder data</h3>
+            </div>
+            <div class="docs-route-list">
+              <div class="docs-route-row">
+                <div class="docs-method">GET</div>
+                <code>/api/v2/holders/summary</code>
+                <p>Holder summary built from snapshot data and live owner reads.</p>
+              </div>
+              <div class="docs-route-row">
+                <div class="docs-method">GET</div>
+                <code>/api/v2/holders/top</code>
+                <p>Top holder rankings from the same owner-derived holder data.</p>
+              </div>
+              <div class="docs-route-row">
+                <div class="docs-method">GET</div>
+                <code>/api/v2/holders/:address</code>
+                <p>Per-wallet holdings from snapshot/live owner data.</p>
+              </div>
+            </div>
+          </article>
+
+          <article class="docs-surface docs-reference-group">
+            <div class="docs-group-head">
+              <div class="docs-card-kicker">Derived Market</div>
+              <h3>Non-canonical market data</h3>
+            </div>
+            <div class="docs-route-list">
+              <div class="docs-route-row">
+                <div class="docs-method">GET</div>
+                <code>/api/v2/market/stats</code>
+                <p>Non-canonical market summary derived from OpenSea.</p>
+              </div>
+              <div class="docs-route-row">
+                <div class="docs-method">GET</div>
+                <code>/api/v2/market/recent-sales</code>
+                <p>Recent sales envelope derived from OpenSea activity.</p>
+              </div>
+              <div class="docs-route-row">
+                <div class="docs-method">GET</div>
+                <code>/api/v2/market/listings</code>
+                <p>Current listings envelope derived from OpenSea listings.</p>
+              </div>
+            </div>
+          </article>
+
+          <article class="docs-surface docs-reference-group">
+            <div class="docs-group-head">
+              <div class="docs-card-kicker">Datasets</div>
+              <h3>Published raw files</h3>
+            </div>
+            <div class="docs-route-list">
+              <div class="docs-route-row">
+                <div class="docs-method">GET</div>
+                <code>/api/v2/datasets</code>
+                <p>Links to the raw JSON files and image base.</p>
+              </div>
+            </div>
+          </article>
+
+          <article class="docs-surface docs-reference-group">
+            <div class="docs-group-head">
+              <div class="docs-card-kicker">Machine Readable</div>
+              <h3>Support files</h3>
+            </div>
+            <div class="docs-route-list">
+              <div class="docs-route-row">
+                <div class="docs-method">GET</div>
+                <code>/api/openapi.json</code>
+                <p>OpenAPI document for the public No-Punks API.</p>
+              </div>
+              <div class="docs-route-row">
+                <div class="docs-method">GET</div>
+                <code>/llms.txt</code>
+                <p>Compact machine-readable route list and usage summary.</p>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="docs-section" id="datasets">
+        <div class="docs-section-header">
+          <div>
+            <div class="docs-kicker">Datasets</div>
+            <h2>Published raw files</h2>
+          </div>
+          <p>The same collection files used by the site and the public API.</p>
+        </div>
+
+        <div class="docs-dataset-grid">
+          <article class="docs-surface docs-dataset-card">
+            <div class="docs-card-kicker">Snapshot</div>
+            <h3>Onchain traits</h3>
+            <p>Token metadata snapshot built from the No-Punks V2 contract.</p>
+            <a
+              class="docs-inline-link"
+              data-origin-href="__ORIGIN__/public/data/explorer/onchain_traits.json"
+              href="/public/data/explorer/onchain_traits.json"
+            >Download JSON</a>
+          </article>
+          <article class="docs-surface docs-dataset-card">
+            <div class="docs-card-kicker">Search</div>
+            <h3>Token search blob</h3>
+            <p>Compact search index with token IDs, names, and trait text.</p>
+            <a
+              class="docs-inline-link"
+              data-origin-href="__ORIGIN__/public/data/explorer/token_trait_blob.json"
+              href="/public/data/explorer/token_trait_blob.json"
+            >Download JSON</a>
+          </article>
+          <article class="docs-surface docs-dataset-card">
+            <div class="docs-card-kicker">Index</div>
+            <h3>Trait to token IDs</h3>
+            <p>Trait-value index for builders who want fast filtering without scraping the site.</p>
+            <a
+              class="docs-inline-link"
+              data-origin-href="__ORIGIN__/public/data/explorer/trait_to_token_ids.json"
+              href="/public/data/explorer/trait_to_token_ids.json"
+            >Download JSON</a>
+          </article>
+          <article class="docs-surface docs-dataset-card">
+            <div class="docs-card-kicker">Images</div>
+            <h3>Published SVG base</h3>
+            <p>Hosted collection image files for mirroring or static indexing.</p>
+            <a
+              class="docs-inline-link"
+              data-origin-href="__ORIGIN__/public/data/explorer/images/"
+              href="/public/data/explorer/images/"
+            >Open directory</a>
+          </article>
+        </div>
+      </section>
+
+      <section class="docs-section docs-section-notes">
+        <div class="docs-section-header">
+          <div>
+            <div class="docs-kicker">Usage Notes</div>
+            <h2>Public and reusable</h2>
+          </div>
+          <p>Structured as collection infrastructure rather than a separate developer product.</p>
+        </div>
+
+        <div class="docs-note-grid">
+          <div class="docs-note">V2 contract only.</div>
+          <div class="docs-note">Public GET routes with open CORS.</div>
+          <div class="docs-note">Core metadata comes from local snapshots.</div>
+          <div class="docs-note">Holder routes are chain-derived from owner data.</div>
+          <div class="docs-note">Market routes are non-canonical and derived from OpenSea.</div>
+          <div class="docs-note">CC0 / CCO friendly public use.</div>
+          <div class="docs-note">OpenAPI and llms.txt stay published.</div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

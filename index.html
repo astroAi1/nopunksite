@@ -46,6 +46,7 @@
     <link rel="stylesheet" href="https://unpkg.com/@coinbase/onchainkit@latest/styles.css" />
     <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
     <script nomodule src="https://unpkg.com/@google/model-viewer/dist/model-viewer-legacy.js"></script>
+    <script src="/public/world3d-render-profile.js"></script>
     <script type="module" src="/public/world3d-voxel-viewer.js"></script>
 
     <style>
@@ -66,6 +67,7 @@
         --light: #cccccc;
         --white: #f0f0f0;
         --pure: #ffffff;
+        --display-ink: #e3e5e4;
 
         --accent: #ffffff;
         --accent-dim: #444444;
@@ -144,7 +146,7 @@
         font-size: 1.5rem;
         font-weight: 900;
         letter-spacing: -0.02em;
-        color: var(--pure);
+        color: var(--display-ink);
       }
 
       .nav {
@@ -327,7 +329,7 @@
         font-weight: 900;
         letter-spacing: -0.04em;
         line-height: 0.85;
-        color: var(--pure);
+        color: var(--display-ink);
         margin-bottom: 1.5rem;
       }
 
@@ -423,7 +425,7 @@
         font-family: var(--font-display);
         font-size: 2rem;
         font-weight: 800;
-        color: var(--pure);
+        color: var(--display-ink);
         margin-bottom: 0.25rem;
         position: relative;
       }
@@ -478,7 +480,7 @@
         font-size: clamp(2.5rem, 8vw, 5rem);
         font-weight: 900;
         letter-spacing: -0.03em;
-        color: var(--pure);
+        color: var(--display-ink);
         margin-bottom: 0.5rem;
       }
 
@@ -578,6 +580,7 @@
         font-family: var(--font-display);
         font-size: 2rem;
         font-weight: 800;
+        color: var(--display-ink);
         margin-bottom: 0.5rem;
       }
 
@@ -758,7 +761,7 @@
         font-weight: 900;
         line-height: 0.95;
         letter-spacing: -0.04em;
-        color: var(--pure);
+        color: var(--display-ink);
       }
 
       .world3d-copy,
@@ -1048,7 +1051,7 @@
         font-family: var(--font-display);
         font-size: 1.2rem;
         font-weight: 700;
-        color: var(--pure);
+        color: var(--display-ink);
       }
 
       .activity-meta {
@@ -1086,7 +1089,7 @@
         font-family: var(--font-display);
         font-size: 1.3rem;
         font-weight: 700;
-        color: var(--pure);
+        color: var(--display-ink);
         display: flex;
         align-items: center;
         justify-content: flex-end;
@@ -2042,6 +2045,184 @@
       }
 
       /* ========================================
+         API INFRASTRUCTURE
+         ======================================== */
+
+      .api-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+        gap: 1rem;
+        align-items: stretch;
+      }
+
+      .api-panel,
+      .api-example-card {
+        border: 1px solid var(--ghost);
+        background: linear-gradient(180deg, rgba(16,16,16,0.78), rgba(6,6,6,0.92));
+      }
+
+      .api-panel {
+        padding: 1.1rem;
+      }
+
+      .api-kicker {
+        font-size: 0.58rem;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--mist);
+      }
+
+      .api-title {
+        margin-top: 0.65rem;
+        font-family: var(--font-display);
+        font-size: clamp(1.9rem, 3vw, 3rem);
+        font-weight: 800;
+        line-height: 0.95;
+        color: var(--display-ink);
+      }
+
+      .api-copy {
+        margin-top: 0.85rem;
+        max-width: 56rem;
+        font-size: 0.74rem;
+        line-height: 1.8;
+        color: var(--fog);
+      }
+
+      .api-why {
+        margin-top: 0.75rem;
+        max-width: 48rem;
+        font-size: 0.74rem;
+        line-height: 1.8;
+        color: var(--mist);
+      }
+
+      .api-chip-row {
+        margin-top: 1rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.55rem;
+      }
+
+      .api-chip {
+        border: 1px solid rgba(255,255,255,0.08);
+        background: rgba(0,0,0,0.28);
+        padding: 0.38rem 0.55rem;
+        font-size: 0.54rem;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--mist);
+      }
+
+      .api-actions {
+        margin-top: 1rem;
+        display: flex;
+        gap: 0.7rem;
+        flex-wrap: wrap;
+      }
+
+      .api-actions .lookup-btn,
+      .api-actions .load-more-btn {
+        text-align: center;
+        min-width: 190px;
+      }
+
+      .api-snippet {
+        margin-top: 1rem;
+        padding: 0.9rem 1rem;
+        border: 1px solid rgba(255,255,255,0.08);
+        background: rgba(0,0,0,0.36);
+        font-size: 0.65rem;
+        line-height: 1.7;
+        color: var(--light);
+        overflow-x: auto;
+      }
+
+      .api-preview {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        gap: 0.75rem;
+      }
+
+      .api-preview-frame {
+        width: min(100%, 320px);
+        padding: 1rem;
+        border: 1px solid rgba(255,255,255,0.08);
+        background: rgba(0,0,0,0.34);
+      }
+
+      .api-preview-frame img {
+        display: block;
+        width: 100%;
+        aspect-ratio: 1;
+        object-fit: contain;
+        image-rendering: pixelated;
+        background: #020202;
+      }
+
+      .api-preview-meta {
+        font-size: 0.6rem;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--mist);
+        text-align: center;
+      }
+
+      .api-example-grid {
+        margin-top: 1rem;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 1rem;
+      }
+
+      .api-example-card {
+        display: block;
+        padding: 1rem;
+        transition: border-color 0.3s ease, transform 0.3s ease;
+      }
+
+      .api-example-card:hover {
+        border-color: var(--pure);
+        transform: translateY(-2px);
+      }
+
+      .api-example-path {
+        margin-top: 0.5rem;
+        font-size: 0.72rem;
+        color: var(--pure);
+        line-height: 1.6;
+        word-break: break-word;
+      }
+
+      .api-example-copy {
+        margin-top: 0.7rem;
+        font-size: 0.64rem;
+        line-height: 1.7;
+        color: var(--fog);
+      }
+
+      @media (max-width: 980px) {
+        .api-grid,
+        .api-example-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .api-actions {
+          flex-direction: column;
+        }
+
+        .api-actions .lookup-btn,
+        .api-actions .load-more-btn {
+          width: 100%;
+          min-width: 0;
+        }
+      }
+
+      /* ========================================
          FOOTER
          ======================================== */
 
@@ -2055,6 +2236,7 @@
         font-family: var(--font-display);
         font-size: 2rem;
         font-weight: 900;
+        color: var(--display-ink);
         margin-bottom: 1rem;
       }
 
@@ -2192,6 +2374,7 @@
         <a href="#collection">Collection</a>
         <a href="#noir-de-noir">Noir</a>
         <a href="#holders">Holders</a>
+        <a href="/api">API</a>
         <a href="#about">About</a>
         <a href="https://opensea.io/collection/nopunkismv2" target="_blank">OpenSea</a>
         <a href="https://x.com/NoPunkism" target="_blank">X</a>
@@ -2271,7 +2454,7 @@
             <div id="world-3d-status" class="world3d-status" data-state="loading">Loading</div>
             <div id="world-3d-id" class="world3d-id">No-Punk #--</div>
             <p id="world-3d-copy" class="world3d-copy">
-              Every ready NoPunk loads here as a real voxel GLB with full depth. Drag to orbit, zoom in, and inspect the model from every angle.
+              Every ready NoPunk loads here as a real voxel GLB with full depth. Drag to orbit, zoom in, save a social GIF, or download an HD video that matches the live viewer more closely.
             </p>
 
             <div class="world3d-actions">
@@ -2282,7 +2465,10 @@
                 Reset View
               </button>
               <button id="world-3d-gif-btn" class="world3d-action-btn" type="button" disabled>
-                Save 3D GIF
+                Save GIF
+              </button>
+              <button id="world-3d-video-btn" class="world3d-action-btn" type="button" disabled>
+                Save HD Video
               </button>
               <a
                 id="world-3d-opensea"
@@ -2572,6 +2758,71 @@
       </div>
     </section>
 
+    <!-- API -->
+    <section id="api-infra" class="section">
+      <div class="container">
+        <div class="section-header">
+          <h2 class="section-title">API</h2>
+          <p class="section-subtitle">Public onchain collection infrastructure</p>
+        </div>
+
+        <div class="api-grid">
+          <div class="api-panel">
+            <div class="api-kicker">V2 Contract Only</div>
+            <div class="api-title">Open collection data. Same site. Same tone.</div>
+            <p class="api-copy">
+              Canonical token metadata, images, traits, search, datasets, and holder data for the
+              No-Punks V2 contract on Base, with market routes published separately as labeled
+              derived data.
+            </p>
+            <p class="api-why">
+              It gives builders, collectors, artists, and community tools a stable public source
+              to reference, mirror, and build on without scraping the site or relying on closed
+              intermediaries.
+            </p>
+            <div class="api-chip-row">
+              <div class="api-chip">Base</div>
+              <div class="api-chip">CC0 / CCO</div>
+              <div class="api-chip">/api/v2</div>
+              <div class="api-chip">Read Only</div>
+            </div>
+            <div class="api-actions">
+              <a class="lookup-btn" href="/api">Open API Reference</a>
+              <a class="load-more-btn" href="/api/v2/tokens/9967" target="_blank" rel="noopener noreferrer">Token 9967 JSON</a>
+            </div>
+            <div class="api-snippet">curl https://nopunks.xyz/api/v2/tokens/9967</div>
+          </div>
+
+          <div class="api-panel api-preview">
+            <div class="api-preview-frame">
+              <img src="/api/v2/tokens/9967/image" alt="No-Punk #9967" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.opacity='0'" />
+            </div>
+            <div class="api-preview-meta">No-Punk #9967 · Knitted Cap · Green Eye Shadow · Female</div>
+          </div>
+        </div>
+
+        <div class="api-example-grid">
+          <a class="api-example-card" href="/api/v2/collection" target="_blank" rel="noopener noreferrer">
+            <div class="api-kicker">Collection</div>
+            <div class="api-example-path">/api/v2/collection</div>
+            <div class="api-example-copy">Official No-Punks V2 contract, chain, supply, docs, and dataset manifest.</div>
+          </a>
+
+          <a class="api-example-card" href="/api/v2/traits/Hair/Knitted%20Cap" target="_blank" rel="noopener noreferrer">
+            <div class="api-kicker">Traits</div>
+            <div class="api-example-path">/api/v2/traits/Hair/Knitted%20Cap</div>
+            <div class="api-example-copy">Public token ID index for a specific No-Punks V2 trait value.</div>
+          </a>
+
+          <a class="api-example-card" href="/api/v2/datasets" target="_blank" rel="noopener noreferrer">
+            <div class="api-kicker">Datasets</div>
+            <div class="api-example-path">/api/v2/datasets</div>
+            <div class="api-example-copy">Snapshot JSON files and image base URLs published for public reuse.</div>
+          </a>
+        </div>
+      </div>
+    </section>
+
     <!-- About -->
     <section id="about" class="section section-dark">
       <div class="container">
@@ -2647,6 +2898,7 @@
         <a href="#world-3d">3D World</a>
         <a href="https://opensea.io/collection/nopunkismv2" target="_blank">OpenSea</a>
         <a href="https://x.com/NoPunkism" target="_blank">X / Twitter</a>
+        <a href="/api">API</a>
         <a href="#noir-de-noir">Noir de Noir</a>
         <a href="#holders">Holders</a>
         <a href="#about">About</a>
@@ -2681,7 +2933,8 @@
       const WORLD3D_WARM_TOKEN_COUNT = 6;
       const WORLD3D_FALLBACK_TOKENS = [52, 338, 615, 871, 1006, 1403, 2743, 3054];
       const WORLD3D_SHARE_MIN_BYTES = 5 * 1024 * 1024;
-      const WORLD3D_SHARE_MAX_BYTES = 15 * 1024 * 1024;
+      const WORLD3D_SHARE_MAX_BYTES = 24 * 1024 * 1024;
+      const WORLD3D_SHARE_POLL_INTERVAL_MS = 1500;
       const WORLD3D_GIF_EXPORT_SIZE = 1024;
       const WORLD3D_GIF_WORKER_URL = '/public/world3d-gif-worker.js?v=3';
       const WORLD3D_GIF_DELAY_CS = 8;
@@ -2691,7 +2944,63 @@
       const WORLD3D_GIF_SIZE_BOOST_FRAMES = 24;
       const WORLD3D_GIF_PALETTE_SAMPLE_COUNT = 8;
       const WORLD3D_GIF_PALETTE_SAMPLE_SIZE = 128;
-      const WORLD3D_EXPORT_UNAVAILABLE_MESSAGE = '3D export not ready';
+      const WORLD3D_EXPORT_UNAVAILABLE_MESSAGE = '3D export is available only for GLB-ready tokens.';
+      const WORLD3D_RENDER_PROFILE_FALLBACK = Object.freeze({
+        cameraThetaDeg: 32,
+        cameraPhiDeg: 74,
+        cameraRadiusPercent: 108,
+        cameraTarget: '0m 0m 0m',
+        fieldOfView: '27deg',
+        rotationPerSecond: '42deg',
+        exposure: '1',
+        shadowIntensity: '0',
+        touchAction: 'pan-y',
+        interactionPrompt: 'none',
+        reveal: 'auto',
+        background: '#000000',
+      });
+
+      function getWorld3dRenderProfile() {
+        return window.NoPunksWorld3dRenderProfile || WORLD3D_RENDER_PROFILE_FALLBACK;
+      }
+
+      function getWorld3dCanonicalOrbit(thetaDeg = getWorld3dRenderProfile().cameraThetaDeg) {
+        if (typeof window.getNoPunksWorld3dCameraOrbit === 'function') {
+          return window.getNoPunksWorld3dCameraOrbit(thetaDeg);
+        }
+
+        const profile = getWorld3dRenderProfile();
+        return `${thetaDeg}deg ${profile.cameraPhiDeg}deg ${profile.cameraRadiusPercent}%`;
+      }
+
+      function applyWorld3dRenderProfile(viewer, overrides = {}) {
+        if (!viewer) return null;
+
+        if (typeof window.applyNoPunksWorld3dRenderProfile === 'function') {
+          return window.applyNoPunksWorld3dRenderProfile(viewer, overrides);
+        }
+
+        const profile = {
+          ...getWorld3dRenderProfile(),
+          ...overrides,
+        };
+
+        viewer.cameraTarget = profile.cameraTarget;
+        viewer.cameraOrbit = getWorld3dCanonicalOrbit(profile.cameraThetaDeg);
+        viewer.fieldOfView = profile.fieldOfView;
+        viewer.autoRotate = profile.autoRotate !== false;
+        viewer.autoRotateDelay = Number.isFinite(Number(profile.autoRotateDelay))
+          ? Number(profile.autoRotateDelay)
+          : 0;
+        viewer.setAttribute('interaction-prompt', profile.interactionPrompt);
+        viewer.setAttribute('reveal', profile.reveal);
+        viewer.setAttribute('rotation-per-second', profile.rotationPerSecond);
+        viewer.setAttribute('touch-action', profile.touchAction);
+        viewer.setAttribute('shadow-intensity', profile.shadowIntensity);
+        viewer.setAttribute('exposure', profile.exposure);
+        viewer.style.background = profile.background;
+        return profile;
+      }
 
       const collectionState = {
         traitIndex: { traitToTokenIds: {}, typeValues: {}, traitTypes: [] },
@@ -2733,6 +3042,8 @@
         defaultOrbitRadius: null,
         pinchDistance: null,
         warmedAssetUrls: new Set(),
+        warmedExportKeys: new Set(),
+        exportWarmTimers: new Map(),
         shareExporting: false,
         shareExportFormat: '',
       };
@@ -3022,21 +3333,34 @@
         if (format === 'gif') {
           return document.getElementById('world-3d-gif-btn');
         }
+        if (format === 'mp4') {
+          return document.getElementById('world-3d-video-btn');
+        }
         return null;
       }
 
       function getWorld3dExportButtonLabel(format) {
-        return format === 'gif' ? 'Save 3D GIF' : 'Save 3D Export';
+        if (format === 'gif') return 'Save GIF';
+        if (format === 'mp4') return 'Save HD Video';
+        return 'Save Export';
       }
 
       function resetWorld3dExportButtons(canExport = world3dState.activeViewer === 'glb') {
         const gifBtn = getWorld3dExportButton('gif');
+        const videoBtn = getWorld3dExportButton('mp4');
         const shouldDisable = !canExport || world3dState.shareExporting;
 
         if (gifBtn) {
           gifBtn.disabled = shouldDisable;
           if (!world3dState.shareExporting || world3dState.shareExportFormat !== 'gif') {
             gifBtn.textContent = getWorld3dExportButtonLabel('gif');
+          }
+        }
+
+        if (videoBtn) {
+          videoBtn.disabled = shouldDisable;
+          if (!world3dState.shareExporting || world3dState.shareExportFormat !== 'mp4') {
+            videoBtn.textContent = getWorld3dExportButtonLabel('mp4');
           }
         }
       }
@@ -3263,30 +3587,32 @@
       }
 
       function snapshotWorld3dViewerState(viewer) {
+        const profile = getWorld3dRenderProfile();
         return {
           src: viewer?.getAttribute('src') || viewer?.dataset.loadedModelUrl || viewer?.src || '',
-          cameraOrbit: viewer?.cameraOrbit || '32deg 74deg 108%',
-          cameraTarget: viewer?.cameraTarget || '0m 0m 0m',
-          fieldOfView: viewer?.fieldOfView || '27deg',
+          cameraOrbit: viewer?.cameraOrbit || getWorld3dCanonicalOrbit(profile.cameraThetaDeg),
+          cameraTarget: viewer?.cameraTarget || profile.cameraTarget,
+          fieldOfView: viewer?.fieldOfView || profile.fieldOfView,
           autoRotate: Boolean(viewer?.autoRotate),
           autoRotateDelay: Number(viewer?.autoRotateDelay) || 0,
-          rotationPerSecond: viewer?.getAttribute('rotation-per-second') || '42deg',
-          reveal: viewer?.getAttribute('reveal') || '',
-          touchAction: viewer?.getAttribute('touch-action') || 'pan-y',
+          rotationPerSecond: viewer?.getAttribute('rotation-per-second') || profile.rotationPerSecond,
+          reveal: viewer?.getAttribute('reveal') || profile.reveal,
+          touchAction: viewer?.getAttribute('touch-action') || profile.touchAction,
           pointerEvents: viewer?.style?.pointerEvents || '',
         };
       }
 
       async function restoreWorld3dViewerState(viewer, state) {
         if (!viewer || !state) return;
+        const profile = getWorld3dRenderProfile();
 
         if (state.src && viewer.getAttribute('src') !== state.src) {
           viewer.src = state.src;
         }
 
-        viewer.cameraTarget = state.cameraTarget || '0m 0m 0m';
-        viewer.cameraOrbit = state.cameraOrbit || '32deg 74deg 108%';
-        viewer.fieldOfView = state.fieldOfView || '27deg';
+        viewer.cameraTarget = state.cameraTarget || profile.cameraTarget;
+        viewer.cameraOrbit = state.cameraOrbit || getWorld3dCanonicalOrbit(profile.cameraThetaDeg);
+        viewer.fieldOfView = state.fieldOfView || profile.fieldOfView;
         viewer.autoRotate = Boolean(state.autoRotate);
         viewer.autoRotateDelay = Number(state.autoRotateDelay) || 0;
 
@@ -3636,6 +3962,7 @@
         if (!viewer) {
           throw new Error('3D viewer unavailable');
         }
+        const renderProfile = getWorld3dRenderProfile();
 
         const startedAt = performance.now();
         let telemetryStage = 'prepare';
@@ -3663,13 +3990,10 @@
           }
 
           await waitForWorld3dViewerReadyForExport(viewer);
-          viewer.autoRotate = false;
-          viewer.autoRotateDelay = 0;
-          viewer.setAttribute('rotation-per-second', '42deg');
-          viewer.cameraTarget = '0m 0m 0m';
-          viewer.cameraOrbit = '32deg 74deg 108%';
-          viewer.fieldOfView = '27deg';
-          viewer.setAttribute('reveal', 'auto');
+          applyWorld3dRenderProfile(viewer, {
+            autoRotate: false,
+            cameraThetaDeg: renderProfile.cameraThetaDeg,
+          });
           if (typeof viewer.dismissPoster === 'function') {
             viewer.dismissPoster();
           }
@@ -3692,8 +4016,8 @@
           const canUseOrbit =
             baseOrbit && Number.isFinite(baseOrbit.theta) && Number.isFinite(baseOrbit.phi)
             && Number.isFinite(baseOrbit.radius);
-          const baseThetaDeg = canUseOrbit ? (baseOrbit.theta * 180) / Math.PI : 32;
-          const basePhiDeg = canUseOrbit ? (baseOrbit.phi * 180) / Math.PI : 74;
+          const baseThetaDeg = canUseOrbit ? (baseOrbit.theta * 180) / Math.PI : renderProfile.cameraThetaDeg;
+          const basePhiDeg = canUseOrbit ? (baseOrbit.phi * 180) / Math.PI : renderProfile.cameraPhiDeg;
           const baseRadius = canUseOrbit ? baseOrbit.radius : null;
 
           const clampFrameCount = (value) =>
@@ -3718,7 +4042,7 @@
             const theta = baseThetaDeg + (rotationDirection * (360 * frameIndex) / frameCount);
             return canUseOrbit && baseRadius != null
               ? `${theta}deg ${basePhiDeg}deg ${baseRadius}m`
-              : `${theta}deg 74deg 108%`;
+              : getWorld3dCanonicalOrbit(theta);
           };
 
           telemetryStage = 'palette';
@@ -3900,9 +4224,9 @@
           ? Number(job.progressPct)
           : 0;
 
-        if (stage === 'Preparing scene') return 'Preparing GIF';
+        if (stage === 'Preparing scene') return format === 'gif' ? 'Preparing GIF' : 'Preparing HD Video';
         if (stage === 'Rendering rotation') return `Rendering ${Math.max(1, progressPct)}%`;
-        if (stage === 'Encoding video') return format === 'gif' ? 'Optimizing GIF' : 'Encoding video';
+        if (stage === 'Encoding video') return format === 'gif' ? 'Encoding GIF' : 'Encoding HD Video';
         if (stage === 'Encoding GIF') return 'Encoding GIF';
         if (stage === 'Ready') return 'Download starting';
         if (stage === 'Error') return 'Export failed';
@@ -3960,14 +4284,10 @@
         world3dState.shareExportFormat = format;
         resetWorld3dExportButtons(false);
         if (button) {
-          button.textContent = format === 'gif' ? 'Preparing GIF' : 'Preparing scene';
+          button.textContent = format === 'gif' ? 'Preparing GIF' : 'Preparing HD Video';
         }
 
         try {
-          if (format === 'gif') {
-            await exportWorld3dGifFromVisibleViewer(tokenId, button);
-            return;
-          }
 
           const response = await fetch(`${API_BASE}/3d/export`, {
             method: 'POST',
@@ -4025,6 +4345,83 @@
         const token = buildWorld3dToken(tokenId);
         warmWorld3dUrl(token.posterUrl);
         warmWorld3dUrl(token.modelUrl);
+      }
+
+      function buildWorld3dExportWarmKey(tokenId, format) {
+        return `${tokenId}:${format}`;
+      }
+
+      function clearWorld3dExportWarmTimer(key) {
+        const timerId = world3dState.exportWarmTimers.get(key);
+        if (timerId) {
+          window.clearTimeout(timerId);
+          world3dState.exportWarmTimers.delete(key);
+        }
+      }
+
+      function clearAllWorld3dExportWarmTimers() {
+        world3dState.exportWarmTimers.forEach((timerId) => {
+          window.clearTimeout(timerId);
+        });
+        world3dState.exportWarmTimers.clear();
+      }
+
+      async function warmWorld3dExport(tokenId, format) {
+        const warmKey = buildWorld3dExportWarmKey(tokenId, format);
+        if (world3dState.warmedExportKeys.has(warmKey)) {
+          return;
+        }
+
+        world3dState.warmedExportKeys.add(warmKey);
+        try {
+          const response = await fetch(`${API_BASE}/3d/export`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              tokenId,
+              format,
+            }),
+            keepalive: true,
+          });
+
+          if (!response.ok) {
+            world3dState.warmedExportKeys.delete(warmKey);
+          }
+        } catch (_) {
+          world3dState.warmedExportKeys.delete(warmKey);
+        }
+      }
+
+      function queueWorld3dExportWarm(tokenId, format, delayMs = 0) {
+        const safeTokenId = sanitizeTokenId(tokenId, NaN);
+        if (!Number.isInteger(safeTokenId)) return;
+        const warmKey = buildWorld3dExportWarmKey(safeTokenId, format);
+        clearWorld3dExportWarmTimer(warmKey);
+
+        const run = () => {
+          world3dState.exportWarmTimers.delete(warmKey);
+          if (world3dState.currentTokenId !== safeTokenId) return;
+          if (world3dState.activeViewer !== 'glb') return;
+          if (world3dState.shareExporting) return;
+          warmWorld3dExport(safeTokenId, format).catch(() => {});
+        };
+
+        if (delayMs > 0) {
+          const timerId = window.setTimeout(run, delayMs);
+          world3dState.exportWarmTimers.set(warmKey, timerId);
+          return;
+        }
+
+        run();
+      }
+
+      function maybeWarmCurrentWorld3dExport(format, delayMs = 0) {
+        if (world3dState.activeViewer !== 'glb') return;
+        const tokenId = world3dState.currentTokenId;
+        if (!Number.isInteger(tokenId)) return;
+        queueWorld3dExportWarm(tokenId, format, delayMs);
       }
 
       function syncWorld3dZoomBounds(viewer) {
@@ -4127,6 +4524,10 @@
 
         world3dState.viewer = viewerEl;
         attachWorld3dZoomBoost(viewerEl);
+        applyWorld3dRenderProfile(viewerEl, {
+          autoRotate: true,
+          cameraThetaDeg: getWorld3dRenderProfile().cameraThetaDeg,
+        });
 
         viewerEl.hidden = false;
         if (runtimeEl) {
@@ -4169,12 +4570,10 @@
         const viewer = world3dState.viewer || document.getElementById('world-3d-viewer');
         if (!viewer) return;
 
-        viewer.cameraTarget = '0m 0m 0m';
-        viewer.cameraOrbit = '32deg 74deg 108%';
-        viewer.fieldOfView = '27deg';
-        viewer.autoRotate = autoRotate;
-        viewer.autoRotateDelay = 0;
-        viewer.setAttribute('rotation-per-second', '42deg');
+        applyWorld3dRenderProfile(viewer, {
+          autoRotate,
+          cameraThetaDeg: getWorld3dRenderProfile().cameraThetaDeg,
+        });
 
         if (typeof viewer.jumpCameraToGoal === 'function') {
           viewer.jumpCameraToGoal();
@@ -4210,6 +4609,10 @@
         const fallbackEl = document.getElementById('world-3d-fallback');
         const safePoster = posterUrl || getWorld3dPosterUrl(0);
 
+        applyWorld3dRenderProfile(viewer, {
+          autoRotate,
+          cameraThetaDeg: getWorld3dRenderProfile().cameraThetaDeg,
+        });
         viewer.poster = safePoster;
         viewer.setAttribute('poster', safePoster);
 
@@ -4322,6 +4725,7 @@
         resolvedToken.available = true;
 
         world3dState.currentTokenId = tokenId;
+        clearAllWorld3dExportWarmTimers();
 
         const kickerEl = document.getElementById('world-3d-kicker');
         const idEl = document.getElementById('world-3d-id');
@@ -4367,8 +4771,8 @@
             }
             if (copyEl) {
               copyEl.textContent = mode === 'featured'
-                ? 'This featured NoPunk is a real voxel GLB with full depth. Drag to orbit, zoom to inspect, or search a specific token below.'
-                : 'This NoPunk is loaded as a real voxel GLB, not a poster render. Drag to orbit, zoom in, or jump to another token.';
+                ? 'This featured NoPunk is a real voxel GLB with full depth. Drag to orbit, zoom to inspect, save a GIF for sharing, or download an HD video for the closest match to the live viewer.'
+                : 'This NoPunk is loaded as a real voxel GLB, not a poster render. Drag to orbit, zoom in, save a GIF for sharing, or download an HD video for the closest match to the live viewer.';
             }
             if (resetBtn) resetBtn.disabled = false;
             resetWorld3dExportButtons(true);
@@ -4391,6 +4795,7 @@
             }
             if (resetBtn) resetBtn.disabled = false;
             resetWorld3dExportButtons(false);
+            clearAllWorld3dExportWarmTimers();
           } catch (runtimeErr) {
             console.error('World 3D runtime load error:', runtimeErr);
             setWorld3dStatus('unavailable', '3D Not Ready');
@@ -4405,6 +4810,7 @@
             }
             if (resetBtn) resetBtn.disabled = true;
             resetWorld3dExportButtons(false);
+            clearAllWorld3dExportWarmTimers();
           }
         }
 
@@ -4707,9 +5113,30 @@
 
         const world3dGifBtn = document.getElementById('world-3d-gif-btn');
         if (world3dGifBtn) {
+          const warmGif = () => {
+            maybeWarmCurrentWorld3dExport('gif', 120);
+          };
+          world3dGifBtn.addEventListener('pointerenter', warmGif);
+          world3dGifBtn.addEventListener('focus', warmGif);
+          world3dGifBtn.addEventListener('touchstart', warmGif, { passive: true });
           world3dGifBtn.addEventListener('click', () => {
             startWorld3dShareExport('gif').catch((err) => {
               console.error('World 3D GIF export error:', err);
+            });
+          });
+        }
+
+        const world3dVideoBtn = document.getElementById('world-3d-video-btn');
+        if (world3dVideoBtn) {
+          const warmVideo = () => {
+            maybeWarmCurrentWorld3dExport('mp4', 0);
+          };
+          world3dVideoBtn.addEventListener('pointerenter', warmVideo);
+          world3dVideoBtn.addEventListener('focus', warmVideo);
+          world3dVideoBtn.addEventListener('touchstart', warmVideo, { passive: true });
+          world3dVideoBtn.addEventListener('click', () => {
+            startWorld3dShareExport('mp4').catch((err) => {
+              console.error('World 3D video export error:', err);
             });
           });
         }

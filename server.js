@@ -20,17 +20,12 @@ const {
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+app.set('trust proxy', true);
 
-// -----------------------------
-// CORS – allow Netlify / custom domains to call this API
-// -----------------------------
+// Public web/API responses should not be interpreted loosely by browsers.
 app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Accept, Content-Type');
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(204);
-  }
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   next();
 });
 
@@ -53,6 +48,23 @@ const COLLECTION_SLUG =
   process.env.OPENSEA_COLLECTION_SLUG ||
   process.env.COLLECTION_SLUG ||
   'nopunkismv2';
+
+const PUBLIC_SITE_ORIGIN = String(
+  process.env.PUBLIC_SITE_ORIGIN || 'https://nopunks.xyz'
+)
+  .trim()
+  .replace(/\/+$/, '');
+const PUBLIC_API_VERSION = 'v2';
+const PUBLIC_API_BASE_PATH = `/api/${PUBLIC_API_VERSION}`;
+const PUBLIC_API_LEGACY_BASE_PATH = '/api/v1';
+const PUBLIC_API_ROUTE_PREFIXES = [PUBLIC_API_BASE_PATH, PUBLIC_API_LEGACY_BASE_PATH];
+const PUBLIC_API_DOCS_PATH = '/api';
+const PUBLIC_API_OPENAPI_PATH = '/api/openapi.json';
+const PUBLIC_SAMPLE_TOKEN_ID = 9967;
+const PUBLIC_CHAIN_ID = 8453;
+const PUBLIC_CHAIN_NAME = 'Base';
+const PUBLIC_COLLECTION_NAME = 'No-Punks V2';
+const PUBLIC_COLLECTION_SLUG = 'nopunks-v2';
 
 // Side collections
 const NOPNUK_CONTRACT =
@@ -80,7 +92,8 @@ const NOPUNKS_3D_MODELS_DIR =
   path.join(__dirname, 'world3d-models');
 
 const NOPUNKS_3D_SHARE_EXPORT_VERSION =
-  process.env.NOPUNKS_3D_SHARE_EXPORT_VERSION || 'v2';
+  process.env.NOPUNKS_3D_SHARE_EXPORT_VERSION || 'v5';
+const NOPUNKS_3D_SHARE_GIF_MAX_BYTES = 24 * 1024 * 1024;
 
 const NOPUNKS_3D_SHARE_EXPORT_ROOT_DIR =
   process.env.NOPUNKS_3D_SHARE_EXPORT_ROOT_DIR ||
@@ -143,8 +156,7 @@ const SHOWCASE_COLLECTIONS = [
 ];
 
 // OpenSea API key
-const OPENSEA_API_KEY =
-  process.env.OPENSEA_API_KEY || '62d4fdc803204dde8192c136b4c344cf';
+const OPENSEA_API_KEY = String(process.env.OPENSEA_API_KEY || '').trim();
 
 if (!OPENSEA_API_KEY) {
   console.warn(
@@ -153,8 +165,7 @@ if (!OPENSEA_API_KEY) {
 }
 
 // Etherscan/Basescan API key (for on-chain data)
-const ETHERSCAN_API_KEY =
-  process.env.ETHERSCAN_API_KEY || '7ZJAP58FPD21M8W9R6IES3G1XNC7EHCPSA';
+const ETHERSCAN_API_KEY = String(process.env.ETHERSCAN_API_KEY || '').trim();
 
 if (!ETHERSCAN_API_KEY) {
   console.warn(
@@ -295,6 +306,20 @@ const onchainTraitsSnapshotPath = path.join(
   'data',
   'explorer',
   'onchain_traits.json'
+);
+
+const publicTraitTypesPath = path.join(
+  __dirname,
+  'public',
+  'traits',
+  'trait_types.json'
+);
+
+const publicTraitValuesPath = path.join(
+  __dirname,
+  'public',
+  'traits',
+  'trait_values_by_type.json'
 );
 
 const holderLatestPath = path.join(
@@ -465,6 +490,527 @@ function readJsonFileCached(filePath) {
   } catch {
     return null;
   }
+}
+
+function getRequestOrigin(req) {
+  const forwardedProto = String(req.headers['x-forwarded-proto'] || '').trim();
+  const proto = forwardedProto || req.protocol || 'https';
+  const host = String(req.get('host') || '').trim();
+  return host ? `${proto}://${host}` : PUBLIC_SITE_ORIGIN;
+}
+
+function toAbsoluteUrl(origin, resourcePath) {
+  const base = String(origin || PUBLIC_SITE_ORIGIN).replace(/\/+$/, '');
+  const target = String(resourcePath || '').trim();
+  if (!target) return base;
+  if (/^https?:\/\//i.test(target)) return target;
+  return `${base}${target.startsWith('/') ? '' : '/'}${target}`;
+}
+
+function setPublicCacheControl(res, value) {
+  res.setHeader('Cache-Control', value);
+}
+
+function sendPublicApiError(res, statusCode, error, message, extra = {}) {
+  return res.status(statusCode).json({
+    status: statusCode,
+    error,
+    message,
+    contract: CONTRACT,
+    chain: CHAIN,
+    ...extra,
+  });
+}
+
+function isPublicCorsPath(requestPath) {
+  const pathName = String(requestPath || '').trim();
+  return (
+    pathName === PUBLIC_API_OPENAPI_PATH ||
+    pathName === '/llms.txt' ||
+    PUBLIC_API_ROUTE_PREFIXES.some(
+      (basePath) => pathName === basePath || pathName.startsWith(`${basePath}/`)
+    )
+  );
+}
+
+function getPublicApiRoutePaths(routeSuffix = '') {
+  return PUBLIC_API_ROUTE_PREFIXES.map((basePath) => `${basePath}${routeSuffix}`);
+}
+
+app.use((req, res, next) => {
+  if (!isPublicCorsPath(req.path)) {
+    return next();
+  }
+
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Accept, Content-Type');
+  res.setHeader('Vary', 'Origin');
+
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+
+  return next();
+});
+
+function getRateLimitClientKey(req) {
+  const forwarded = String(req.headers['x-forwarded-for'] || '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)[0];
+  return forwarded || req.ip || req.socket?.remoteAddress || 'unknown';
+}
+
+function createRateLimitMiddleware(name, windowMs, maxRequests) {
+  const buckets = new Map();
+
+  return function rateLimitMiddleware(req, res, next) {
+    const now = Date.now();
+    const key = `${name}:${getRateLimitClientKey(req)}`;
+    const bucket = buckets.get(key);
+
+    if (!bucket || now >= bucket.resetAt) {
+      buckets.set(key, {
+        count: 1,
+        resetAt: now + windowMs,
+      });
+      return next();
+    }
+
+    if (bucket.count >= maxRequests) {
+      const retryAfterSeconds = Math.max(
+        1,
+        Math.ceil((bucket.resetAt - now) / 1000)
+      );
+      res.setHeader('Retry-After', String(retryAfterSeconds));
+      return sendPublicApiError(
+        res,
+        429,
+        'rate_limit_exceeded',
+        'Rate limit exceeded. Please retry shortly.',
+        { retryAfterSeconds }
+      );
+    }
+
+    bucket.count += 1;
+
+    if (buckets.size > 20000) {
+      for (const [bucketKey, value] of buckets.entries()) {
+        if (now >= value.resetAt) {
+          buckets.delete(bucketKey);
+        }
+      }
+    }
+
+    return next();
+  };
+}
+
+const publicCoreRateLimit = createRateLimitMiddleware('public-core', 60 * 1000, 120);
+const publicLiveRateLimit = createRateLimitMiddleware('public-live', 60 * 1000, 30);
+const legacyReadRateLimit = createRateLimitMiddleware('legacy-read', 60 * 1000, 240);
+const legacyMutationRateLimit = createRateLimitMiddleware('legacy-mutation', 60 * 1000, 24);
+
+function isLegacyApiPath(requestPath) {
+  const pathName = String(requestPath || '').trim();
+  return pathName.startsWith('/api/') && !isPublicCorsPath(pathName);
+}
+
+function normalizeOriginValue(value) {
+  try {
+    return new URL(String(value || '').trim()).origin;
+  } catch {
+    return '';
+  }
+}
+
+function isLoopbackHostname(hostname) {
+  const normalized = String(hostname || '').trim().toLowerCase();
+  return (
+    normalized === 'localhost' ||
+    normalized === '127.0.0.1' ||
+    normalized === '[::1]' ||
+    normalized === '::1'
+  );
+}
+
+function isAllowedSiteOrigin(req) {
+  const origin = normalizeOriginValue(req.headers.origin);
+  if (!origin) return false;
+
+  const requestOrigin = normalizeOriginValue(getRequestOrigin(req));
+  const publicOrigin = normalizeOriginValue(PUBLIC_SITE_ORIGIN);
+  if (origin === requestOrigin || origin === publicOrigin) {
+    return true;
+  }
+
+  try {
+    const originUrl = new URL(origin);
+    const requestUrl = new URL(requestOrigin || PUBLIC_SITE_ORIGIN);
+    return isLoopbackHostname(originUrl.hostname) && isLoopbackHostname(requestUrl.hostname);
+  } catch {
+    return false;
+  }
+}
+
+app.use((req, res, next) => {
+  if (!isLegacyApiPath(req.path)) {
+    return next();
+  }
+
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+
+  if (req.method === 'GET' || req.method === 'HEAD') {
+    return legacyReadRateLimit(req, res, next);
+  }
+
+  return next();
+});
+
+app.use((req, res, next) => {
+  if (req.method !== 'POST' || req.path !== '/api/3d/export') {
+    return next();
+  }
+
+  if (!isAllowedSiteOrigin(req)) {
+    return res.status(403).json({
+      error: 'forbidden',
+      message: 'This route is only available from the No-Punks site.',
+    });
+  }
+
+  return legacyMutationRateLimit(req, res, next);
+});
+
+let publicTraitCatalogCache = {
+  traitTypesRef: null,
+  traitValuesRef: null,
+  catalog: null,
+};
+
+function getPublicTraitCatalog() {
+  const traitTypesRaw = readJsonFileCached(publicTraitTypesPath);
+  const traitValuesRaw = readJsonFileCached(publicTraitValuesPath);
+  if (!Array.isArray(traitTypesRaw) || !traitValuesRaw || typeof traitValuesRaw !== 'object') {
+    return null;
+  }
+
+  if (
+    publicTraitCatalogCache.traitTypesRef === traitTypesRaw &&
+    publicTraitCatalogCache.traitValuesRef === traitValuesRaw &&
+    publicTraitCatalogCache.catalog
+  ) {
+    return publicTraitCatalogCache.catalog;
+  }
+
+  const traitTypes = traitTypesRaw
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+  const traitTypeSet = new Set(traitTypes);
+  const traitTypeLookup = new Map(
+    traitTypes.map((traitType) => [traitType.toLowerCase(), traitType])
+  );
+
+  const typeValues = {};
+  const valueLookupByType = {};
+  traitTypes.forEach((traitType) => {
+    const values = Array.isArray(traitValuesRaw[traitType])
+      ? traitValuesRaw[traitType]
+          .map((value) => String(value || '').trim())
+          .filter(Boolean)
+      : [];
+    typeValues[traitType] = values;
+    valueLookupByType[traitType] = new Map(
+      values.map((value) => [value.toLowerCase(), value])
+    );
+  });
+
+  const catalog = {
+    traitTypes,
+    traitTypeSet,
+    traitTypeLookup,
+    typeValues,
+    valueLookupByType,
+  };
+
+  publicTraitCatalogCache = {
+    traitTypesRef: traitTypesRaw,
+    traitValuesRef: traitValuesRaw,
+    catalog,
+  };
+  return catalog;
+}
+
+function filterPublicAttributes(attributes) {
+  const catalog = getPublicTraitCatalog();
+  const traitTypeSet = catalog?.traitTypeSet || null;
+
+  return (Array.isArray(attributes) ? attributes : [])
+    .map((entry) => {
+      const trait_type = String(entry?.trait_type || entry?.type || '').trim();
+      const value = String(entry?.value ?? '').trim();
+      if (!trait_type || !value) return null;
+      if (trait_type === 'Attribute Count') return null;
+      if (trait_type.startsWith('(')) return null;
+      if (traitTypeSet && !traitTypeSet.has(trait_type)) return null;
+      return { trait_type, value };
+    })
+    .filter(Boolean);
+}
+
+function getPublicTokenBlobPayload() {
+  const payload = readJsonFileCached(explorerTokenBlobPath);
+  if (!payload || !Array.isArray(payload.tokens)) return null;
+  return payload;
+}
+
+let publicTokenBlobLookupCache = {
+  sourceRef: null,
+  byTokenId: null,
+};
+
+function getPublicTokenBlobLookup() {
+  const payload = getPublicTokenBlobPayload();
+  if (!payload) return null;
+
+  if (
+    publicTokenBlobLookupCache.sourceRef === payload &&
+    publicTokenBlobLookupCache.byTokenId instanceof Map
+  ) {
+    return publicTokenBlobLookupCache.byTokenId;
+  }
+
+  const byTokenId = new Map();
+  payload.tokens.forEach((entry) => {
+    const tokenId = Number.parseInt(String(entry?.id ?? entry?.i), 10);
+    if (!Number.isFinite(tokenId)) return;
+    byTokenId.set(String(tokenId), entry);
+  });
+
+  publicTokenBlobLookupCache = {
+    sourceRef: payload,
+    byTokenId,
+  };
+  return byTokenId;
+}
+
+function getPublicTokenBlobEntry(tokenId) {
+  const lookup = getPublicTokenBlobLookup();
+  if (!(lookup instanceof Map)) return null;
+  return lookup.get(String(tokenId)) || null;
+}
+
+function getPublicExplorerImagePath(tokenId, tokenEntry) {
+  const candidates = [
+    tokenEntry?.im,
+    `/public/data/explorer/images/${tokenId}.svg`,
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = normalizeIpfsUri(candidate);
+    if (isLocalPublicPath(normalized) && doesLocalPublicAssetExist(normalized)) {
+      return normalized;
+    }
+  }
+
+  return '';
+}
+
+function getPublicTokenAttributes(tokenId) {
+  const snapshotMeta = getOnchainSnapshotMetadata(tokenId);
+  if (snapshotMeta) {
+    const attributes = filterPublicAttributes(snapshotMeta.attributes);
+    if (attributes.length) return attributes;
+  }
+
+  const tokenEntry = getPublicTokenBlobEntry(tokenId);
+  const blobAttributes = normalizeOnchainTupleTraits(tokenEntry?.t || []);
+  return filterPublicAttributes(blobAttributes);
+}
+
+function buildPublicTokenSearchText(tokenId, name, attributes) {
+  const terms = [name, String(tokenId), `#${tokenId}`];
+  attributes.forEach((attribute) => {
+    terms.push(attribute.trait_type, attribute.value, `${attribute.trait_type} ${attribute.value}`);
+  });
+  return terms.join(' ').toLowerCase();
+}
+
+let publicSearchIndexCache = {
+  tokenBlobRef: null,
+  records: null,
+};
+
+function getPublicSearchIndex() {
+  const payload = getPublicTokenBlobPayload();
+  if (!payload) return null;
+
+  if (
+    publicSearchIndexCache.tokenBlobRef === payload &&
+    Array.isArray(publicSearchIndexCache.records)
+  ) {
+    return publicSearchIndexCache.records;
+  }
+
+  const records = payload.tokens
+    .map((entry) => {
+      const tokenId = Number.parseInt(String(entry?.id ?? entry?.i), 10);
+      if (!Number.isFinite(tokenId)) return null;
+      const name = String(entry?.n || `No-Punk #${tokenId}`);
+      const attributes = getPublicTokenAttributes(tokenId);
+      return {
+        tokenId,
+        name,
+        attributes,
+        searchText: buildPublicTokenSearchText(tokenId, name, attributes),
+      };
+    })
+    .filter(Boolean);
+
+  publicSearchIndexCache = {
+    tokenBlobRef: payload,
+    records,
+  };
+  return records;
+}
+
+function resolvePublicTraitType(rawTraitType) {
+  const catalog = getPublicTraitCatalog();
+  if (!catalog) return null;
+  return catalog.traitTypeLookup.get(String(rawTraitType || '').trim().toLowerCase()) || null;
+}
+
+function resolvePublicTraitValue(traitType, rawValue) {
+  const catalog = getPublicTraitCatalog();
+  const lookup = catalog?.valueLookupByType?.[traitType];
+  if (!(lookup instanceof Map)) return null;
+  return lookup.get(String(rawValue || '').trim().toLowerCase()) || null;
+}
+
+function getPublicTraitTokenIds(traitType, traitValue) {
+  const traitIndex = readJsonFileCached(explorerTraitIndexPath);
+  const ids = traitIndex?.traitToTokenIds?.[`${traitType}|${traitValue}`];
+  return Array.isArray(ids)
+    ? ids
+        .map((value) => Number.parseInt(String(value), 10))
+        .filter((value) => Number.isFinite(value))
+    : [];
+}
+
+function getPublicTokenLinks(req, tokenId) {
+  const origin = getRequestOrigin(req);
+  return {
+    api: toAbsoluteUrl(origin, `${PUBLIC_API_BASE_PATH}/tokens/${tokenId}`),
+    image: toAbsoluteUrl(origin, `${PUBLIC_API_BASE_PATH}/tokens/${tokenId}/image`),
+    website: toAbsoluteUrl(origin, `/#collection`),
+    opensea: `https://opensea.io/assets/base/${CONTRACT}/${tokenId}`,
+  };
+}
+
+function buildPublicTokenResponse(req, tokenId) {
+  const tokenEntry = getPublicTokenBlobEntry(tokenId);
+  const snapshotMeta = getOnchainSnapshotMetadata(tokenId);
+  const name = String(
+    snapshotMeta?.name ||
+      tokenEntry?.n ||
+      `No-Punk #${tokenId}`
+  );
+  const attributes = getPublicTokenAttributes(tokenId);
+  const imageAssetPath = getPublicExplorerImagePath(tokenId, tokenEntry);
+  const origin = getRequestOrigin(req);
+
+  return {
+    tokenId,
+    name,
+    collection: PUBLIC_COLLECTION_NAME,
+    contract: CONTRACT,
+    chain: CHAIN,
+    chainId: PUBLIC_CHAIN_ID,
+    image: toAbsoluteUrl(origin, `${PUBLIC_API_BASE_PATH}/tokens/${tokenId}/image`),
+    imageAsset: imageAssetPath ? toAbsoluteUrl(origin, imageAssetPath) : null,
+    attributes,
+    links: getPublicTokenLinks(req, tokenId),
+    source: {
+      type: imageAssetPath ? 'local-snapshot' : snapshotMeta?.source || 'onchain-tokenURI',
+      generatedAt:
+        getPublicTokenBlobPayload()?.generatedAt ||
+        readJsonFileCached(onchainTraitsSnapshotPath)?.generatedAt ||
+        null,
+    },
+  };
+}
+
+function buildPublicDatasetManifest(req) {
+  const origin = getRequestOrigin(req);
+  const onchainTraits = readJsonFileCached(onchainTraitsSnapshotPath);
+  const tokenBlob = getPublicTokenBlobPayload();
+  const traitIndex = readJsonFileCached(explorerTraitIndexPath);
+
+  return {
+    generatedAt:
+      onchainTraits?.generatedAt ||
+      tokenBlob?.generatedAt ||
+      traitIndex?.generatedAt ||
+      null,
+    items: [
+      {
+        id: 'onchain-traits',
+        label: 'Onchain traits snapshot',
+        format: 'json',
+        url: toAbsoluteUrl(origin, '/public/data/explorer/onchain_traits.json'),
+        generatedAt: onchainTraits?.generatedAt || null,
+      },
+      {
+        id: 'token-search-blob',
+        label: 'Token search blob',
+        format: 'json',
+        url: toAbsoluteUrl(origin, '/public/data/explorer/token_trait_blob.json'),
+        generatedAt: tokenBlob?.generatedAt || null,
+      },
+      {
+        id: 'trait-index',
+        label: 'Trait to token index',
+        format: 'json',
+        url: toAbsoluteUrl(origin, '/public/data/explorer/trait_to_token_ids.json'),
+        generatedAt: traitIndex?.generatedAt || null,
+      },
+      {
+        id: 'images',
+        label: 'Published SVG image base',
+        format: 'svg',
+        url: toAbsoluteUrl(origin, '/public/data/explorer/images/'),
+        generatedAt: onchainTraits?.generatedAt || null,
+      },
+    ],
+  };
+}
+
+function buildPublicCollectionResponse(req) {
+  const origin = getRequestOrigin(req);
+  const datasets = buildPublicDatasetManifest(req);
+
+  return {
+    name: PUBLIC_COLLECTION_NAME,
+    slug: PUBLIC_COLLECTION_SLUG,
+    contract: CONTRACT,
+    chain: CHAIN,
+    chainId: PUBLIC_CHAIN_ID,
+    network: PUBLIC_CHAIN_NAME,
+    totalSupply: NOPUNKS_SUPPLY,
+    docs: toAbsoluteUrl(origin, PUBLIC_API_DOCS_PATH),
+    api: toAbsoluteUrl(origin, PUBLIC_API_BASE_PATH),
+    openapi: toAbsoluteUrl(origin, PUBLIC_API_OPENAPI_PATH),
+    llms: toAbsoluteUrl(origin, '/llms.txt'),
+    sampleTokenId: PUBLIC_SAMPLE_TOKEN_ID,
+    sampleToken: toAbsoluteUrl(origin, `${PUBLIC_API_BASE_PATH}/tokens/${PUBLIC_SAMPLE_TOKEN_ID}`),
+    imageBase: toAbsoluteUrl(origin, `${PUBLIC_API_BASE_PATH}/tokens/`),
+    datasets: datasets.items,
+    licensing: {
+      usage: 'CC0 / CCO',
+      note: 'Public NoPunks V2 collection infrastructure for builders, archives, and community tools.',
+    },
+  };
 }
 
 let onchainTraitsLookupCache = {
@@ -1310,6 +1856,560 @@ app.use(
   express.static(path.join(__dirname, 'public', 'traits'))
 );
 
+function buildPublicStatusResponse(req) {
+  const tokenBlob = getPublicTokenBlobPayload();
+  const traitIndex = readJsonFileCached(explorerTraitIndexPath);
+  const onchainTraits = readJsonFileCached(onchainTraitsSnapshotPath);
+  const traitCatalog = getPublicTraitCatalog();
+  const datasets = buildPublicDatasetManifest(req);
+
+  return {
+    ready: Boolean(tokenBlob && traitIndex && onchainTraits && traitCatalog),
+    version: PUBLIC_API_VERSION,
+    name: PUBLIC_COLLECTION_NAME,
+    contract: CONTRACT,
+    chain: CHAIN,
+    chainId: PUBLIC_CHAIN_ID,
+    sampleTokenId: PUBLIC_SAMPLE_TOKEN_ID,
+    generatedAt:
+      onchainTraits?.generatedAt ||
+      tokenBlob?.generatedAt ||
+      traitIndex?.generatedAt ||
+      null,
+    docs: toAbsoluteUrl(getRequestOrigin(req), PUBLIC_API_DOCS_PATH),
+    files: {
+      tokenBlob: Boolean(tokenBlob),
+      traitIndex: Boolean(traitIndex),
+      onchainTraits: Boolean(onchainTraits),
+      traitCatalog: Boolean(traitCatalog),
+    },
+    datasets: datasets.items,
+  };
+}
+
+function buildPublicOpenApiDocument(req) {
+  const origin = getRequestOrigin(req);
+  return {
+    openapi: '3.1.0',
+    info: {
+      title: 'No-Punks API',
+      version: PUBLIC_API_VERSION,
+      description:
+        'Official public collection infrastructure for the No-Punks V2 contract on Base.',
+    },
+    servers: [
+      {
+        url: toAbsoluteUrl(origin, '/'),
+        description: 'Current host',
+      },
+    ],
+    tags: [
+      { name: 'Collection' },
+      { name: 'Tokens' },
+      { name: 'Traits' },
+      { name: 'Search' },
+      { name: 'Datasets' },
+      { name: 'Holders', description: 'Chain-derived holder snapshots and live owner data.' },
+      { name: 'Market', description: 'Non-canonical market data derived from OpenSea.' },
+    ],
+    paths: {
+      [`${PUBLIC_API_BASE_PATH}/status`]: { get: { tags: ['Collection'], summary: 'API readiness and dataset status' } },
+      [`${PUBLIC_API_BASE_PATH}/collection`]: { get: { tags: ['Collection'], summary: 'No-Punks V2 collection manifest' } },
+      [`${PUBLIC_API_BASE_PATH}/tokens/{tokenId}`]: {
+        get: {
+          tags: ['Tokens'],
+          summary: 'Canonical No-Punks V2 token metadata',
+          parameters: [
+            {
+              name: 'tokenId',
+              in: 'path',
+              required: true,
+              schema: { type: 'integer', minimum: 0, maximum: 9999 },
+            },
+          ],
+        },
+      },
+      [`${PUBLIC_API_BASE_PATH}/tokens/{tokenId}/image`]: {
+        get: {
+          tags: ['Tokens'],
+          summary: 'Canonical No-Punks V2 token image',
+          parameters: [
+            {
+              name: 'tokenId',
+              in: 'path',
+              required: true,
+              schema: { type: 'integer', minimum: 0, maximum: 9999 },
+            },
+          ],
+        },
+      },
+      [`${PUBLIC_API_BASE_PATH}/traits`]: { get: { tags: ['Traits'], summary: 'Public trait types' } },
+      [`${PUBLIC_API_BASE_PATH}/traits/{traitType}`]: {
+        get: {
+          tags: ['Traits'],
+          summary: 'Values and counts for one trait type',
+          parameters: [{ name: 'traitType', in: 'path', required: true, schema: { type: 'string' } }],
+        },
+      },
+      [`${PUBLIC_API_BASE_PATH}/traits/{traitType}/{value}`]: {
+        get: {
+          tags: ['Traits'],
+          summary: 'Token IDs for a trait value',
+          parameters: [
+            { name: 'traitType', in: 'path', required: true, schema: { type: 'string' } },
+            { name: 'value', in: 'path', required: true, schema: { type: 'string' } },
+          ],
+        },
+      },
+      [`${PUBLIC_API_BASE_PATH}/search`]: {
+        get: {
+          tags: ['Search'],
+          summary: 'Search No-Punks V2 tokens by id, name, or trait text',
+          parameters: [
+            { name: 'q', in: 'query', required: true, schema: { type: 'string' } },
+            { name: 'limit', in: 'query', required: false, schema: { type: 'integer', minimum: 1, maximum: 100 } },
+          ],
+        },
+      },
+      [`${PUBLIC_API_BASE_PATH}/datasets`]: { get: { tags: ['Datasets'], summary: 'Bulk No-Punks V2 dataset URLs' } },
+      [`${PUBLIC_API_BASE_PATH}/holders/summary`]: { get: { tags: ['Holders'], summary: 'Current holder summary from snapshot/live owner data' } },
+      [`${PUBLIC_API_BASE_PATH}/holders/top`]: { get: { tags: ['Holders'], summary: 'Top holder rankings from snapshot/live owner data' } },
+      [`${PUBLIC_API_BASE_PATH}/holders/{address}`]: {
+        get: {
+          tags: ['Holders'],
+          summary: 'Holder detail by wallet address from snapshot/live owner data',
+          parameters: [{ name: 'address', in: 'path', required: true, schema: { type: 'string' } }],
+        },
+      },
+      [`${PUBLIC_API_BASE_PATH}/market/stats`]: { get: { tags: ['Market'], summary: 'Non-canonical market summary derived from OpenSea' } },
+      [`${PUBLIC_API_BASE_PATH}/market/recent-sales`]: { get: { tags: ['Market'], summary: 'Non-canonical recent sales derived from OpenSea' } },
+      [`${PUBLIC_API_BASE_PATH}/market/listings`]: { get: { tags: ['Market'], summary: 'Non-canonical current listings derived from OpenSea' } },
+    },
+  };
+}
+
+app.get('/llms.txt', publicCoreRateLimit, (req, res) => {
+  const origin = getRequestOrigin(req);
+  setPublicCacheControl(res, 'public, max-age=300, stale-while-revalidate=3600');
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.send(
+    [
+      '# No-Punks API',
+      '',
+      `Official public collection infrastructure for the No-Punks V2 contract on Base.`,
+      `Contract: ${CONTRACT}`,
+      `Chain: ${CHAIN} (${PUBLIC_CHAIN_ID})`,
+      '',
+      'Primary endpoints:',
+      `${toAbsoluteUrl(origin, `${PUBLIC_API_BASE_PATH}/status`)}`,
+      `${toAbsoluteUrl(origin, `${PUBLIC_API_BASE_PATH}/collection`)}`,
+      `${toAbsoluteUrl(origin, `${PUBLIC_API_BASE_PATH}/tokens/${PUBLIC_SAMPLE_TOKEN_ID}`)}`,
+      `${toAbsoluteUrl(origin, `${PUBLIC_API_BASE_PATH}/tokens/${PUBLIC_SAMPLE_TOKEN_ID}/image`)}`,
+      `${toAbsoluteUrl(origin, `${PUBLIC_API_BASE_PATH}/traits`)}`,
+      `${toAbsoluteUrl(origin, `${PUBLIC_API_BASE_PATH}/search?q=knitted%20cap`)}`,
+      `${toAbsoluteUrl(origin, `${PUBLIC_API_BASE_PATH}/datasets`)}`,
+      '',
+      'Holder endpoints are chain-derived from snapshot/live owner data.',
+      'Market endpoints are non-canonical and derived from OpenSea.',
+      `Docs: ${toAbsoluteUrl(origin, PUBLIC_API_DOCS_PATH)}`,
+      `OpenAPI: ${toAbsoluteUrl(origin, PUBLIC_API_OPENAPI_PATH)}`,
+    ].join('\n')
+  );
+});
+
+app.get(PUBLIC_API_OPENAPI_PATH, publicCoreRateLimit, (req, res) => {
+  setPublicCacheControl(res, 'public, max-age=300, stale-while-revalidate=3600');
+  res.json(buildPublicOpenApiDocument(req));
+});
+
+app.get(PUBLIC_API_DOCS_PATH, (req, res) => {
+  const docsPath = path.join(__dirname, 'public', 'api.html');
+  if (!fs.existsSync(docsPath)) {
+    return res.sendStatus(404);
+  }
+
+  setPublicCacheControl(res, 'public, max-age=300, stale-while-revalidate=3600');
+  res.setHeader(
+    'Content-Security-Policy',
+    [
+      "default-src 'self'",
+      "base-uri 'self'",
+      "connect-src 'self'",
+      "font-src 'self' https://fonts.gstatic.com data:",
+      "img-src 'self' data:",
+      "object-src 'none'",
+      "script-src 'self'",
+      "style-src 'self' https://fonts.googleapis.com",
+      "form-action 'self'",
+      "frame-ancestors 'self'",
+    ].join('; ')
+  );
+  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
+  return res.sendFile(docsPath);
+});
+
+app.get(getPublicApiRoutePaths(), publicCoreRateLimit, (req, res) => {
+  setPublicCacheControl(res, 'public, max-age=300, stale-while-revalidate=3600');
+  return res.json({
+    version: PUBLIC_API_VERSION,
+    docs: toAbsoluteUrl(getRequestOrigin(req), PUBLIC_API_DOCS_PATH),
+    collection: buildPublicCollectionResponse(req),
+  });
+});
+
+app.get(getPublicApiRoutePaths('/status'), publicCoreRateLimit, (req, res) => {
+  setPublicCacheControl(res, 'public, max-age=60, stale-while-revalidate=300');
+  return res.json(buildPublicStatusResponse(req));
+});
+
+app.get(getPublicApiRoutePaths('/collection'), publicCoreRateLimit, (req, res) => {
+  setPublicCacheControl(res, 'public, max-age=300, stale-while-revalidate=3600');
+  return res.json(buildPublicCollectionResponse(req));
+});
+
+app.get(getPublicApiRoutePaths('/tokens/:tokenId'), publicCoreRateLimit, (req, res) => {
+  const tokenId = parseOnChainTokenId(req.params.tokenId);
+  if (tokenId == null) {
+    return sendPublicApiError(res, 400, 'invalid_token_id', 'Token ID must be an integer between 0 and 9999.');
+  }
+
+  const tokenEntry = getPublicTokenBlobEntry(tokenId) || getOnchainSnapshotMetadata(tokenId);
+  if (!tokenEntry) {
+    return sendPublicApiError(res, 404, 'token_not_found', 'Token metadata was not found.');
+  }
+
+  setPublicCacheControl(res, 'public, max-age=300, stale-while-revalidate=3600');
+  return res.json(buildPublicTokenResponse(req, tokenId));
+});
+
+app.get(getPublicApiRoutePaths('/tokens/:tokenId/image'), publicCoreRateLimit, async (req, res) => {
+  try {
+    const tokenId = parseOnChainTokenId(req.params.tokenId);
+    if (tokenId == null) {
+      return sendPublicApiError(res, 400, 'invalid_token_id', 'Token ID must be an integer between 0 and 9999.');
+    }
+
+    const tokenEntry = getPublicTokenBlobEntry(tokenId);
+    const imagePath = getPublicExplorerImagePath(tokenId, tokenEntry);
+    if (imagePath) {
+      setPublicCacheControl(res, 'public, max-age=31536000, immutable');
+      return res.sendFile(path.join(__dirname, imagePath.replace(/^\/+/, '')));
+    }
+
+    return await sendTokenImageResponse(res, tokenId);
+  } catch (err) {
+    console.error('Public token image error:', err.message || err);
+    return sendPublicApiError(res, 502, 'image_unavailable', 'Token image is unavailable right now.');
+  }
+});
+
+app.get(getPublicApiRoutePaths('/traits'), publicCoreRateLimit, (req, res) => {
+  const catalog = getPublicTraitCatalog();
+  if (!catalog) {
+    return sendPublicApiError(res, 503, 'trait_catalog_unavailable', 'Trait catalog is unavailable.');
+  }
+
+  const origin = getRequestOrigin(req);
+  const traitIndex = readJsonFileCached(explorerTraitIndexPath);
+  const traitTypes = catalog.traitTypes.map((traitType) => ({
+    traitType,
+    valueCount: catalog.typeValues[traitType]?.length || 0,
+    url: toAbsoluteUrl(origin, `${PUBLIC_API_BASE_PATH}/traits/${encodeURIComponent(traitType)}`),
+    totalMatches: Object.entries(traitIndex?.traitToTokenIds || {})
+      .filter(([key]) => key.startsWith(`${traitType}|`))
+      .reduce((sum, [, ids]) => sum + (Array.isArray(ids) ? ids.length : 0), 0),
+  }));
+
+  setPublicCacheControl(res, 'public, max-age=300, stale-while-revalidate=3600');
+  return res.json({
+    contract: CONTRACT,
+    chain: CHAIN,
+    traitTypes,
+  });
+});
+
+app.get(getPublicApiRoutePaths('/traits/:traitType/:value'), publicCoreRateLimit, (req, res) => {
+  const traitType = resolvePublicTraitType(req.params.traitType);
+  if (!traitType) {
+    return sendPublicApiError(res, 404, 'trait_type_not_found', 'Trait type was not found.');
+  }
+
+  const traitValue = resolvePublicTraitValue(traitType, req.params.value);
+  if (!traitValue) {
+    return sendPublicApiError(res, 404, 'trait_value_not_found', 'Trait value was not found for this trait type.');
+  }
+
+  const limit = parseBoundedInt(req.query.limit, 250, 1, 1000);
+  const offset = parseBoundedInt(req.query.offset, 0, 0, 9999);
+  const tokenIds = getPublicTraitTokenIds(traitType, traitValue);
+  const selected = tokenIds.slice(offset, offset + limit);
+
+  setPublicCacheControl(res, 'public, max-age=300, stale-while-revalidate=3600');
+  return res.json({
+    contract: CONTRACT,
+    chain: CHAIN,
+    traitType,
+    value: traitValue,
+    total: tokenIds.length,
+    limit,
+    offset,
+    hasMore: offset + selected.length < tokenIds.length,
+    tokenIds: selected,
+  });
+});
+
+app.get(getPublicApiRoutePaths('/traits/:traitType'), publicCoreRateLimit, (req, res) => {
+  const catalog = getPublicTraitCatalog();
+  const traitType = resolvePublicTraitType(req.params.traitType);
+  if (!catalog || !traitType) {
+    return sendPublicApiError(res, 404, 'trait_type_not_found', 'Trait type was not found.');
+  }
+
+  const origin = getRequestOrigin(req);
+  const values = (catalog.typeValues[traitType] || []).map((value) => {
+    const tokenIds = getPublicTraitTokenIds(traitType, value);
+    return {
+      value,
+      count: tokenIds.length,
+      url: toAbsoluteUrl(
+        origin,
+        `${PUBLIC_API_BASE_PATH}/traits/${encodeURIComponent(traitType)}/${encodeURIComponent(value)}`
+      ),
+    };
+  });
+
+  setPublicCacheControl(res, 'public, max-age=300, stale-while-revalidate=3600');
+  return res.json({
+    contract: CONTRACT,
+    chain: CHAIN,
+    traitType,
+    values,
+  });
+});
+
+app.get(getPublicApiRoutePaths('/search'), publicCoreRateLimit, (req, res) => {
+  const query = String(req.query.q || '').trim().toLowerCase();
+  if (!query) {
+    return sendPublicApiError(res, 400, 'missing_query', 'Query parameter "q" is required.');
+  }
+
+  const limit = parseBoundedInt(req.query.limit, 20, 1, 100);
+  const searchIndex = getPublicSearchIndex();
+  if (!searchIndex) {
+    return sendPublicApiError(res, 503, 'search_unavailable', 'Search index is unavailable.');
+  }
+
+  const matches = searchIndex.filter((record) => record.searchText.includes(query));
+  const results = matches
+    .slice(0, limit)
+    .map((record) => buildPublicTokenResponse(req, record.tokenId));
+
+  setPublicCacheControl(res, 'public, max-age=120, stale-while-revalidate=900');
+  return res.json({
+    contract: CONTRACT,
+    chain: CHAIN,
+    query,
+    total: matches.length,
+    results,
+  });
+});
+
+app.get(getPublicApiRoutePaths('/datasets'), publicCoreRateLimit, (req, res) => {
+  setPublicCacheControl(res, 'public, max-age=300, stale-while-revalidate=3600');
+  return res.json(buildPublicDatasetManifest(req));
+});
+
+app.get(getPublicApiRoutePaths('/holders/summary'), publicLiveRateLimit, async (req, res) => {
+  const resolved = await resolveHolderSnapshot({ requireFresh: false });
+  const latest = resolved.snapshot;
+  if (!latest) {
+    return sendPublicApiError(res, 503, 'holders_unavailable', 'Holder data is unavailable right now.');
+  }
+
+  setPublicCacheControl(res, 'public, max-age=15, stale-while-revalidate=45');
+  return res.json({
+    contract: CONTRACT,
+    chain: CHAIN,
+    generatedAt: latest.generatedAt || null,
+    source: {
+      ...(latest.source || {}),
+      mode: resolved.isLive ? 'live' : 'snapshot',
+    },
+    summary: latest.summary || {},
+  });
+});
+
+app.get(getPublicApiRoutePaths('/holders/top'), publicLiveRateLimit, async (req, res) => {
+  const resolved = await resolveHolderSnapshot({ requireFresh: false });
+  const latest = resolved.snapshot;
+  if (!latest) {
+    return sendPublicApiError(res, 503, 'holders_unavailable', 'Holder data is unavailable right now.');
+  }
+
+  const limit = Math.max(1, Math.min(parseInt(req.query.limit, 10) || 25, 100));
+  const includeTokens = String(req.query.includeTokens || '') === '1';
+  const holdersByAddress = new Map(
+    getSnapshotHolders(latest).map((holder) => [holder.address, holder])
+  );
+
+  setPublicCacheControl(res, 'public, max-age=15, stale-while-revalidate=45');
+  return res.json({
+    contract: CONTRACT,
+    chain: CHAIN,
+    generatedAt: latest.generatedAt || null,
+    source: {
+      ...(latest.source || {}),
+      mode: resolved.isLive ? 'live' : 'snapshot',
+    },
+    summary: latest.summary || {},
+    holders: getTopHoldersFromSnapshot(latest, limit).map((holder) => ({
+      rank: holder.rank,
+      address: holder.address,
+      balance: holder.balance,
+      shareOfSupplyPct: holder.shareOfSupplyPct,
+      tokenPreview: holder.tokenPreview,
+      tokenIds: includeTokens ? holdersByAddress.get(holder.address)?.tokenIds || [] : undefined,
+      lastActivity: holder.lastActivity,
+    })),
+  });
+});
+
+app.get(getPublicApiRoutePaths('/holders/:address'), publicLiveRateLimit, async (req, res) => {
+  const address = normaliseAddress(req.params.address);
+  if (!address) {
+    return sendPublicApiError(res, 400, 'invalid_address', 'Wallet address is invalid.');
+  }
+
+  let resolved = await resolveHolderSnapshot({ requireFresh: false });
+  let latest = resolved.snapshot;
+  if (!latest) {
+    return sendPublicApiError(res, 503, 'holders_unavailable', 'Holder data is unavailable right now.');
+  }
+
+  let holders = getSnapshotHolders(latest);
+  let found = holders.find((holder) => holder.address === address) || null;
+
+  if (!found && HOLDER_LIVE_MODE_ENABLED && HOLDER_LIVE_FORCE_REFRESH_ON_LOOKUP) {
+    const refreshed = await resolveHolderSnapshot({ requireFresh: true });
+    if (refreshed.snapshot) {
+      resolved = refreshed;
+      latest = refreshed.snapshot;
+      holders = getSnapshotHolders(latest);
+      found = holders.find((holder) => holder.address === address) || null;
+    }
+  }
+
+  if (!found) {
+    return sendPublicApiError(res, 404, 'holder_not_found', 'No holder data was found for this address.', {
+      address,
+    });
+  }
+
+  let rank = 1;
+  holders.forEach((holder) => {
+    if (holder.address === address) return;
+    if (holder.balance > found.balance) rank += 1;
+    if (holder.balance === found.balance && holder.address < address) rank += 1;
+  });
+
+  setPublicCacheControl(res, 'public, max-age=15, stale-while-revalidate=45');
+  return res.json({
+    contract: CONTRACT,
+    chain: CHAIN,
+    generatedAt: latest.generatedAt || null,
+    source: {
+      ...(latest.source || {}),
+      mode: resolved.isLive ? 'live' : 'snapshot',
+    },
+    address,
+    balance: found.balance,
+    rank,
+    percentile:
+      holders.length > 0
+        ? Number((((holders.length - rank + 1) / holders.length) * 100).toFixed(2))
+        : 0,
+    tokenIds: Array.isArray(found.tokenIds) ? found.tokenIds : [],
+    lastActivity: found.lastActivity || null,
+  });
+});
+
+app.get(getPublicApiRoutePaths('/market/stats'), publicLiveRateLimit, async (req, res) => {
+  try {
+    const payload = await loadCollectionStatsPayload();
+    setPublicCacheControl(res, 'public, max-age=30, stale-while-revalidate=120');
+    return res.json({
+      contract: CONTRACT,
+      chain: CHAIN,
+      source: {
+        type: 'opensea',
+        collectionSlug: COLLECTION_SLUG,
+      },
+      ...payload,
+    });
+  } catch (err) {
+    console.error('Public market stats error:', err.message || err);
+    return sendPublicApiError(res, 502, 'market_stats_unavailable', 'Market stats are unavailable right now.');
+  }
+});
+
+app.get(getPublicApiRoutePaths('/market/recent-sales'), publicLiveRateLimit, async (req, res) => {
+  try {
+    const limit = parseBoundedInt(req.query.limit, 5, 1, 20);
+    const payload = await loadRecentSalesPayload(limit);
+    setPublicCacheControl(res, 'public, max-age=15, stale-while-revalidate=90');
+    return res.json({
+      contract: CONTRACT,
+      chain: CHAIN,
+      source: {
+        type: 'opensea',
+        collectionSlug: COLLECTION_SLUG,
+      },
+      limit,
+      sales: payload.sales || [],
+    });
+  } catch (err) {
+    console.error('Public recent sales error:', err.message || err);
+    return sendPublicApiError(res, 502, 'recent_sales_unavailable', 'Recent sales are unavailable right now.');
+  }
+});
+
+app.get(getPublicApiRoutePaths('/market/listings'), publicLiveRateLimit, async (req, res) => {
+  try {
+    const hasPagesOverride = req.query.pages != null && String(req.query.pages).trim() !== '';
+    const maxPages = hasPagesOverride
+      ? parseBoundedInt(req.query.pages, LISTED_DEFAULT_MAX_PAGES, 1, LISTED_MAX_PAGES_CAP)
+      : null;
+    const limit = parseBoundedInt(
+      req.query.limit,
+      LISTED_DEFAULT_RESULT_LIMIT,
+      8,
+      LISTED_RESULT_LIMIT_CAP
+    );
+    const pageSize = parseBoundedInt(
+      req.query.pageSize,
+      LISTED_PAGE_SIZE_DEFAULT,
+      20,
+      50
+    );
+
+    const payload = await loadCollectionListingsPayload({ maxPages, limit, pageSize });
+    setPublicCacheControl(res, 'public, max-age=20, stale-while-revalidate=120');
+    return res.json({
+      contract: CONTRACT,
+      chain: CHAIN,
+      source: {
+        type: 'opensea',
+        collectionSlug: COLLECTION_SLUG,
+      },
+      totalListed: payload.totalListed || 0,
+      listings: payload.listings || [],
+    });
+  } catch (err) {
+    console.error('Public listings error:', err.message || err);
+    return sendPublicApiError(res, 502, 'listings_unavailable', 'Listings are unavailable right now.');
+  }
+});
+
 // In case icons / no-meta / team live under /public, wire these paths too:
 app.use('/icons', express.static(path.join(__dirname, 'public', 'icons')));
 app.use('/no-meta', express.static(path.join(__dirname, 'public', 'no-meta')));
@@ -1578,7 +2678,10 @@ async function ensureThreeDShareGif(tokenId, onProgress = () => {}) {
   }
 
   ensureDirSync(assetPaths.dirPath);
-  if (isExistingFile(assetPaths.gifPath) && fs.statSync(assetPaths.gifPath).size <= 15 * 1024 * 1024) {
+  if (
+    isExistingFile(assetPaths.gifPath) &&
+    fs.statSync(assetPaths.gifPath).size <= NOPUNKS_3D_SHARE_GIF_MAX_BYTES
+  ) {
     onProgress({ status: 'ready', stage: 'Ready', progressPct: 100 });
     return assetPaths;
   }
@@ -1595,7 +2698,7 @@ async function ensureThreeDShareGif(tokenId, onProgress = () => {}) {
     outputPath: assetPaths.gifPath,
     baseUrl: getThreeDShareBaseUrl(),
     onProgress,
-    maxBytes: 15 * 1024 * 1024,
+    maxBytes: NOPUNKS_3D_SHARE_GIF_MAX_BYTES,
   });
 
   threeDShareGifBuilds.set(assetPaths.tokenId, buildPromise);
@@ -2867,84 +3970,309 @@ app.get('/api/showcase', async (req, res) => {
   }
 });
 
+function extractCollectionStatsPayload(rawStatsInput) {
+  const rawStats = rawStatsInput || {};
+
+  function coerceNumber(value) {
+    if (value == null) return null;
+    if (typeof value === 'object') {
+      if (value.quantity != null) return coerceNumber(value.quantity);
+      if (value.total != null) return coerceNumber(value.total);
+      if (value.value != null) return coerceNumber(value.value);
+    }
+    const numberValue = Number(value);
+    return Number.isFinite(numberValue) ? numberValue : null;
+  }
+
+  const floorPrice = coerceNumber(
+    rawStats.floor_price ??
+      rawStats.total_floor_price ??
+      rawStats.floorPrice ??
+      rawStats.floor ??
+      rawStats.floor_price_eth ??
+      null
+  );
+
+  let totalVolume = coerceNumber(
+    rawStats.total_volume ??
+      rawStats.volume_traded ??
+      rawStats.totalVolume ??
+      rawStats.volume ??
+      rawStats.total_volume_eth ??
+      null
+  );
+
+  if (totalVolume == null) {
+    try {
+      for (const [key, value] of Object.entries(rawStats)) {
+        if (!/volume/i.test(key)) continue;
+        const parsed = coerceNumber(value);
+        if (parsed == null) continue;
+        if (totalVolume == null || parsed > totalVolume) {
+          totalVolume = parsed;
+        }
+      }
+    } catch (scanErr) {
+      console.warn('Could not auto-detect totalVolume from stats', scanErr);
+    }
+  }
+
+  const numOwners = coerceNumber(
+    rawStats.num_owners ??
+      rawStats.numOwners ??
+      rawStats.owners ??
+      rawStats.unique_owners ??
+      null
+  );
+
+  if (floorPrice != null) rawStats.floor_price = floorPrice;
+  if (totalVolume != null) rawStats.total_volume = totalVolume;
+  if (numOwners != null) rawStats.num_owners = numOwners;
+
+  return {
+    floorPrice,
+    totalVolume,
+    numOwners,
+    stats: rawStats,
+  };
+}
+
+async function loadCollectionStatsPayload() {
+  return getOrSetApiResponseCache(
+    `stats:${CHAIN}:${COLLECTION_SLUG}`,
+    OPENSEA_STATS_CACHE_TTL_MS,
+    async () => {
+      const url = `https://api.opensea.io/api/v2/collections/${COLLECTION_SLUG}/stats`;
+      const data = await queueOpenSeaRequest(url, 'Stats', 25000);
+      const rawStats = data.stats || data.total || data || {};
+      return extractCollectionStatsPayload(rawStats);
+    }
+  );
+}
+
+async function loadRecentSalesPayload(limit) {
+  return getOrSetApiResponseCache(
+    `recent-sales:${CHAIN}:${COLLECTION_SLUG}:limit=${limit}`,
+    OPENSEA_RECENT_SALES_CACHE_TTL_MS,
+    async () => {
+      const url =
+        `https://api.opensea.io/api/v2/events/collection/${COLLECTION_SLUG}` +
+        `?event_type=sale&limit=${limit}&chain=${CHAIN}`;
+
+      const data = await queueOpenSeaRequest(url, 'Recent sales', 25000);
+      const events = data.asset_events || data.events || [];
+
+      const sales = events.map((ev) => {
+        const asset = ev.asset || ev.nft || {};
+        const tokenId = asset.token_id || asset.identifier || null;
+
+        const payment = ev.payment || ev.payment_token || {};
+        const totalPrice = payment.quantity || ev.total_price || null;
+        const decimals = payment.decimals != null ? Number(payment.decimals) : 18;
+        const symbol =
+          (payment.token && payment.token.symbol) ||
+          payment.symbol ||
+          'ETH';
+
+        const price = totalPrice != null ? Number(totalPrice) / 10 ** decimals : null;
+        const time =
+          ev.event_timestamp ||
+          (ev.transaction && ev.transaction.timestamp) ||
+          ev.created_date ||
+          null;
+
+        const image_url = normaliseImageUrl(
+          asset.image_url ||
+            asset.image_original_url ||
+            asset.image_preview_url ||
+            asset.display_image_url ||
+            ''
+        );
+
+        const buyer =
+          (ev.to_account && ev.to_account.address) ||
+          (ev.winner_account && ev.winner_account.address) ||
+          null;
+
+        return {
+          onChainId: tokenId,
+          price,
+          unit: symbol,
+          time,
+          image_url,
+          buyer,
+        };
+      });
+
+      return { sales };
+    }
+  );
+}
+
+async function loadCollectionListingsPayload({ maxPages, limit, pageSize }) {
+  const cacheKey =
+    `listed:${CHAIN}:${COLLECTION_SLUG}:pages=${maxPages ?? 'all'}:limit=${limit}:pageSize=${pageSize}`;
+
+  return getOrSetApiResponseCache(
+    cacheKey,
+    OPENSEA_LISTINGS_CACHE_TTL_MS,
+    async () => {
+      let allListings = [];
+      let nextCursor = null;
+      let page = 0;
+
+      do {
+        const url = nextCursor
+          ? `https://api.opensea.io/api/v2/listings/collection/${COLLECTION_SLUG}/all?limit=${pageSize}&chain=${CHAIN}&next=${nextCursor}`
+          : `https://api.opensea.io/api/v2/listings/collection/${COLLECTION_SLUG}/all?limit=${pageSize}&chain=${CHAIN}`;
+
+        const data = await queueOpenSeaRequest(url, `Listings page ${page + 1}`);
+        const listings = Array.isArray(data.listings) ? data.listings : [];
+        if (!listings.length) break;
+        allListings = allListings.concat(listings);
+        nextCursor = data.next || null;
+        page += 1;
+      } while (nextCursor && (maxPages == null || page < maxPages));
+
+      const mapped = allListings.map((listing) => {
+        const nft = listing.nft || {};
+        const tokenId =
+          (listing.protocol_data &&
+            listing.protocol_data.parameters &&
+            listing.protocol_data.parameters.offer &&
+            listing.protocol_data.parameters.offer[0] &&
+            listing.protocol_data.parameters.offer[0].identifierOrCriteria) ||
+          nft.identifier ||
+          null;
+
+        const priceRaw =
+          listing.price && listing.price.current && listing.price.current.value
+            ? String(listing.price.current.value)
+            : null;
+        const decimals =
+          (listing.price &&
+            listing.price.current &&
+            listing.price.current.decimals &&
+            Number(listing.price.current.decimals)) ||
+          18;
+
+        const price = priceRaw != null ? Number(priceRaw) / 10 ** decimals : null;
+        const image_url = normaliseImageUrl(
+          nft.image_url ||
+            nft.image_original_url ||
+            nft.display_image_url ||
+            ''
+        );
+        const seller =
+          (listing.maker && listing.maker.address) ||
+          (listing.seller && listing.seller.address) ||
+          null;
+
+        return {
+          onChainId: tokenId,
+          price,
+          unit: 'ETH',
+          source: 'OpenSea',
+          image_url,
+          seller,
+        };
+      });
+
+      const deduped = [];
+      const seenTokenIds = new Map();
+
+      for (const listing of mapped) {
+        if (!listing.onChainId) continue;
+
+        const tokenId = String(listing.onChainId);
+        const existingIndex = seenTokenIds.get(tokenId);
+
+        if (existingIndex === undefined) {
+          seenTokenIds.set(tokenId, deduped.length);
+          deduped.push(listing);
+        } else {
+          const existing = deduped[existingIndex];
+          if (
+            listing.price != null &&
+            (existing.price == null || listing.price < existing.price)
+          ) {
+            deduped[existingIndex] = listing;
+          }
+        }
+      }
+
+      deduped.sort((a, b) => {
+        if (a.price == null && b.price == null) return 0;
+        if (a.price == null) return 1;
+        if (b.price == null) return -1;
+        return a.price - b.price;
+      });
+
+      const totalListed = deduped.length;
+      const selected = deduped.slice(0, limit);
+      const listingsWithImages = await Promise.all(
+        selected.map(async (item) => {
+          if (!item.onChainId) return item;
+
+          const imageCacheKey = `${CONTRACT.toLowerCase()}:${item.onChainId}`;
+          const cached = nftCache.get(imageCacheKey);
+
+          if (cached && cached.image_url) {
+            return { ...item, image_url: cached.image_url };
+          }
+
+          if (item.image_url) {
+            nftCache.set(imageCacheKey, {
+              ...(cached || {}),
+              onChainId: String(item.onChainId),
+              image_url: item.image_url,
+            });
+            return item;
+          }
+
+          try {
+            const nftUrl = `https://api.opensea.io/api/v2/chain/${CHAIN}/contract/${CONTRACT}/nfts/${item.onChainId}`;
+            const nftData = await queueOpenSeaRequest(nftUrl, 'Listing NFT image', 15000);
+            const nft = nftData.nft || nftData || {};
+            const image_url = normaliseImageUrl(
+              nft.image_url ||
+                nft.display_image_url ||
+                nft.image_original_url ||
+                nft.image ||
+                ''
+            );
+
+            if (image_url) {
+              nftCache.set(imageCacheKey, {
+                ...(cached || {}),
+                onChainId: String(item.onChainId),
+                image_url,
+              });
+              return { ...item, image_url };
+            }
+
+            return item;
+          } catch (err) {
+            console.error('Failed to fetch listing NFT image', err.message || err);
+            return item;
+          }
+        })
+      );
+
+      return {
+        listings: listingsWithImages,
+        totalListed,
+      };
+    }
+  );
+}
+
 // =======================
 // /api/stats
 // =======================
 app.get('/api/stats', async (req, res) => {
   try {
-    const payload = await getOrSetApiResponseCache(
-      `stats:${CHAIN}:${COLLECTION_SLUG}`,
-      OPENSEA_STATS_CACHE_TTL_MS,
-      async () => {
-        const url = `https://api.opensea.io/api/v2/collections/${COLLECTION_SLUG}/stats`;
-        const data = await queueOpenSeaRequest(url, 'Stats', 25000);
-
-        const rawStats = data.stats || data.total || data || {};
-
-        function coerceNumber(v) {
-          if (v == null) return null;
-          if (typeof v === 'object') {
-            if (v.quantity != null) return coerceNumber(v.quantity);
-            if (v.total != null) return coerceNumber(v.total);
-            if (v.value != null) return coerceNumber(v.value);
-          }
-          const n = Number(v);
-          return Number.isFinite(n) ? n : null;
-        }
-
-        const floorPrice = coerceNumber(
-          rawStats.floor_price ??
-            rawStats.total_floor_price ??
-            rawStats.floorPrice ??
-            rawStats.floor ??
-            rawStats.floor_price_eth ??
-            null
-        );
-
-        let totalVolume = coerceNumber(
-          rawStats.total_volume ??
-            rawStats.volume_traded ??
-            rawStats.totalVolume ??
-            rawStats.volume ??
-            rawStats.total_volume_eth ??
-            null
-        );
-
-        if (totalVolume == null) {
-          try {
-            for (const [key, value] of Object.entries(rawStats)) {
-              if (!/volume/i.test(key)) continue;
-              const n = coerceNumber(value);
-              if (n == null) continue;
-              if (totalVolume == null || n > totalVolume) {
-                totalVolume = n;
-              }
-            }
-          } catch (scanErr) {
-            console.warn('Could not auto-detect totalVolume from stats', scanErr);
-          }
-        }
-
-        const numOwners = coerceNumber(
-          rawStats.num_owners ??
-            rawStats.numOwners ??
-            rawStats.owners ??
-            rawStats.unique_owners ??
-            null
-        );
-
-        if (floorPrice != null) rawStats.floor_price = floorPrice;
-        if (totalVolume != null) rawStats.total_volume = totalVolume;
-        if (numOwners != null) rawStats.num_owners = numOwners;
-
-        return {
-          floorPrice,
-          totalVolume,
-          numOwners,
-          stats: rawStats,
-        };
-      }
-    );
+    const payload = await loadCollectionStatsPayload();
 
     res.setHeader('Cache-Control', 'public, max-age=30, stale-while-revalidate=120');
     res.json(payload);
@@ -2966,66 +4294,7 @@ app.get('/api/stats', async (req, res) => {
 app.get('/api/recent-sales', async (req, res) => {
   try {
     const limit = parseBoundedInt(req.query.limit, 5, 1, 20);
-    const payload = await getOrSetApiResponseCache(
-      `recent-sales:${CHAIN}:${COLLECTION_SLUG}:limit=${limit}`,
-      OPENSEA_RECENT_SALES_CACHE_TTL_MS,
-      async () => {
-        const url =
-          `https://api.opensea.io/api/v2/events/collection/${COLLECTION_SLUG}` +
-          `?event_type=sale&limit=${limit}&chain=${CHAIN}`;
-
-        const data = await queueOpenSeaRequest(url, 'Recent sales', 25000);
-        const events = data.asset_events || data.events || [];
-
-        const sales = events.map((ev) => {
-          const asset = ev.asset || ev.nft || {};
-          const tokenId = asset.token_id || asset.identifier || null;
-
-          const payment = ev.payment || ev.payment_token || {};
-          const totalPrice = payment.quantity || ev.total_price || null;
-          const decimals =
-            payment.decimals != null ? Number(payment.decimals) : 18;
-          const symbol =
-            (payment.token && payment.token.symbol) ||
-            payment.symbol ||
-            'ETH';
-
-          const price =
-            totalPrice != null ? Number(totalPrice) / 10 ** decimals : null;
-
-          const time =
-            ev.event_timestamp ||
-            (ev.transaction && ev.transaction.timestamp) ||
-            ev.created_date ||
-            null;
-
-          const image_url = normaliseImageUrl(
-            asset.image_url ||
-              asset.image_original_url ||
-              asset.image_preview_url ||
-              asset.display_image_url ||
-              ''
-          );
-
-          // include buyer so "Sold to" text can show correctly
-          const buyer =
-            (ev.to_account && ev.to_account.address) ||
-            (ev.winner_account && ev.winner_account.address) ||
-            null;
-
-          return {
-            onChainId: tokenId,
-            price,
-            unit: symbol,
-            time,
-            image_url,
-            buyer,
-          };
-        });
-
-        return { sales };
-      }
-    );
+    const payload = await loadRecentSalesPayload(limit);
 
     res.setHeader('Cache-Control', 'public, max-age=15, stale-while-revalidate=90');
     res.json(payload);
@@ -3063,170 +4332,11 @@ app.get('/api/listed', async (req, res) => {
       50
     );
 
-    const cacheKey =
-      `listed:${CHAIN}:${COLLECTION_SLUG}:pages=${maxPages ?? 'all'}:limit=${limit}:pageSize=${pageSize}`;
-
-    const payload = await getOrSetApiResponseCache(
-      cacheKey,
-      OPENSEA_LISTINGS_CACHE_TTL_MS,
-      async () => {
-        let allListings = [];
-        let nextCursor = null;
-        let page = 0;
-
-        do {
-          const url = nextCursor
-            ? `https://api.opensea.io/api/v2/listings/collection/${COLLECTION_SLUG}/all?limit=${pageSize}&chain=${CHAIN}&next=${nextCursor}`
-            : `https://api.opensea.io/api/v2/listings/collection/${COLLECTION_SLUG}/all?limit=${pageSize}&chain=${CHAIN}`;
-
-          const data = await queueOpenSeaRequest(url, `Listings page ${page + 1}`);
-          const listings = Array.isArray(data.listings) ? data.listings : [];
-          if (!listings.length) break;
-          allListings = allListings.concat(listings);
-          nextCursor = data.next || null;
-          page += 1;
-        } while (nextCursor && (maxPages == null || page < maxPages));
-
-        const mapped = allListings.map((l) => {
-          const nft = l.nft || {};
-          const tokenId =
-            (l.protocol_data &&
-              l.protocol_data.parameters &&
-              l.protocol_data.parameters.offer &&
-              l.protocol_data.parameters.offer[0] &&
-              l.protocol_data.parameters.offer[0].identifierOrCriteria) ||
-            nft.identifier ||
-            null;
-
-          const priceRaw =
-            l.price && l.price.current && l.price.current.value
-              ? String(l.price.current.value)
-              : null;
-          const decimals =
-            (l.price &&
-              l.price.current &&
-              l.price.current.decimals &&
-              Number(l.price.current.decimals)) ||
-            18;
-
-          const price =
-            priceRaw != null ? Number(priceRaw) / 10 ** decimals : null;
-
-          const image_url = normaliseImageUrl(
-            nft.image_url ||
-              nft.image_original_url ||
-              nft.display_image_url ||
-              ''
-          );
-
-          const seller =
-            (l.maker && l.maker.address) ||
-            (l.seller && l.seller.address) ||
-            null;
-
-          return {
-            onChainId: tokenId,
-            price,
-            unit: 'ETH',
-            source: 'OpenSea',
-            image_url,
-            seller,
-          };
-        });
-
-        // Deduplicate listings by tokenId, keeping only the lowest-priced listing for each.
-        const deduped = [];
-        const seenTokenIds = new Map(); // tokenId -> index in deduped array
-
-        for (const listing of mapped) {
-          if (!listing.onChainId) continue;
-
-          const tokenId = String(listing.onChainId);
-          const existingIndex = seenTokenIds.get(tokenId);
-
-          if (existingIndex === undefined) {
-            seenTokenIds.set(tokenId, deduped.length);
-            deduped.push(listing);
-          } else {
-            const existing = deduped[existingIndex];
-            if (
-              listing.price != null &&
-              (existing.price == null || listing.price < existing.price)
-            ) {
-              deduped[existingIndex] = listing;
-            }
-          }
-        }
-
-        deduped.sort((a, b) => {
-          if (a.price == null && b.price == null) return 0;
-          if (a.price == null) return 1;
-          if (b.price == null) return -1;
-          return a.price - b.price;
-        });
-
-        const totalListed = deduped.length;
-        const selected = deduped.slice(0, limit);
-        const listingsWithImages = await Promise.all(
-          selected.map(async (item) => {
-            if (!item.onChainId) return item;
-
-            const imageCacheKey = `${CONTRACT.toLowerCase()}:${item.onChainId}`;
-            const cached = nftCache.get(imageCacheKey);
-
-            if (cached && cached.image_url) {
-              return { ...item, image_url: cached.image_url };
-            }
-
-            if (item.image_url) {
-              nftCache.set(imageCacheKey, {
-                ...(cached || {}),
-                onChainId: String(item.onChainId),
-                image_url: item.image_url,
-              });
-              return item;
-            }
-
-            try {
-              const nftUrl = `https://api.opensea.io/api/v2/chain/${CHAIN}/contract/${CONTRACT}/nfts/${item.onChainId}`;
-              const nftData = await queueOpenSeaRequest(
-                nftUrl,
-                'Listing NFT image',
-                15000
-              );
-              const nft = nftData.nft || nftData || {};
-              const image_url = normaliseImageUrl(
-                nft.image_url ||
-                  nft.display_image_url ||
-                  nft.image_original_url ||
-                  nft.image ||
-                  ''
-              );
-
-              if (image_url) {
-                const imagePayload = {
-                  ...(cached || {}),
-                  onChainId: String(item.onChainId),
-                  image_url,
-                };
-                nftCache.set(imageCacheKey, imagePayload);
-                return { ...item, image_url };
-              }
-
-              return item;
-            } catch (e) {
-              console.error('Failed to fetch listing NFT image', e.message || e);
-              return item;
-            }
-          })
-        );
-
-        return {
-          listings: listingsWithImages,
-          totalListed,
-        };
-      }
-    );
+    const payload = await loadCollectionListingsPayload({
+      maxPages,
+      limit,
+      pageSize,
+    });
 
     res.setHeader('Cache-Control', 'public, max-age=20, stale-while-revalidate=120');
     res.json(payload);
@@ -3840,6 +4950,52 @@ function getImageCandidateFromMetadata(metadata) {
   return '';
 }
 
+async function sendTokenImageResponse(res, tokenId) {
+  let metadata = await getOnchainTokenMetadata(tokenId, { requireImage: true });
+  let imageValue = getImageCandidateFromMetadata(metadata);
+
+  if (isLocalPublicPath(imageValue) && !doesLocalPublicAssetExist(imageValue)) {
+    metadata = await getOnchainTokenMetadata(tokenId, {
+      requireImage: true,
+      bypassCache: true,
+      skipSnapshot: true,
+    });
+    imageValue = getImageCandidateFromMetadata(metadata);
+  }
+
+  if (!imageValue) {
+    return res.status(404).json({ error: 'Onchain image unavailable' });
+  }
+
+  if (imageValue.startsWith('<svg')) {
+    res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+    res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
+    return res.send(imageValue);
+  }
+
+  const dataUri = parseDataUri(imageValue);
+  if (dataUri) {
+    res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+    res.setHeader('Content-Type', dataUri.contentType || 'application/octet-stream');
+    return res.send(dataUri.body);
+  }
+
+  const normalizedUrl = normalizeIpfsUri(imageValue);
+  if (normalizedUrl.startsWith('/public/')) {
+    if (!doesLocalPublicAssetExist(normalizedUrl)) {
+      return res.status(404).json({ error: 'Onchain image cache file unavailable' });
+    }
+    res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+    return res.redirect(302, normalizedUrl);
+  }
+  if (/^https?:\/\//i.test(normalizedUrl)) {
+    res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+    return res.redirect(302, normalizedUrl);
+  }
+
+  return res.status(404).json({ error: 'Unsupported onchain image format' });
+}
+
 app.get('/api/onchain/token/:tokenId', async (req, res) => {
   try {
     const tokenId = parseOnChainTokenId(req.params.tokenId);
@@ -3861,52 +5017,7 @@ app.get('/api/onchain/token/:tokenId/image', async (req, res) => {
     if (tokenId == null) {
       return res.status(400).json({ error: 'Invalid tokenId' });
     }
-
-    let metadata = await getOnchainTokenMetadata(tokenId, { requireImage: true });
-    let imageValue = getImageCandidateFromMetadata(metadata);
-
-    // If snapshot points at a local file that is not present on this deployment,
-    // force a chain-backed metadata refresh for this token.
-    if (isLocalPublicPath(imageValue) && !doesLocalPublicAssetExist(imageValue)) {
-      metadata = await getOnchainTokenMetadata(tokenId, {
-        requireImage: true,
-        bypassCache: true,
-        skipSnapshot: true,
-      });
-      imageValue = getImageCandidateFromMetadata(metadata);
-    }
-
-    if (!imageValue) {
-      return res.status(404).json({ error: 'Onchain image unavailable' });
-    }
-
-    if (imageValue.startsWith('<svg')) {
-      res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
-      res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
-      return res.send(imageValue);
-    }
-
-    const dataUri = parseDataUri(imageValue);
-    if (dataUri) {
-      res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
-      res.setHeader('Content-Type', dataUri.contentType || 'application/octet-stream');
-      return res.send(dataUri.body);
-    }
-
-    const normalizedUrl = normalizeIpfsUri(imageValue);
-    if (normalizedUrl.startsWith('/public/')) {
-      if (!doesLocalPublicAssetExist(normalizedUrl)) {
-        return res.status(404).json({ error: 'Onchain image cache file unavailable' });
-      }
-      res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
-      return res.redirect(302, normalizedUrl);
-    }
-    if (/^https?:\/\//i.test(normalizedUrl)) {
-      res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
-      return res.redirect(302, normalizedUrl);
-    }
-
-    return res.status(404).json({ error: 'Unsupported onchain image format' });
+    return await sendTokenImageResponse(res, tokenId);
   } catch (err) {
     console.error('Onchain token image error:', err.message || err);
     return res.status(502).json({ error: 'Onchain token image unavailable' });
@@ -4408,9 +5519,9 @@ function startHolderSnapshotAutoRebuild() {
 // =======================
 // START SERVER
 // =======================
-app.listen(PORT, () => {
+function handleServerStartup(serverPort) {
   console.log(
-    `NoPunks server running at http://localhost:${PORT}\n` +
+    `NoPunks server running at http://localhost:${serverPort}\n` +
       `Collection slug: ${COLLECTION_SLUG} | Chain: ${CHAIN} | Contract: ${CONTRACT}` +
       (MARKETPLACE_CONTRACT ? `\nMarketplace: ${MARKETPLACE_CONTRACT}` : '')
   );
@@ -4432,4 +5543,20 @@ app.listen(PORT, () => {
   }
 
   startHolderSnapshotAutoRebuild();
-});
+}
+
+function startServer(port = PORT, host) {
+  if (host) {
+    return app.listen(port, host, () => handleServerStartup(port));
+  }
+  return app.listen(port, () => handleServerStartup(port));
+}
+
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = {
+  app,
+  startServer,
+};

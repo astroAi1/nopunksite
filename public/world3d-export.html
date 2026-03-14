@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>NoPunks 3D Export</title>
+    <script src="/public/world3d-render-profile.js"></script>
     <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
     <script nomodule src="https://unpkg.com/@google/model-viewer/dist/model-viewer-legacy.js"></script>
     <style>
@@ -44,11 +45,12 @@
     ></model-viewer>
 
     <script>
-      const CAMERA_TARGET = '0m 0m 0m';
-      const CAMERA_PHI = 74;
-      const CAMERA_RADIUS = 108;
-      const FIELD_OF_VIEW = '27deg';
-      const ROTATION_PER_SECOND = '42deg';
+      const RENDER_PROFILE = window.NoPunksWorld3dRenderProfile || {
+        cameraThetaDeg: 32,
+        cameraTarget: '0m 0m 0m',
+        fieldOfView: '27deg',
+        rotationPerSecond: '42deg',
+      };
       const viewer = document.getElementById('viewer');
       const exportState = {
         ready: false,
@@ -100,12 +102,20 @@
       }
 
       function applyCamera(thetaDeg = 32) {
-        viewer.cameraTarget = CAMERA_TARGET;
-        viewer.cameraOrbit = `${thetaDeg}deg ${CAMERA_PHI}deg ${CAMERA_RADIUS}%`;
-        viewer.fieldOfView = FIELD_OF_VIEW;
+        if (typeof window.applyNoPunksWorld3dRenderProfile === 'function') {
+          window.applyNoPunksWorld3dRenderProfile(viewer, {
+            autoRotate: false,
+            cameraThetaDeg: thetaDeg,
+          });
+          return;
+        }
+
+        viewer.cameraTarget = RENDER_PROFILE.cameraTarget;
+        viewer.cameraOrbit = `${thetaDeg}deg 74deg 108%`;
+        viewer.fieldOfView = RENDER_PROFILE.fieldOfView;
         viewer.autoRotate = false;
         viewer.autoRotateDelay = 0;
-        viewer.setAttribute('rotation-per-second', ROTATION_PER_SECOND);
+        viewer.setAttribute('rotation-per-second', RENDER_PROFILE.rotationPerSecond);
       }
 
       function getViewerCanvas() {
@@ -215,7 +225,7 @@
 
         viewer.poster = posterUrl;
         viewer.setAttribute('poster', posterUrl);
-        applyCamera(32);
+        applyCamera(RENDER_PROFILE.cameraThetaDeg || 32);
 
         if (viewer.getAttribute('src') !== modelUrl) {
           const loadPromise = waitForViewerLoad();
@@ -241,7 +251,7 @@
         },
 
         async setFrame(frameIndex, frameCount) {
-          const thetaDeg = 32 - ((360 * frameIndex) / frameCount);
+          const thetaDeg = (RENDER_PROFILE.cameraThetaDeg || 32) - ((360 * frameIndex) / frameCount);
           applyCamera(thetaDeg);
           if (viewer.updateComplete && typeof viewer.updateComplete.then === 'function') {
             await viewer.updateComplete;

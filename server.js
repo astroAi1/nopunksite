@@ -284,12 +284,22 @@ const explorerTraitIndexPath = path.join(
   'explorer',
   'trait_to_token_ids.json'
 );
+const explorerPublishedTraitIndexPath = path.join(
+  __dirname,
+  'explorer-data',
+  'trait_to_token_ids.json'
+);
 
 const explorerTokenBlobPath = path.join(
   __dirname,
   'public',
   'data',
   'explorer',
+  'token_trait_blob.json'
+);
+const explorerPublishedTokenBlobPath = path.join(
+  __dirname,
+  'explorer-data',
   'token_trait_blob.json'
 );
 
@@ -303,6 +313,11 @@ const onchainTraitsSnapshotPath = path.join(
   'public',
   'data',
   'explorer',
+  'onchain_traits.json'
+);
+const onchainTraitsPublishedSnapshotPath = path.join(
+  __dirname,
+  'explorer-data',
   'onchain_traits.json'
 );
 
@@ -758,9 +773,22 @@ function filterPublicAttributes(attributes) {
 }
 
 function getPublicTokenBlobPayload() {
-  const payload = readJsonFileCached(explorerTokenBlobPath);
+  const payload = readJsonFileCached(explorerTokenBlobPath)
+    || readJsonFileCached(explorerPublishedTokenBlobPath);
   if (!payload || !Array.isArray(payload.tokens)) return null;
   return payload;
+}
+
+function getExplorerTraitIndexPayload() {
+  return readJsonFileCached(explorerTraitIndexPath)
+    || readJsonFileCached(explorerPublishedTraitIndexPath)
+    || null;
+}
+
+function getOnchainTraitsSnapshotPayload() {
+  return readJsonFileCached(onchainTraitsSnapshotPath)
+    || readJsonFileCached(onchainTraitsPublishedSnapshotPath)
+    || null;
 }
 
 let publicTokenBlobLookupCache = {
@@ -887,7 +915,7 @@ function resolvePublicTraitValue(traitType, rawValue) {
 }
 
 function getPublicTraitTokenIds(traitType, traitValue) {
-  const traitIndex = readJsonFileCached(explorerTraitIndexPath);
+  const traitIndex = getExplorerTraitIndexPayload();
   const ids = traitIndex?.traitToTokenIds?.[`${traitType}|${traitValue}`];
   return Array.isArray(ids)
     ? ids
@@ -933,7 +961,7 @@ function buildPublicTokenResponse(req, tokenId) {
       type: imageAssetPath ? 'local-snapshot' : snapshotMeta?.source || 'onchain-tokenURI',
       generatedAt:
         getPublicTokenBlobPayload()?.generatedAt ||
-        readJsonFileCached(onchainTraitsSnapshotPath)?.generatedAt ||
+        getOnchainTraitsSnapshotPayload()?.generatedAt ||
         null,
     },
   };
@@ -941,9 +969,9 @@ function buildPublicTokenResponse(req, tokenId) {
 
 function buildPublicDatasetManifest(req) {
   const origin = getRequestOrigin(req);
-  const onchainTraits = readJsonFileCached(onchainTraitsSnapshotPath);
+  const onchainTraits = getOnchainTraitsSnapshotPayload();
   const tokenBlob = getPublicTokenBlobPayload();
-  const traitIndex = readJsonFileCached(explorerTraitIndexPath);
+  const traitIndex = getExplorerTraitIndexPayload();
 
   return {
     generatedAt:
@@ -1029,7 +1057,7 @@ function normalizeOnchainTupleTraits(attrs) {
 }
 
 function getOnchainTraitsLookupMap() {
-  const payload = readJsonFileCached(onchainTraitsSnapshotPath);
+  const payload = getOnchainTraitsSnapshotPayload();
   if (!payload || !Array.isArray(payload.tokens)) return null;
 
   if (
@@ -1822,6 +1850,8 @@ app.use('/explorer-data/images', express.static(explorerPublishedImagesDir, immu
 app.use('/explorer-data', express.static(explorerPublishedDir, explorerDataStaticOptions));
 app.use('/public/data/explorer/images', express.static(explorerPublicImagesDir, immutableImageStaticOptions));
 app.use('/public/data/explorer', express.static(explorerPublicDir, explorerDataStaticOptions));
+app.use('/public/data/explorer/images', express.static(explorerPublishedImagesDir, immutableImageStaticOptions));
+app.use('/public/data/explorer', express.static(explorerPublishedDir, explorerDataStaticOptions));
 
 // Expose service worker at root while keeping source under /public.
 app.get('/sw.js', (req, res) => {
@@ -1856,13 +1886,13 @@ app.use(
 
 function buildPublicStatusResponse(req) {
   const tokenBlob = getPublicTokenBlobPayload();
-  const traitIndex = readJsonFileCached(explorerTraitIndexPath);
-  const onchainTraits = readJsonFileCached(onchainTraitsSnapshotPath);
+  const traitIndex = getExplorerTraitIndexPayload();
+  const onchainTraits = getOnchainTraitsSnapshotPayload();
   const traitCatalog = getPublicTraitCatalog();
   const datasets = buildPublicDatasetManifest(req);
 
   return {
-    ready: Boolean(tokenBlob && traitIndex && onchainTraits && traitCatalog),
+    ready: Boolean(tokenBlob && traitIndex && traitCatalog),
     version: PUBLIC_API_VERSION,
     name: PUBLIC_COLLECTION_NAME,
     contract: CONTRACT,
@@ -2108,7 +2138,7 @@ app.get(getPublicApiRoutePaths('/traits'), publicCoreRateLimit, (req, res) => {
   }
 
   const origin = getRequestOrigin(req);
-  const traitIndex = readJsonFileCached(explorerTraitIndexPath);
+  const traitIndex = getExplorerTraitIndexPayload();
   const traitTypes = catalog.traitTypes.map((traitType) => ({
     traitType,
     valueCount: catalog.typeValues[traitType]?.length || 0,
@@ -4372,8 +4402,8 @@ app.get('/api/listed', async (req, res) => {
 // /api/explorer/status
 // =======================
 app.get('/api/explorer/status', (req, res) => {
-  const traitIndex = readJsonFileCached(explorerTraitIndexPath);
-  const tokenBlob = readJsonFileCached(explorerTokenBlobPath);
+  const traitIndex = getExplorerTraitIndexPayload();
+  const tokenBlob = getPublicTokenBlobPayload();
   res.setHeader('Cache-Control', 'no-store');
 
   res.json({

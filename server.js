@@ -1003,9 +1003,9 @@ function buildPublicDatasetManifest(req) {
       },
       {
         id: 'images',
-        label: 'Published SVG image base',
+        label: 'Published SVG sample',
         format: 'svg',
-        url: toAbsoluteUrl(origin, '/public/data/explorer/images/'),
+        url: toAbsoluteUrl(origin, `/public/data/explorer/images/${PUBLIC_SAMPLE_TOKEN_ID}.svg`),
         generatedAt: onchainTraits?.generatedAt || null,
       },
     ],

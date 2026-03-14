@@ -2454,7 +2454,7 @@
             <div id="world-3d-status" class="world3d-status" data-state="loading">Loading</div>
             <div id="world-3d-id" class="world3d-id">No-Punk #--</div>
             <p id="world-3d-copy" class="world3d-copy">
-              Every ready NoPunk loads here as a real voxel GLB with full depth. Drag to orbit, zoom in, save a social GIF, or download an HD video that matches the live viewer more closely.
+              Every ready NoPunk loads here as a real voxel GLB with full depth. Drag to orbit, zoom in, and save a social GIF straight from the live viewer.
             </p>
 
             <div class="world3d-actions">
@@ -2466,9 +2466,6 @@
               </button>
               <button id="world-3d-gif-btn" class="world3d-action-btn" type="button" disabled>
                 Save GIF
-              </button>
-              <button id="world-3d-video-btn" class="world3d-action-btn" type="button" disabled>
-                Save HD Video
               </button>
               <a
                 id="world-3d-opensea"
@@ -2944,7 +2941,7 @@
       const WORLD3D_GIF_SIZE_BOOST_FRAMES = 24;
       const WORLD3D_GIF_PALETTE_SAMPLE_COUNT = 8;
       const WORLD3D_GIF_PALETTE_SAMPLE_SIZE = 128;
-      const WORLD3D_EXPORT_UNAVAILABLE_MESSAGE = '3D export is available only for GLB-ready tokens.';
+      const WORLD3D_EXPORT_UNAVAILABLE_MESSAGE = 'GIF export is available only for GLB-ready tokens.';
       const WORLD3D_RENDER_PROFILE_FALLBACK = Object.freeze({
         cameraThetaDeg: 32,
         cameraPhiDeg: 74,
@@ -3341,23 +3338,16 @@
         if (format === 'gif') {
           return document.getElementById('world-3d-gif-btn');
         }
-        if (format === 'mp4') {
-          return document.getElementById('world-3d-video-btn');
-        }
         return null;
       }
 
       function getWorld3dExportButtonLabel(format) {
         if (format === 'gif') return 'Save GIF';
-        if (format === 'mp4') return 'Save HD Video';
         return 'Save Export';
       }
 
-      function resetWorld3dExportButtons(
-        canExport = world3dState.activeViewer === 'glb' && world3dState.exportAvailable === true
-      ) {
+      function resetWorld3dExportButtons(canExport = world3dState.activeViewer === 'glb') {
         const gifBtn = getWorld3dExportButton('gif');
-        const videoBtn = getWorld3dExportButton('mp4');
         const shouldDisable = !canExport || world3dState.shareExporting;
         const unavailableMessage = getWorld3dExportUnavailableMessage();
 
@@ -3366,14 +3356,6 @@
           gifBtn.title = shouldDisable && !world3dState.shareExporting ? unavailableMessage : '';
           if (!world3dState.shareExporting || world3dState.shareExportFormat !== 'gif') {
             gifBtn.textContent = getWorld3dExportButtonLabel('gif');
-          }
-        }
-
-        if (videoBtn) {
-          videoBtn.disabled = shouldDisable;
-          videoBtn.title = shouldDisable && !world3dState.shareExporting ? unavailableMessage : '';
-          if (!world3dState.shareExporting || world3dState.shareExportFormat !== 'mp4') {
-            videoBtn.textContent = getWorld3dExportButtonLabel('mp4');
           }
         }
       }
@@ -4787,23 +4769,19 @@
             resetWorld3dExportButtons(false);
           } else {
             await setWorld3dModel(resolvedToken.modelUrl, getWorld3dFallbackImage(resolvedToken), true);
-            world3dState.exportAvailable = resolvedToken.exportAvailable;
-            world3dState.exportUnavailableMessage = resolvedToken.exportUnavailableReason;
+            world3dState.exportAvailable = true;
+            world3dState.exportUnavailableMessage = WORLD3D_EXPORT_UNAVAILABLE_MESSAGE;
             setWorld3dStatus('available', '3D Ready');
             if (searchMetaEl && mode !== 'featured') {
               searchMetaEl.textContent = `No-Punk #${tokenId} loads as a voxel GLB. Drag to orbit and scroll to zoom.`;
             }
             if (copyEl) {
-              copyEl.textContent = resolvedToken.exportAvailable
-                ? (mode === 'featured'
-                    ? 'This featured NoPunk is a real voxel GLB with full depth. Drag to orbit, zoom to inspect, save a GIF for sharing, or download an HD video for the closest match to the live viewer.'
-                    : 'This NoPunk is loaded as a real voxel GLB, not a poster render. Drag to orbit, zoom in, save a GIF for sharing, or download an HD video for the closest match to the live viewer.')
-                : (mode === 'featured'
-                    ? 'This featured NoPunk is a real voxel GLB with full depth. Drag to orbit and zoom to inspect it. 3D export is temporarily unavailable on this deployment.'
-                    : 'This NoPunk is loaded as a real voxel GLB, not a poster render. Drag to orbit and zoom in to inspect it. 3D export is temporarily unavailable on this deployment.');
+              copyEl.textContent = mode === 'featured'
+                ? 'This featured NoPunk is a real voxel GLB with full depth. Drag to orbit, zoom to inspect, and save a GIF straight from the live viewer.'
+                : 'This NoPunk is loaded as a real voxel GLB, not a poster render. Drag to orbit, zoom in, and save a GIF straight from the live viewer.';
             }
             if (resetBtn) resetBtn.disabled = false;
-            resetWorld3dExportButtons(resolvedToken.exportAvailable);
+            resetWorld3dExportButtons(true);
           }
         } catch (err) {
           console.error('World 3D model load error:', err);
@@ -5149,30 +5127,10 @@
 
         const world3dGifBtn = document.getElementById('world-3d-gif-btn');
         if (world3dGifBtn) {
-          const warmGif = () => {
-            maybeWarmCurrentWorld3dExport('gif', 120);
-          };
-          world3dGifBtn.addEventListener('pointerenter', warmGif);
-          world3dGifBtn.addEventListener('focus', warmGif);
-          world3dGifBtn.addEventListener('touchstart', warmGif, { passive: true });
           world3dGifBtn.addEventListener('click', () => {
-            startWorld3dShareExport('gif').catch((err) => {
+            exportWorld3dGifFromVisibleViewer(world3dState.currentTokenId, world3dGifBtn).catch((err) => {
               console.error('World 3D GIF export error:', err);
-            });
-          });
-        }
-
-        const world3dVideoBtn = document.getElementById('world-3d-video-btn');
-        if (world3dVideoBtn) {
-          const warmVideo = () => {
-            maybeWarmCurrentWorld3dExport('mp4', 0);
-          };
-          world3dVideoBtn.addEventListener('pointerenter', warmVideo);
-          world3dVideoBtn.addEventListener('focus', warmVideo);
-          world3dVideoBtn.addEventListener('touchstart', warmVideo, { passive: true });
-          world3dVideoBtn.addEventListener('click', () => {
-            startWorld3dShareExport('mp4').catch((err) => {
-              console.error('World 3D video export error:', err);
+              alert(`Could not export the 3D GIF right now.${err?.message ? `\n${err.message}` : ''}`);
             });
           });
         }

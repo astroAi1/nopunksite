@@ -211,19 +211,36 @@
   }
 
   function pixelsToSvg(pixels, { improvenancePixel = false } = {}) {
-    const rects = [`<rect x="0" y="0" width="24" height="24" fill="${NOPUNKS_BG}"/>`];
+    const pathsByColor = new Map();
     for (let y = 0; y < PUNK_SIZE; y += 1) {
-      for (let x = 0; x < PUNK_SIZE; x += 1) {
+      let x = 0;
+      while (x < PUNK_SIZE) {
         const px = pixels[y * PUNK_SIZE + x];
-        if (px && px.a > 0) {
-          rects.push(`<rect x="${x}" y="${y}" width="1" height="1" fill="${colorToCss(px)}"/>`);
+        if (!px || px.a <= 0) {
+          x += 1;
+          continue;
         }
+        const color = colorToCss(px);
+        let width = 1;
+        while (x + width < PUNK_SIZE) {
+          const next = pixels[y * PUNK_SIZE + x + width];
+          if (!next || next.a <= 0 || colorToCss(next) !== color) break;
+          width += 1;
+        }
+        const commands = pathsByColor.get(color) || [];
+        commands.push(`M${x} ${y}h${width}v1H${x}z`);
+        pathsByColor.set(color, commands);
+        x += width;
       }
     }
-    if (improvenancePixel) {
-      rects.push(`<rect x="23" y="23" width="1" height="1" fill="${IMPROVENANCE_PIXEL}"/>`);
+    const shapes = [`<rect x="0" y="0" width="24" height="24" fill="${NOPUNKS_BG}"/>`];
+    for (const [color, commands] of pathsByColor) {
+      shapes.push(`<path fill="${color}" d="${commands.join('')}"/>`);
     }
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" shape-rendering="crispEdges" role="img" aria-label="Generated No-Punk">${rects.join('')}</svg>`;
+    if (improvenancePixel) {
+      shapes.push(`<rect x="23" y="23" width="1" height="1" fill="${IMPROVENANCE_PIXEL}"/>`);
+    }
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" shape-rendering="crispEdges" style="shape-rendering:crispEdges;image-rendering:pixelated" role="img" aria-label="Generated No-Punk">${shapes.join('')}</svg>`;
   }
 
   function getTraitLayerId(traitName, gender) {

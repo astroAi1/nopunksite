@@ -167,8 +167,7 @@
     return new Set(indices.map((idx) => colorKey(cachedPalette[idx])));
   }
 
-  function isEyeAperturePixel(index, baseTypeName, traitNames) {
-    if (!traitNames.some((name) => traitsData.traits[name]?.category === 'eyes')) return false;
+  function isBaseEyeAperturePixel(index, baseTypeName) {
     const x = index % PUNK_SIZE;
     const y = Math.floor(index / PUNK_SIZE);
     const apertureY = getBaseGender(baseTypeName) === 'f' ? [12, 13] : [11, 12];
@@ -181,8 +180,9 @@
     return pixels.map((px, index) => {
       if (!px || px.a === 0) return { r: 0, g: 0, b: 0, a: 255 };
       if (px.r === 0 && px.g === 0 && px.b === 0 && px.a > 0) return { ...NOPUNKS_BLACK, a: px.a };
+      if (sources[index] !== 'trait' && isBaseEyeAperturePixel(index, baseTypeName)) return px;
       if (sources[index] !== 'trait' && baseOutlineColorKeys.has(colorKey(px))) return { ...NOPUNKS_BLACK, a: px.a };
-      if (skinColorKeys.has(colorKey(px)) && sources[index] !== 'trait' && !isEyeAperturePixel(index, baseTypeName, traitNames)) return { r: 0, g: 0, b: 0, a: px.a };
+      if (skinColorKeys.has(colorKey(px)) && sources[index] !== 'trait') return { r: 0, g: 0, b: 0, a: px.a };
       return px;
     });
   }

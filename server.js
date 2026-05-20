@@ -360,7 +360,7 @@ function parsePositiveIntEnv(name, fallback, min, max = Number.MAX_SAFE_INTEGER)
 }
 
 const HOLDER_AUTO_REBUILD_ENABLED = /^(1|true|yes)$/i.test(
-  String(process.env.HOLDER_AUTO_REBUILD || 'true').trim()
+  String(process.env.HOLDER_AUTO_REBUILD || '').trim()
 );
 const HOLDER_AUTO_REBUILD_INTERVAL_MS = parsePositiveIntEnv(
   'HOLDER_AUTO_REBUILD_INTERVAL_MS',
@@ -402,7 +402,7 @@ const HOLDER_AUTO_REBUILD_RPC_URL = String(
     'https://base.llamarpc.com,https://base-rpc.publicnode.com,https://1rpc.io/base,https://mainnet.base.org'
 ).trim();
 const HOLDER_LIVE_MODE_ENABLED = /^(1|true|yes)$/i.test(
-  String(process.env.HOLDER_LIVE_MODE || 'true').trim()
+  String(process.env.HOLDER_LIVE_MODE || '').trim()
 );
 const HOLDER_LIVE_CACHE_TTL_MS = parsePositiveIntEnv(
   'HOLDER_LIVE_CACHE_TTL_MS',
@@ -445,6 +445,17 @@ const OPENSEA_LISTINGS_CACHE_TTL_MS = parsePositiveIntEnv(
   'OPENSEA_LISTINGS_CACHE_TTL_MS',
   60 * 1000,
   10 * 1000
+);
+const OPENSEA_HOLDER_NFT_CACHE_TTL_MS = parsePositiveIntEnv(
+  'OPENSEA_HOLDER_NFT_CACHE_TTL_MS',
+  45 * 1000,
+  10 * 1000
+);
+const OPENSEA_HOLDER_NFT_PAGE_SIZE = parsePositiveIntEnv(
+  'OPENSEA_HOLDER_NFT_PAGE_SIZE',
+  200,
+  20,
+  200
 );
 const OPENSEA_SHOWCASE_CACHE_TTL_MS = parsePositiveIntEnv(
   'OPENSEA_SHOWCASE_CACHE_TTL_MS',
@@ -2323,7 +2334,55 @@ app.get(getPublicApiRoutePaths('/holders/:address'), publicLiveRateLimit, async 
     return sendPublicApiError(res, 400, 'invalid_address', 'Wallet address is invalid.');
   }
 
-  let resolved = await resolveHolderSnapshot({ requireFresh: false });
+  let snapshotResolved = { snapshot: null, isLive: false };
+  try {
+    snapshotResolved = await resolveHolderSnapshot({ requireFresh: false });
+    const holderNfts = await loadOpenSeaHolderNfts(address);
+    const rankStats = getHolderRankStatsFromSnapshot(
+      snapshotResolved.snapshot,
+      address,
+      holderNfts.balance
+    );
+
+    if (!holderNfts.balance) {
+      return sendPublicApiError(res, 404, 'holder_not_found', 'No No-Punks were found for this address.', {
+        address,
+        generatedAt: holderNfts.generatedAt,
+        source: holderNfts.source,
+        balance: 0,
+        tokenIds: [],
+        items: [],
+      });
+    }
+
+    setPublicCacheControl(res, 'public, max-age=15, stale-while-revalidate=45');
+    return res.json({
+      contract: CONTRACT,
+      chain: CHAIN,
+      generatedAt: holderNfts.generatedAt,
+      source: holderNfts.source,
+      snapshotSource: snapshotResolved.snapshot
+        ? {
+            ...(snapshotResolved.snapshot.source || {}),
+            mode: snapshotResolved.isLive ? 'live' : 'snapshot',
+            generatedAt: snapshotResolved.snapshot.generatedAt || null,
+          }
+        : null,
+      address,
+      balance: holderNfts.balance,
+      rank: rankStats.rank,
+      percentile: rankStats.percentile,
+      tokenIds: holderNfts.tokenIds,
+      items: holderNfts.items,
+      lastActivity: null,
+    });
+  } catch (openSeaErr) {
+    console.error('Public holder OpenSea lookup error:', openSeaErr.message || openSeaErr);
+  }
+
+  let resolved = snapshotResolved.snapshot
+    ? snapshotResolved
+    : await resolveHolderSnapshot({ requireFresh: false });
   let latest = resolved.snapshot;
   if (!latest) {
     return sendPublicApiError(res, 503, 'holders_unavailable', 'Holder data is unavailable right now.');
@@ -2348,12 +2407,7 @@ app.get(getPublicApiRoutePaths('/holders/:address'), publicLiveRateLimit, async 
     });
   }
 
-  let rank = 1;
-  holders.forEach((holder) => {
-    if (holder.address === address) return;
-    if (holder.balance > found.balance) rank += 1;
-    if (holder.balance === found.balance && holder.address < address) rank += 1;
-  });
+  const rankStats = getHolderRankStatsFromSnapshot(latest, address, found.balance);
 
   setPublicCacheControl(res, 'public, max-age=15, stale-while-revalidate=45');
   return res.json({
@@ -2366,12 +2420,12 @@ app.get(getPublicApiRoutePaths('/holders/:address'), publicLiveRateLimit, async 
     },
     address,
     balance: found.balance,
-    rank,
-    percentile:
-      holders.length > 0
-        ? Number((((holders.length - rank + 1) / holders.length) * 100).toFixed(2))
-        : 0,
+    rank: rankStats.rank,
+    percentile: rankStats.percentile,
     tokenIds: Array.isArray(found.tokenIds) ? found.tokenIds : [],
+    items: Array.isArray(found.tokenIds)
+      ? found.tokenIds.map((tokenId) => normalizeOpenSeaHolderNft({ identifier: tokenId })).filter(Boolean)
+      : [],
     lastActivity: found.lastActivity || null,
   });
 });
@@ -4334,6 +4388,144 @@ async function loadCollectionListingsPayload({ maxPages, limit, pageSize }) {
   );
 }
 
+function getOpenSeaNftTokenId(nft) {
+  const raw =
+    nft?.identifier ??
+    nft?.token_id ??
+    nft?.tokenId ??
+    nft?.id?.tokenId ??
+    nft?.id ??
+    null;
+  const tokenId = parseOnChainTokenId(raw);
+  return tokenId == null ? null : tokenId;
+}
+
+function getOpenSeaNftContractAddress(nft) {
+  const raw =
+    nft?.contract ??
+    nft?.contract_address ??
+    nft?.asset_contract?.address ??
+    nft?.assetContract?.address ??
+    nft?.id?.tokenMetadata?.tokenType ??
+    '';
+  if (!raw || typeof raw !== 'string') return '';
+  return raw.trim().toLowerCase();
+}
+
+function normalizeOpenSeaHolderNft(nft) {
+  const tokenId = getOpenSeaNftTokenId(nft);
+  if (tokenId == null) return null;
+
+  const contractAddress = getOpenSeaNftContractAddress(nft);
+  if (contractAddress && contractAddress !== CONTRACT.toLowerCase()) {
+    return null;
+  }
+
+  const image_url = normaliseImageUrl(
+    nft.image_url ||
+      nft.display_image_url ||
+      nft.image_original_url ||
+      nft.image ||
+      ''
+  );
+  const attributes = Array.isArray(nft.traits)
+    ? nft.traits
+    : Array.isArray(nft.attributes)
+      ? nft.attributes
+      : getTraitsForToken(tokenId, getCollectionIndexForTokenId(tokenId)) || [];
+
+  return {
+    tokenId,
+    onChainId: tokenId,
+    name: nft.name || `No-Punk #${tokenId}`,
+    image_url,
+    permalink: `https://opensea.io/item/${CHAIN}/${CONTRACT}/${tokenId}`,
+    traits: attributes,
+    attributes,
+  };
+}
+
+async function loadOpenSeaHolderNfts(address) {
+  return getOrSetApiResponseCache(
+    `holder-nfts:${CHAIN}:${COLLECTION_SLUG}:${address}`,
+    OPENSEA_HOLDER_NFT_CACHE_TTL_MS,
+    async () => {
+      const itemsByTokenId = new Map();
+      let nextCursor = null;
+      let page = 0;
+
+      do {
+        const params = new URLSearchParams({
+          collection: COLLECTION_SLUG,
+          limit: String(OPENSEA_HOLDER_NFT_PAGE_SIZE),
+        });
+        if (nextCursor) params.set('next', nextCursor);
+
+        const url =
+          `https://api.opensea.io/api/v2/chain/${CHAIN}/account/${address}/nfts?` +
+          params.toString();
+        const data = await queueOpenSeaRequest(url, `Holder NFTs ${page + 1}`, 25000);
+        const nfts = Array.isArray(data.nfts)
+          ? data.nfts
+          : Array.isArray(data.assets)
+            ? data.assets
+            : [];
+
+        nfts.forEach((nft) => {
+          const item = normalizeOpenSeaHolderNft(nft);
+          if (!item) return;
+          itemsByTokenId.set(String(item.tokenId), item);
+        });
+
+        nextCursor = data.next || null;
+        page += 1;
+      } while (nextCursor && page < 60);
+
+      const items = Array.from(itemsByTokenId.values()).sort((a, b) => a.tokenId - b.tokenId);
+      return {
+        generatedAt: new Date().toISOString(),
+        source: {
+          type: 'opensea-v2-account-nfts',
+          endpoint: `/api/v2/chain/${CHAIN}/account/{address}/nfts`,
+          collectionSlug: COLLECTION_SLUG,
+          chain: CHAIN,
+          contract: CONTRACT,
+          pages: page,
+        },
+        address,
+        balance: items.length,
+        tokenIds: items.map((item) => item.tokenId),
+        items,
+      };
+    }
+  );
+}
+
+function getHolderRankStatsFromSnapshot(snapshot, address, balanceHint = 0) {
+  const holders = getSnapshotHolders(snapshot);
+  const found = holders.find((holder) => holder.address === address) || null;
+  const balance = Number(found?.balance ?? balanceHint) || 0;
+  if (!holders.length || balance <= 0) {
+    return { rank: null, percentile: 0 };
+  }
+
+  let rank = 1;
+  holders.forEach((holder) => {
+    if (holder.address === address) return;
+    if (holder.balance > balance) rank += 1;
+    if (holder.balance === balance && holder.address < address) rank += 1;
+  });
+
+  const totalHolders = found ? holders.length : holders.length + 1;
+  return {
+    rank,
+    percentile:
+      totalHolders > 0
+        ? Number((((totalHolders - rank + 1) / totalHolders) * 100).toFixed(2))
+        : 0,
+  };
+}
+
 // =======================
 // /api/stats
 // =======================
@@ -4672,7 +4864,55 @@ app.get('/api/holders/:address', async (req, res) => {
     return res.status(400).json({ error: 'Invalid address' });
   }
 
-  let resolved = await resolveHolderSnapshot({ requireFresh: false });
+  let snapshotResolved = { snapshot: null, isLive: false, liveError: null };
+  try {
+    snapshotResolved = await resolveHolderSnapshot({ requireFresh: false });
+    const holderNfts = await loadOpenSeaHolderNfts(address);
+    const rankStats = getHolderRankStatsFromSnapshot(
+      snapshotResolved.snapshot,
+      address,
+      holderNfts.balance
+    );
+
+    if (!holderNfts.balance) {
+      return res.status(404).json({
+        generatedAt: holderNfts.generatedAt,
+        source: holderNfts.source,
+        address,
+        balance: 0,
+        rank: null,
+        percentile: 0,
+        tokenIds: [],
+        items: [],
+        lastActivity: null,
+      });
+    }
+
+    return res.json({
+      generatedAt: holderNfts.generatedAt,
+      source: holderNfts.source,
+      snapshotSource: snapshotResolved.snapshot
+        ? {
+            ...(snapshotResolved.snapshot.source || {}),
+            mode: snapshotResolved.isLive ? 'live' : 'snapshot',
+            generatedAt: snapshotResolved.snapshot.generatedAt || null,
+          }
+        : null,
+      address,
+      balance: holderNfts.balance,
+      rank: rankStats.rank,
+      percentile: rankStats.percentile,
+      tokenIds: holderNfts.tokenIds,
+      items: holderNfts.items,
+      lastActivity: null,
+    });
+  } catch (openSeaErr) {
+    console.error('Holder OpenSea lookup error:', openSeaErr.message || openSeaErr);
+  }
+
+  let resolved = snapshotResolved.snapshot
+    ? snapshotResolved
+    : await resolveHolderSnapshot({ requireFresh: false });
   let latest = resolved.snapshot;
   if (!latest) {
     return res.status(503).json({
@@ -4707,22 +4947,12 @@ app.get('/api/holders/:address', async (req, res) => {
       rank: null,
       percentile: 0,
       tokenIds: [],
+      items: [],
       lastActivity: null,
     });
   }
 
-  let rank = 1;
-  holders.forEach((holder) => {
-    if (holder.address === address) return;
-    if (holder.balance > found.balance) rank += 1;
-    if (holder.balance === found.balance && holder.address < address) rank += 1;
-  });
-
-  const totalHolders = holders.length;
-  const percentile =
-    totalHolders > 0
-      ? Number((((totalHolders - rank + 1) / totalHolders) * 100).toFixed(2))
-      : 0;
+  const rankStats = getHolderRankStatsFromSnapshot(latest, address, found.balance);
 
   return res.json({
     generatedAt: latest.generatedAt || null,
@@ -4732,9 +4962,12 @@ app.get('/api/holders/:address', async (req, res) => {
     },
     address,
     balance: found.balance,
-    rank,
-    percentile,
+    rank: rankStats.rank,
+    percentile: rankStats.percentile,
     tokenIds: Array.isArray(found.tokenIds) ? found.tokenIds : [],
+    items: Array.isArray(found.tokenIds)
+      ? found.tokenIds.map((tokenId) => normalizeOpenSeaHolderNft({ identifier: tokenId })).filter(Boolean)
+      : [],
     lastActivity: found.lastActivity || null,
   });
 });

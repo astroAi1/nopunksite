@@ -6406,9 +6406,24 @@
         };
       }
 
-      function buildHolderWalletItems(tokenIds) {
+      function buildHolderWalletItems(tokenIds, sourceItems = []) {
         const unique = new Set();
         const normalizedIds = [];
+        const sourceByTokenId = new Map();
+
+        (Array.isArray(sourceItems) ? sourceItems : []).forEach((item) => {
+          const rawId =
+            item?.tokenId ??
+            item?.onChainId ??
+            item?.identifier ??
+            item?.token_id ??
+            item?.id ??
+            null;
+          const normalized = normalizeTokenId(rawId, rawId);
+          const key = String(normalized);
+          if (!key) return;
+          sourceByTokenId.set(key, item);
+        });
 
         (Array.isArray(tokenIds) ? tokenIds : []).forEach((rawId) => {
           const normalized = normalizeTokenId(rawId, rawId);
@@ -6424,11 +6439,22 @@
           const onchainImage = `${ONCHAIN_TOKEN_META_BASE}/${safeTokenId}/image`;
           const explorerImage = `${EXPLORER_IMAGE_BASE}/${safeTokenId}.svg`;
           const localFullImage = `/${safeTokenId}.png`;
+          const sourceItem = sourceByTokenId.get(String(tokenId)) || {};
+          const remoteImage = normalizeImageSource(
+            sourceItem.image_url ||
+              sourceItem.image ||
+              sourceItem.display_image_url ||
+              sourceItem.image_original_url ||
+              ''
+          );
           return {
             tokenId,
-            src: onchainImage,
+            src: explorerImage || remoteImage || onchainImage,
             srcExport: explorerImage,
-            fallbackSrc: explorerImage || localFullImage,
+            fallbackSrc: localFullImage || remoteImage || onchainImage,
+            openseaUrl:
+              sourceItem.permalink ||
+              `${OPENSEA_ITEM_BASE}/${CONTRACT}/${safeTokenId}`,
           };
         });
       }
@@ -6828,19 +6854,28 @@
           if (!res.ok) throw new Error('Lookup failed');
 
           const data = await res.json();
-          const tokenIds = Array.isArray(data.tokenIds) ? data.tokenIds : [];
-          const holderItems = buildHolderWalletItems(tokenIds);
+          const responseItems = Array.isArray(data.items) ? data.items : [];
+          const tokenIds = Array.isArray(data.tokenIds)
+            ? data.tokenIds
+            : responseItems
+                .map((item) => item?.tokenId ?? item?.onChainId ?? item?.identifier ?? item?.token_id)
+                .filter((value) => value != null);
+          const holderItems = buildHolderWalletItems(tokenIds, responseItems);
           holderLookupState.randomSeed = Date.now();
           holderLookupState.previewPage = 1;
           renderHolderWalletGrid(holderItems, address);
           const preview = tokenIds.slice(0, 20).map((id) => `#${id}`).join(', ');
           const overflow = tokenIds.length > 20 ? ` +${tokenIds.length - 20} more` : '';
+          const sourceLabel = data?.source?.type
+            ? String(data.source.type).replace(/-/g, ' ')
+            : 'live holder data';
 
           result.innerHTML = `
             <div><strong>Rank:</strong> #${data.rank || '--'} (${data.percentile || 0}% percentile)</div>
             <div><strong>Balance:</strong> ${data.balance || 0} token${data.balance === 1 ? '' : 's'}</div>
             <div><strong>Tokens:</strong> ${preview || 'None'}${overflow}</div>
             <div><strong>Grid Export:</strong> Ready (${holderItems.length} tokens)</div>
+            <div><strong>Source:</strong> ${sourceLabel}</div>
             <div><a href="https://opensea.io/${address}" target="_blank" rel="noopener noreferrer">OpenSea profile →</a></div>
           `;
         } catch (err) {

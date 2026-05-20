@@ -601,6 +601,69 @@
     return true;
   }
 
+  function getExportFilename() {
+    return currentState?.exists
+      ? `nopunk-source-${currentState.existingId}.png`
+      : 'no-existance.png';
+  }
+
+  function canvasToPngBlob(canvas) {
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((pngBlob) => {
+        if (pngBlob) resolve(pngBlob);
+        else reject(new Error('PNG export failed'));
+      }, 'image/png');
+    });
+  }
+
+  function triggerBrowserDownload(pngBlob, filename) {
+    const pngUrl = URL.createObjectURL(pngBlob);
+    const link = document.createElement('a');
+    link.download = filename;
+    link.href = pngUrl;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(pngUrl), 30000);
+  }
+
+  async function savePngBlob(pngBlob, filename) {
+    const file =
+      typeof File === 'function'
+        ? new File([pngBlob], filename, { type: 'image/png' })
+        : null;
+    if (
+      file &&
+      navigator.share &&
+      navigator.canShare &&
+      navigator.canShare({ files: [file] })
+    ) {
+      try {
+        await navigator.share({
+          files: [file],
+          title: 'No-Existance',
+          text: filename,
+        });
+        return;
+      } catch (err) {
+        if (err?.name === 'AbortError') return;
+      }
+    }
+
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if (isMobile) {
+      const pngUrl = URL.createObjectURL(pngBlob);
+      const opened = window.open(pngUrl, '_blank', 'noopener,noreferrer');
+      if (opened) {
+        setTimeout(() => URL.revokeObjectURL(pngUrl), 60000);
+        return;
+      }
+      URL.revokeObjectURL(pngUrl);
+    }
+
+    triggerBrowserDownload(pngBlob, filename);
+  }
+
   function downloadPng() {
     if (!currentState) return;
     const svg = renderNoPunk(currentState.base, currentState.traits, {
@@ -615,16 +678,13 @@
     const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const img = new Image();
-    img.onload = () => {
+    img.onload = async () => {
       ctx.drawImage(img, 0, 0, size, size);
       URL.revokeObjectURL(url);
-      const link = document.createElement('a');
-      link.download = currentState.exists
-        ? `nopunk-source-${currentState.existingId}.png`
-        : 'no-existance.png';
-      link.href = canvas.toDataURL('image/png');
-      link.click();
+      const pngBlob = await canvasToPngBlob(canvas);
+      await savePngBlob(pngBlob, getExportFilename());
     };
+    img.onerror = () => URL.revokeObjectURL(url);
     img.src = url;
   }
 

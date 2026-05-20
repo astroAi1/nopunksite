@@ -37,6 +37,9 @@
     Ape: [24, 25, 26, 27],
     Alien: [28, 29, 30, 31],
   };
+  const BASE_OUTLINE_PALETTE_INDICES = {
+    Ape: [24, 26],
+  };
 
   const el = {
     frame: document.getElementById('punk-frame'),
@@ -159,6 +162,11 @@
     return new Set(indices.map((idx) => colorKey(cachedPalette[idx])));
   }
 
+  function getBaseOutlineColorKeys(baseTypeName) {
+    const indices = BASE_OUTLINE_PALETTE_INDICES[baseTypeName] || [];
+    return new Set(indices.map((idx) => colorKey(cachedPalette[idx])));
+  }
+
   function isEyeAperturePixel(index, baseTypeName, traitNames) {
     if (!traitNames.some((name) => traitsData.traits[name]?.category === 'eyes')) return false;
     const x = index % PUNK_SIZE;
@@ -169,9 +177,11 @@
 
   function applyNoPunksColorTransform(pixels, baseTypeName, traitNames, sources = []) {
     const skinColorKeys = getSkinColorKeys(baseTypeName);
+    const baseOutlineColorKeys = getBaseOutlineColorKeys(baseTypeName);
     return pixels.map((px, index) => {
       if (!px || px.a === 0) return { r: 0, g: 0, b: 0, a: 255 };
       if (px.r === 0 && px.g === 0 && px.b === 0 && px.a > 0) return { ...NOPUNKS_BLACK, a: px.a };
+      if (sources[index] !== 'trait' && baseOutlineColorKeys.has(colorKey(px))) return { ...NOPUNKS_BLACK, a: px.a };
       if (skinColorKeys.has(colorKey(px)) && sources[index] !== 'trait' && !isEyeAperturePixel(index, baseTypeName, traitNames)) return { r: 0, g: 0, b: 0, a: px.a };
       return px;
     });

@@ -557,7 +557,7 @@
     el.frame.insertAdjacentHTML('beforeend', svg);
 
     if (exists) {
-      el.title.textContent = 'No-Existance';
+      el.title.textContent = 'No-Existence';
       el.pill.innerHTML = `<strong>Real</strong> #${existingId}`;
       el.status.innerHTML = `<strong>Matched CryptoPunk #${existingId}</strong> / ${escapeHtml(base)} / ${traits.length} traits`;
       renderEvidenceRows([
@@ -568,7 +568,7 @@
       ]);
       updateApiEvidence(state, runId);
     } else {
-      el.title.textContent = 'No-Existance';
+      el.title.textContent = 'No-Existence';
       el.pill.innerHTML = '<strong>Impossible</strong> combo';
       el.status.innerHTML = `<strong>Synthetic No-Punk</strong> / ${escapeHtml(base)} / ${traits.length} traits`;
       renderEvidenceRows([
@@ -604,7 +604,7 @@
   function getExportFilename() {
     return currentState?.exists
       ? `nopunk-source-${currentState.existingId}.png`
-      : 'no-existance.png';
+      : 'no-existence.png';
   }
 
   function canvasToPngBlob(canvas) {
@@ -641,7 +641,7 @@
       try {
         await navigator.share({
           files: [file],
-          title: 'No-Existance',
+          title: 'No-Existence',
           text: filename,
         });
         return;

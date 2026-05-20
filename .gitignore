@@ -21,7 +21,11 @@ content/
 research/
 public/marketplace/
 public/*_grid.png
-public/data/
+public/data/*
+!public/data/holders/
+public/data/holders/*
+!public/data/holders/latest.json
+!public/data/holders/history.json
 
 # Ignore accidental duplicate image copies (e.g. "1234 2.svg")
 explorer-data/images/* [0-9]*.svg

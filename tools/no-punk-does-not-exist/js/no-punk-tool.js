@@ -363,6 +363,11 @@
     }
   }
 
+  function pickRandomTraitByCategory(byCategory, category) {
+    const values = byCategory[category] || [];
+    return values.length ? values[randomInt(values.length)] : null;
+  }
+
   function randomPunk(maxAttempts = 150) {
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       const base = traitsData.baseTypeNames[randomInt(traitsData.baseTypeNames.length)];
@@ -381,18 +386,25 @@
       }
 
       const byCategory = getTraitsByCategory(gender);
-      const traits = [...categories]
+      const eyesTrait = pickRandomTraitByCategory(byCategory, 'eyes');
+      if (!eyesTrait) continue;
+      const extraTraitCount = Math.max(0, traitCount - 1);
+      const traits = [
+        eyesTrait,
+        ...categories
+          .filter((category) => category !== 'eyes')
         .sort(() => Math.random() - 0.5)
-        .slice(0, traitCount)
+          .slice(0, extraTraitCount)
         .map((category) => {
           const values = byCategory[category] || [];
           return values.length ? values[randomInt(values.length)] : null;
-        })
-        .filter(Boolean);
+          })
+          .filter(Boolean),
+      ];
 
       if (checkExists(base, traits) === null) return { base, traits };
     }
-    return { base: 'Alien', traits: ['Mohawk', 'Earring', 'Smile', 'Big Beard'] };
+    return { base: 'Alien', traits: ['Eye Mask', 'Mohawk', 'Earring', 'Smile', 'Big Beard'] };
   }
 
   function hashString(input) {
@@ -414,10 +426,16 @@
       const byCategory = getTraitsByCategory(gender);
       const traitCount = (h % 5) + 1;
       const traits = [];
+      const eyes = byCategory.eyes || [];
+      if (eyes.length) {
+        h = (Math.imul(h || 1, 1103515245) + 12345) >>> 0;
+        traits.push(eyes[h % eyes.length]);
+      }
 
-      for (let i = 0; i < Math.min(traitCount, categories.length); i += 1) {
+      for (let i = 0; i < Math.min(traitCount - traits.length, categories.length - 1); i += 1) {
         h = (Math.imul(h || 1, 1103515245) + 12345 + i) >>> 0;
-        const category = categories[h % categories.length];
+        const availableCategories = categories.filter((category) => category !== 'eyes');
+        const category = availableCategories[h % availableCategories.length];
         if (traits.some((name) => traitsData.traits[name]?.category === category)) continue;
         const values = byCategory[category] || [];
         if (values.length) traits.push(values[h % values.length]);
@@ -464,7 +482,6 @@
       links.push(`<a href="/api/v2/tokens/${state.existingId}" target="_blank" rel="noopener noreferrer">No-Punk API #${state.existingId}</a>`);
       links.push(`<a href="https://opensea.io/assets/base/0xa62f65d503068684e7228df98090f94322b8ed54/${state.existingId}" target="_blank" rel="noopener noreferrer">No-Punk V2 Market #${state.existingId}</a>`);
     } else {
-      links.push('<a href="https://www.cryptopunks.app/llms.txt" target="_blank" rel="noopener noreferrer">CryptoPunks API reference</a>');
       links.push('<a href="/api/v2/datasets" target="_blank" rel="noopener noreferrer">No-Punks datasets</a>');
     }
 

@@ -2043,6 +2043,10 @@
           max-height: 54vh;
         }
 
+        .holder-grid-id {
+          display: none;
+        }
+
         .holder-grid-select,
         .holder-grid-export-btn,
         .holder-preview-btn {
@@ -2702,9 +2706,10 @@
             </div>
             <div class="holder-grid-controls">
               <label class="holder-grid-control" for="holder-grid-columns">
-                <span>Grid Size</span>
+                <span>Export Grid</span>
                 <select id="holder-grid-columns" class="holder-grid-select">
-                  <option value="auto">Auto</option>
+                  <option value="social" selected>Social</option>
+                  <option value="auto">Full Auto</option>
                   <option value="2">2</option>
                   <option value="3">3</option>
                   <option value="4">4</option>
@@ -6299,8 +6304,9 @@
 
       function getSelectedGridColumns() {
         const selectEl = document.getElementById('holder-grid-columns');
-        if (!selectEl) return null;
+        if (!selectEl) return 'social';
         const rawValue = String(selectEl.value || '').trim().toLowerCase();
+        if (rawValue === 'social') return 'social';
         if (!rawValue || rawValue === 'auto') return null;
         const parsed = Number.parseInt(rawValue, 10);
         return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
@@ -6324,6 +6330,15 @@
 
       function getWalletGridDimensions(itemCount, preferredGridSize = null) {
         if (!itemCount) return { columns: 0, rows: 0 };
+        if (preferredGridSize === 'social') {
+          const count = Math.max(1, Number(itemCount) || 1);
+          if (count <= 4) return { columns: 2, rows: 2 };
+          if (count <= 9) return { columns: 3, rows: 3 };
+          if (count <= 16) return { columns: 4, rows: 4 };
+          if (count <= 36) return { columns: 6, rows: 6 };
+          return { columns: 8, rows: 8 };
+        }
+
         const normalizedPreferred = Number(preferredGridSize);
         const preferredIsValid = Number.isInteger(normalizedPreferred) && normalizedPreferred > 0;
         if (preferredIsValid) {
@@ -6404,11 +6419,35 @@
         return shuffled.slice(0, Math.min(count, shuffled.length));
       }
 
+      function pickSpreadWalletItems(items, count) {
+        if (!Array.isArray(items) || !items.length || count <= 0) return [];
+        const selectionCount = Math.min(count, items.length);
+        if (selectionCount >= items.length) return items.slice();
+        if (selectionCount === 1) return [items[0]];
+
+        const selected = [];
+        const used = new Set();
+        const maxIndex = items.length - 1;
+        for (let i = 0; i < selectionCount; i += 1) {
+          let idx = Math.round((i * maxIndex) / (selectionCount - 1));
+          while (used.has(idx) && idx < items.length - 1) idx += 1;
+          while (used.has(idx) && idx > 0) idx -= 1;
+          used.add(idx);
+          selected.push(items[idx]);
+        }
+        return selected;
+      }
+
       function buildWalletComposition(walletItems, options = {}) {
         const items = Array.isArray(walletItems) ? walletItems : [];
         const mode = options.mode === 'random' ? 'random' : 'fit';
         const preferredGrid =
-          Number.isInteger(options.gridSize) && options.gridSize > 0 ? options.gridSize : null;
+          options.gridSize === 'social'
+            ? 'social'
+            : Number.isInteger(options.gridSize) && options.gridSize > 0
+              ? options.gridSize
+              : null;
+        const isSocial = preferredGrid === 'social';
         if (!items.length) {
           return {
             mode,
@@ -6426,36 +6465,64 @@
         const selectedItems =
           mode === 'random'
             ? pickRandomWalletItems(items, selectionCount, options.seed)
-            : items.slice(0, selectionCount);
+            : isSocial
+              ? pickSpreadWalletItems(items, selectionCount)
+              : items.slice(0, selectionCount);
 
         return {
           ...dimensions,
           mode,
+          isSocial,
           capacity,
           isSample: items.length > capacity,
           selectedItems,
         };
       }
 
-      function buildWalletGridLayout(composition, canvasSize = 2048) {
+      function buildWalletGridLayout(composition, canvasSize = 2048, options = {}) {
         const size =
           Number.isInteger(canvasSize) && canvasSize >= 512 && canvasSize <= 8192 ? canvasSize : 2048;
         const columns = Math.max(1, Number(composition?.columns) || 1);
         const rows = Math.max(1, Number(composition?.rows) || columns);
-        let gap = columns >= 48 ? 1 : columns >= 24 ? 2 : columns >= 12 ? 3 : 4;
-        let padding = Math.max(8, Math.round(size * 0.03));
-        let tile = Math.floor((size - padding * 2 - Math.max(0, columns - 1) * gap) / columns);
+        const social = Boolean(options.social || composition?.isSocial);
+        let gap = social
+          ? Math.max(4, Math.round(size * 0.006))
+          : columns >= 48
+            ? 1
+            : columns >= 24
+              ? 2
+              : columns >= 12
+                ? 3
+                : 4;
+        let padding = social ? Math.round(size * 0.045) : Math.max(8, Math.round(size * 0.03));
+        const footer = social ? Math.round(size * 0.065) : 0;
+        let tile = Math.floor(
+          Math.min(
+            (size - padding * 2 - Math.max(0, columns - 1) * gap) / columns,
+            (size - padding * 2 - footer - Math.max(0, rows - 1) * gap) / rows
+          )
+        );
 
         if (tile < 1) {
           gap = 1;
           padding = 2;
-          tile = Math.max(1, Math.floor((size - padding * 2 - Math.max(0, columns - 1) * gap) / columns));
+          tile = Math.max(
+            1,
+            Math.floor(
+              Math.min(
+                (size - padding * 2 - Math.max(0, columns - 1) * gap) / columns,
+                (size - padding * 2 - footer - Math.max(0, rows - 1) * gap) / rows
+              )
+            )
+          );
         }
 
         const gridWidth = columns * tile + Math.max(0, columns - 1) * gap;
         const gridHeight = rows * tile + Math.max(0, rows - 1) * gap;
         const offsetX = Math.max(0, Math.floor((size - gridWidth) / 2));
-        const offsetY = Math.max(0, Math.floor((size - gridHeight) / 2));
+        const offsetY = social
+          ? Math.max(padding, Math.floor((size - padding - footer - gridHeight) / 2))
+          : Math.max(0, Math.floor((size - gridHeight) / 2));
 
         return {
           width: size,
@@ -6464,9 +6531,72 @@
           rows,
           tile,
           gap,
+          gridWidth,
+          gridHeight,
           offsetX,
           offsetY,
+          padding,
+          footer,
+          social,
         };
+      }
+
+      function drawPixelText(ctx, text, x, y, {
+        size = 36,
+        color = '#ffffff',
+        align = 'left',
+        weight = '700',
+        alpha = 1,
+      } = {}) {
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = color;
+        ctx.textAlign = align;
+        ctx.textBaseline = 'top';
+        ctx.font = `${weight} ${size}px ${getComputedStyle(document.documentElement).getPropertyValue('--font-mono') || 'monospace'}`;
+        ctx.fillText(text, x, y);
+        ctx.restore();
+      }
+
+      function drawHolderGridExportFrame(ctx, layout, composition) {
+        const { width, height, padding, offsetX, offsetY, gridWidth, gridHeight } = layout;
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, width, height);
+
+        const glow = ctx.createRadialGradient(
+          width * 0.5,
+          height * 0.42,
+          width * 0.08,
+          width * 0.5,
+          height * 0.42,
+          width * 0.72
+        );
+        glow.addColorStop(0, 'rgba(28,28,28,0.42)');
+        glow.addColorStop(0.52, 'rgba(4,4,4,0.3)');
+        glow.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = glow;
+        ctx.fillRect(0, 0, width, height);
+
+        ctx.strokeStyle = '#040404';
+        ctx.lineWidth = Math.max(2, Math.round(width * 0.002));
+        ctx.strokeRect(padding * 0.5, padding * 0.5, width - padding, height - padding);
+
+        ctx.fillStyle = '#040404';
+        ctx.fillRect(
+          offsetX - layout.gap,
+          offsetY - layout.gap,
+          gridWidth + layout.gap * 2,
+          gridHeight + layout.gap * 2
+        );
+
+        const footerSize = Math.round(width * 0.017);
+        const footerY = Math.min(height - padding * 0.9, offsetY + gridHeight + padding * 0.34);
+        drawPixelText(ctx, 'nopunks.xyz', width - padding, footerY, {
+          size: footerSize,
+          align: 'right',
+          color: '#777777',
+          weight: '800',
+        });
       }
 
       function buildHolderWalletItems(tokenIds, sourceItems = []) {
@@ -6680,6 +6810,7 @@
         if (previewNextBtn) previewNextBtn.disabled = currentPreviewPage >= previewPageCount;
 
         const modeText = activeMode === 'random' ? 'random mix' : 'ordered';
+        const exportStyleText = composition.isSocial ? 'social image' : 'full grid';
         const sampleText = composition.isSample
           ? `${composition.selectedItems.length}/${filteredItems.length} in export`
           : `${composition.selectedItems.length} in export`;
@@ -6690,7 +6821,7 @@
           : 'all traits';
         metaEl.textContent =
           `${walletItems.length} held • ${filteredItems.length} match (${filterText}) • ` +
-          `${composition.columns} x ${composition.rows} • ${selectedCanvas} x ${selectedCanvas} PNG • ${modeText} • ${sampleText} • preview ${pageStart + 1}-${pageEnd}/${totalPreviewItems}`;
+          `${composition.columns} x ${composition.rows} • ${selectedCanvas} x ${selectedCanvas} ${exportStyleText} • ${modeText} • ${sampleText} • preview ${pageStart + 1}-${pageEnd}/${totalPreviewItems}`;
 
         const html = previewItems
           .map((item) => `
@@ -6762,7 +6893,9 @@
             mode: holderLookupState.gridMode,
             seed: holderLookupState.randomSeed,
           });
-          const layout = buildWalletGridLayout(composition, holderLookupState.canvasSize);
+          const layout = buildWalletGridLayout(composition, holderLookupState.canvasSize, {
+            social: composition.isSocial,
+          });
           const images = await loadImagesWithConcurrency(composition.selectedItems, 18);
 
           const canvas = document.createElement('canvas');
@@ -6771,15 +6904,19 @@
           const ctx = canvas.getContext('2d', { alpha: false });
           ctx.imageSmoothingEnabled = false;
 
-          const bg = ctx.createLinearGradient(0, 0, layout.width, layout.height);
-          bg.addColorStop(0, '#070707');
-          bg.addColorStop(1, '#000000');
-          ctx.fillStyle = bg;
-          ctx.fillRect(0, 0, layout.width, layout.height);
+          if (composition.isSocial) {
+            drawHolderGridExportFrame(ctx, layout, composition);
+          } else {
+            const bg = ctx.createLinearGradient(0, 0, layout.width, layout.height);
+            bg.addColorStop(0, '#070707');
+            bg.addColorStop(1, '#000000');
+            ctx.fillStyle = bg;
+            ctx.fillRect(0, 0, layout.width, layout.height);
 
-          ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-          ctx.lineWidth = 2;
-          ctx.strokeRect(1, 1, layout.width - 2, layout.height - 2);
+            ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(1, 1, layout.width - 2, layout.height - 2);
+          }
 
           for (let idx = 0; idx < composition.selectedItems.length; idx += 1) {
             const col = idx % layout.columns;
@@ -6789,9 +6926,13 @@
             const image = images[idx];
 
             if (!image) continue;
+            if (composition.isSocial) {
+              ctx.fillStyle = '#000000';
+              ctx.fillRect(x, y, layout.tile, layout.tile);
+            }
             ctx.drawImage(image, x, y, layout.tile, layout.tile);
 
-            ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+            ctx.strokeStyle = composition.isSocial ? '#040404' : 'rgba(255,255,255,0.08)';
             ctx.lineWidth = 1;
             ctx.strokeRect(x + 0.5, y + 0.5, layout.tile - 1, layout.tile - 1);
           }
@@ -6820,10 +6961,11 @@
           const traitSegment = safeTraitType
             ? `-${safeTraitType}${safeTraitValue ? `-${safeTraitValue}` : ''}`
             : '';
+          const styleSegment = composition.isSocial ? 'social' : 'full';
           const fileDate = new Date().toISOString().slice(0, 10);
           const filename =
             `nopunks-wallet-${safeAddress.slice(0, 12) || 'wallet'}-` +
-            `${layout.width}x${layout.height}-${composition.columns}x${composition.rows}${traitSegment}-${fileDate}.png`;
+            `${styleSegment}-${layout.width}x${layout.height}-${composition.columns}x${composition.rows}${traitSegment}-${fileDate}.png`;
 
           const saveResult = await saveHolderGridPngBlob(pngBlob, filename);
           const metaEl = document.getElementById('holder-wallet-grid-meta');

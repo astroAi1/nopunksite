@@ -2042,6 +2042,18 @@
         .holder-grid-preview {
           max-height: 54vh;
         }
+
+        .holder-grid-select,
+        .holder-grid-export-btn,
+        .holder-preview-btn {
+          min-height: 44px;
+          width: 100%;
+        }
+
+        .holder-grid-meta {
+          line-height: 1.55;
+          overflow-wrap: anywhere;
+        }
       }
 
       /* ========================================
@@ -5215,6 +5227,8 @@
         if (holderWalletRandomizeBtn) {
           holderWalletRandomizeBtn.addEventListener('click', () => {
             if (!holderLookupState.items.length) return;
+            const modeSelect = document.getElementById('holder-grid-mode');
+            if (modeSelect) modeSelect.value = 'random';
             holderLookupState.randomSeed = Date.now();
             holderLookupState.previewPage = 1;
             renderHolderWalletGrid(holderLookupState.items, holderLookupState.address);
@@ -6131,6 +6145,53 @@
         return map;
       }
 
+      function addHolderTraitMapValue(map, traitType, traitValue) {
+        const normalizedType = String(traitType || '').trim();
+        const normalizedValue = String(traitValue || '').trim();
+        if (!normalizedType || !normalizedValue) return;
+        if (!map.has(normalizedType)) map.set(normalizedType, new Set());
+        map.get(normalizedType).add(normalizedValue);
+      }
+
+      function buildHolderTraitFilterMap(items) {
+        const map = new Map();
+        const fullTypeValues = collectionState.traitIndex.typeValues || {};
+
+        Object.entries(fullTypeValues).forEach(([traitType, values]) => {
+          (Array.isArray(values) ? values : []).forEach((value) => {
+            addHolderTraitMapValue(map, traitType, value);
+          });
+        });
+
+        buildHolderTraitTypeValueMap(items).forEach((values, traitType) => {
+          values.forEach((value) => {
+            addHolderTraitMapValue(map, traitType, value);
+          });
+        });
+
+        return map;
+      }
+
+      function getOrderedHolderTraitTypes(map) {
+        const configuredOrder = Array.isArray(collectionState.traitIndex.traitTypes)
+          ? collectionState.traitIndex.traitTypes
+          : [];
+        const ordered = [];
+        configuredOrder.forEach((traitType) => {
+          const normalizedType = String(traitType || '').trim();
+          if (!normalizedType || !map.has(normalizedType) || ordered.includes(normalizedType)) return;
+          ordered.push(normalizedType);
+        });
+
+        Array.from(map.keys())
+          .sort((a, b) => a.localeCompare(b))
+          .forEach((traitType) => {
+            if (!ordered.includes(traitType)) ordered.push(traitType);
+          });
+
+        return ordered;
+      }
+
       function getSelectedHolderTraitType() {
         const typeSelect = document.getElementById('holder-trait-type');
         return typeSelect ? String(typeSelect.value || '').trim() : '';
@@ -6162,8 +6223,8 @@
         const valueSelect = document.getElementById('holder-trait-value');
         if (!typeSelect || !valueSelect) return;
 
-        const map = buildHolderTraitTypeValueMap(items);
-        const traitTypes = Array.from(map.keys()).sort((a, b) => a.localeCompare(b));
+        const map = buildHolderTraitFilterMap(items);
+        const traitTypes = getOrderedHolderTraitTypes(map);
         const previousType = preserveType ? String(typeSelect.value || '') : '';
 
         typeSelect.innerHTML = '<option value="">All trait types</option>';
@@ -6189,7 +6250,7 @@
         const valueSelect = document.getElementById('holder-trait-value');
         if (!typeSelect || !valueSelect) return;
 
-        const map = traitMap instanceof Map ? traitMap : buildHolderTraitTypeValueMap(items);
+        const map = traitMap instanceof Map ? traitMap : buildHolderTraitFilterMap(items);
         const selectedType = String(typeSelect.value || '').trim();
         const previousValue = preserveValue ? String(valueSelect.value || '').trim() : '';
 
@@ -6480,9 +6541,10 @@
         const selectedGrid = getSelectedGridColumns();
         const selectedMode = getSelectedGridMode();
         const selectedCanvas = getSelectedCanvasSize();
+        const activeMode = selectedMode === 'random' ? 'random' : selectedMode;
         const composition = buildWalletComposition(filteredItems, {
           gridSize: selectedGrid,
-          mode: selectedMode,
+          mode: activeMode,
           seed: holderLookupState.randomSeed,
         });
 
@@ -6492,7 +6554,7 @@
         holderLookupState.columns = composition.columns;
         holderLookupState.rows = composition.rows;
         holderLookupState.gridColumns = selectedGrid;
-        holderLookupState.gridMode = selectedMode;
+        holderLookupState.gridMode = activeMode;
         holderLookupState.canvasSize = selectedCanvas;
         holderLookupState.traitType = selectedTraitType;
         holderLookupState.traitValue = selectedTraitValue;
@@ -6547,7 +6609,7 @@
           selectedTraitType || '*',
           selectedTraitValue || '*',
           selectedGrid || 'auto',
-          selectedMode,
+          activeMode,
           holderLookupState.randomSeed,
         ].join('|');
         if (holderLookupState.previewContextKey !== previewContextKey) {
@@ -6617,7 +6679,7 @@
         if (previewPrevBtn) previewPrevBtn.disabled = currentPreviewPage <= 1;
         if (previewNextBtn) previewNextBtn.disabled = currentPreviewPage >= previewPageCount;
 
-        const modeText = selectedMode === 'random' ? 'random mix' : 'ordered';
+        const modeText = activeMode === 'random' ? 'random mix' : 'ordered';
         const sampleText = composition.isSample
           ? `${composition.selectedItems.length}/${filteredItems.length} in export`
           : `${composition.selectedItems.length} in export`;
@@ -6763,18 +6825,82 @@
             `nopunks-wallet-${safeAddress.slice(0, 12) || 'wallet'}-` +
             `${layout.width}x${layout.height}-${composition.columns}x${composition.rows}${traitSegment}-${fileDate}.png`;
 
-          const blobUrl = URL.createObjectURL(pngBlob);
-          const tempLink = document.createElement('a');
-          tempLink.href = blobUrl;
-          tempLink.download = filename;
-          document.body.appendChild(tempLink);
-          tempLink.click();
-          tempLink.remove();
-          setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+          const saveResult = await saveHolderGridPngBlob(pngBlob, filename);
+          const metaEl = document.getElementById('holder-wallet-grid-meta');
+          if (metaEl) {
+            if (saveResult === 'shared') {
+              metaEl.textContent = `Share sheet opened for ${filename}`;
+            } else if (saveResult === 'opened') {
+              metaEl.textContent = `PNG opened in a new tab. Use Save Image or Share to save ${filename}`;
+            } else if (saveResult === 'cancelled') {
+              metaEl.textContent = `Save cancelled. Tap Save Holdings Grid PNG to try again.`;
+            } else {
+              metaEl.textContent = `Downloaded ${filename}`;
+            }
+          }
         } finally {
           exportBtn.textContent = originalLabel;
           exportBtn.disabled = !holderLookupState.filteredItems.length;
         }
+      }
+
+      function triggerHolderGridDownload(pngBlob, filename, { openInNewTab = false, revokeDelay = 30000 } = {}) {
+        const blobUrl = URL.createObjectURL(pngBlob);
+        const tempLink = document.createElement('a');
+        tempLink.href = blobUrl;
+        tempLink.download = filename;
+        if (openInNewTab) {
+          tempLink.target = '_blank';
+          tempLink.rel = 'noopener noreferrer';
+        }
+        document.body.appendChild(tempLink);
+        tempLink.click();
+        tempLink.remove();
+        setTimeout(() => URL.revokeObjectURL(blobUrl), revokeDelay);
+        return blobUrl;
+      }
+
+      async function saveHolderGridPngBlob(pngBlob, filename) {
+        const file =
+          typeof File === 'function'
+            ? new File([pngBlob], filename, { type: 'image/png' })
+            : null;
+        const canNativeShare =
+          file &&
+          typeof navigator !== 'undefined' &&
+          typeof navigator.share === 'function' &&
+          (
+            typeof navigator.canShare !== 'function' ||
+            navigator.canShare({ files: [file] })
+          );
+
+        if (canNativeShare) {
+          try {
+            await navigator.share({
+              files: [file],
+              title: 'NoPunks holder grid',
+              text: filename,
+            });
+            return 'shared';
+          } catch (err) {
+            if (err?.name === 'AbortError') return 'cancelled';
+            console.warn('Native holder grid share failed:', err);
+          }
+        }
+
+        const isMobile =
+          typeof navigator !== 'undefined' &&
+          /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+        if (isMobile) {
+          triggerHolderGridDownload(pngBlob, filename, {
+            openInNewTab: true,
+            revokeDelay: 120000,
+          });
+          return 'opened';
+        }
+
+        triggerHolderGridDownload(pngBlob, filename);
+        return 'downloaded';
       }
 
       async function loadHolderIntel() {
